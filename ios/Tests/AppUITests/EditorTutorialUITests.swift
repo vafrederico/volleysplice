@@ -10,8 +10,9 @@ final class EditorTutorialUITests: XCTestCase {
         app.launchArguments = ["--parity-editor", "--parity-deferred-score"]
         app.launch()
         defer { app.terminate() }
-        XCTAssertTrue(app.buttons["editorMore"].waitForExistence(timeout: 30), app.debugDescription)
+        XCTAssertTrue(app.buttons["editorSettings"].waitForExistence(timeout: 30), app.debugDescription)
         if app.buttons["tutorialSkip"].exists { app.buttons["tutorialSkip"].tap() }
+        app.buttons["workspace-editor-tab"].tap()
         let toggle = app.switches["scoreTracking"]
         XCTAssertTrue(toggle.waitForExistence(timeout: 15), app.debugDescription)
         // This test targets score queueing, so normal scrolling to the scoreboard
@@ -51,14 +52,14 @@ final class EditorTutorialUITests: XCTestCase {
         app.launch()
         defer { app.terminate() }
         try XCTSkipIf(app.frame.width >= 600, "This regression exercises the phone portrait scroll container.")
-        XCTAssertTrue(app.buttons["editorMore"].waitForExistence(timeout: 30), app.debugDescription)
+        XCTAssertTrue(app.buttons["editorSettings"].waitForExistence(timeout: 30), app.debugDescription)
         if app.buttons["tutorialSkip"].exists {
             app.buttons["tutorialSkip"].tap()
             // A previously persisted later step can launch scrolled down. Relaunch
             // after dismissal restores the normal top; no test swipe reveals targets.
             app.terminate(); app.launch()
         }
-        let more = app.buttons["editorMore"]
+        let more = app.buttons["editorSettings"]
         XCTAssertTrue(more.waitForExistence(timeout: 30))
         XCTAssertTrue(more.isHittable)
         more.tap()
@@ -66,15 +67,13 @@ final class EditorTutorialUITests: XCTestCase {
         XCTAssertTrue(replay.waitForExistence(timeout: 10)); replay.tap()
 
         let steps: [(String, String?)] = [
-            ("Fine-tune only when you need to", nil),
-            ("Save the finished video", nil),
-            ("Add a scoreboard if you want one", nil),
-            ("Check the score markers", nil),
-            ("Watch the video", "editorVideo"),
-            ("Start with what needs attention", "reviewCleanup"),
-            ("Review the suggested clips", "gameTimeline"),
-            ("Fix one clip", "focusedTimeline"),
-            ("Add anything VolleySplice missed", "manualRange")
+            ("Review one rally at a time", "deck-video"),
+            ("Keep, remove, or trim", "deck-trim"),
+            ("Check the serving side", "deck-tagging"),
+            ("Browse all rallies", "deck-list"),
+            ("Add a missed rally explicitly", "deck-add"),
+            ("Open the full Editor", "workspace-editor-tab"),
+            ("Save the finished game", "workspace-export-tab")
         ]
         for (title, identifier) in steps {
             let heading = app.staticTexts["tutorialTitle"]

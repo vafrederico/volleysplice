@@ -59,6 +59,7 @@ struct EditorWorkspace: View {
     var projectNames: [URL: String] = [:]
     var projectDates: [URL: Date] = [:]
     var projectModels: [URL: RallyModel] = [:]
+    var projectStatuses: [URL: String] = [:]
     var onSelectProject: (URL) -> Void = { _ in }
     var onNewProject: () -> Void = {}
     var onManageStorage: () -> Void = {}
@@ -69,11 +70,19 @@ struct EditorWorkspace: View {
     @State private var playheadMs: Int64 = 0
     @State private var playing = false
     @State private var settings = false
-    @State private var exportTab = false
-    @State private var compactChapters = false
+    private enum SettingsAction { case project, queue, storage, tour, analysis }
+    @State private var settingsAction: SettingsAction?
+    @State private var stage = EditorStage.rallies
+    @State private var deck = RallyDeckNavigation()
+    private var exportTab: Bool {
+        get { stage == .export }
+        nonmutating set { stage = newValue ? .export : .editor }
+    }
+    @State private var deckQueue: [RallyReviewStop] = []
+    @State private var seekGeneration = 0
+    @State private var pendingSeekMs: Int64?
     @State private var compactProjectOptions = false
     @State private var pendingCompactProjectExport = false
-    @State private var trimWindow: TimeRange?
     @State private var resetConfirmation = false
     @State private var deleteConfirmation = false
     @State private var allSuggestions: [SuppressionRegion] = []
@@ -135,8 +144,12 @@ struct EditorWorkspace: View {
     private var pendingConfidenceIds: Set<String> { presentation.pendingConfidenceIds }
     private var rallyGroups: [EditableRallyGroup] { presentation.groups }
     private var currentGroup: EditableRallyGroup? {
-        if let selected = suggestions.first(where: { $0.id == selectedSuggestionId }),
+        if stage != .rallies, let selected = suggestions.first(where: { $0.id == selectedSuggestionId }),
            let group = rallyGroups.first(where: { $0.cuts.contains { $0.coreStartMs < selected.endMs && selected.startMs < $0.coreEndMs } }) { return group }
+        if stage == .rallies {
+            if let group = rallyGroups.first(where: { $0.id == deck.selectedId }) { return group }
+            if deck.focus != nil { return nil }
+        }
         return rallyGroups.first { $0.keepStartMs <= playheadMs && playheadMs < $0.coreEndMs } ??
         rallyGroups.last { $0.coreStartMs <= playheadMs } ?? rallyGroups.first
     }
@@ -172,24 +185,28 @@ struct EditorWorkspace: View {
             let safeWidth = geometry.size.width - landscapeInsets.leading - landscapeInsets.trailing
             let desktop = EditorLayout.mode(width: Double(safeWidth), height: Double(geometry.size.height)) == .desktop
             VStack(spacing: 0) {
-                if desktop {
-                    header(desktop: true, condensed: safeWidth < 1100).environment(\.compactPhoneEditor, false)
+                CourtsideWorkspaceBar(name: project.sourceName, stage: $stage, width: safeWidth,
+                    portrait: geometry.size.height > safeWidth, included: keptRallyCount,
+                    duration: time(EditorMath.totalFinalMs(intervals)), layoutDescription: desktop ? "Wide workspace" : "Compact workspace", cleanup: presentation.pendingCleanup.count,
+                    clips: reviewCuts.count, serves: score.enabled ? reviewServes.count : 0,
+                    onCleanup: nextCleanup, onClips: nextReview, onServes: nextServeReview,
+                    onSettings: { settings = true }, onDelete: { deleteConfirmation = true }, projectItems: { projectMenuItems })
+                    .padding(.leading, landscapeInsets.leading).padding(.trailing, landscapeInsets.trailing)
+                if stage == .rallies {
+                    courtsideDeck.padding(.leading, landscapeInsets.leading).padding(.trailing, landscapeInsets.trailing)
+                } else if exportTab {
+                    exportWorkspace(desktop: desktop)
                         .padding(.leading, landscapeInsets.leading).padding(.trailing, landscapeInsets.trailing)
-                    Divider()
-                    if exportTab { exportWorkspace(desktop: true)
-                        .padding(.leading, landscapeInsets.leading).padding(.trailing, landscapeInsets.trailing)
-                    }
-                    else {
+                } else if desktop {
                         desktopWorkspace(size: CGSize(width: safeWidth + landscapeSpace.leading + landscapeSpace.trailing, height: geometry.size.height))
                             .padding(.leading, landscapeInsets.leading - landscapeSpace.leading)
                             .padding(.trailing, landscapeInsets.trailing - landscapeSpace.trailing)
-                    }
                 } else { compactWorkspace
                     .padding(.leading, landscapeInsets.leading).padding(.trailing, landscapeInsets.trailing)
                 }
             }
             .environment(\.compactPhoneEditor, isPhone)
-            .background(EditorPalette.paper).foregroundStyle(EditorPalette.ink).tint(EditorPalette.green)
+            .background(stage == .rallies ? CourtsidePalette.ground : EditorPalette.paper).foregroundStyle(EditorPalette.ink).tint(EditorPalette.green)
             .clipped()
         }
         // Give the editor real bounds across the horizontal window. Keep all
@@ -200,22 +217,37 @@ struct EditorWorkspace: View {
         .background(EditorPalette.paper.ignoresSafeArea())
         .onAppear {
             allSuggestions = (try? project.feedback.map(ProjectArchive.suppressionRegions)) ?? []
-            refreshPresentation(); pollPlayback(); setTrimWindow()
+            refreshPresentation(); pollPlayback()
+            deck.initialReviewKeys = Set(deckQueue.map(\.id))
+            if let first = deckQueue.first { visitReview(first) }
+            else { deck.selectedId = rallyGroups.first?.id; deck.browsing = true }
+            fadeScoreOverlay = draft.fadeScoreOverlay ?? fadeScoreOverlay
+            revealDeckTutorial()
         }
         .onChange(of: project.draft) { _, _ in refreshPresentation() }
+        .onChange(of: stage) { _, value in
+            if value != .rallies { previewEndMs = nil }
+            if value == .rallies {
+                if deck.focus?.rallyId != deck.selectedId { deck.focus = deckQueue.first { $0.rallyId == deck.selectedId } }
+            }
+        }
+        .onChange(of: tourState) { _, _ in revealDeckTutorial() }
         .onReceive(clock) { _ in pollPlayback() }
         .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in
             deviceOrientation = UIDevice.current.orientation
         }
-        .onChange(of: currentCut?.id) { _, _ in setTrimWindow() }
         .onDisappear { player.pause(); onSave() }
-        .sheet(isPresented: $settings) { settingsPanel.interfaceScaled() }
-        .sheet(isPresented: $compactChapters) {
-            NavigationStack {
-                ScrollView { chapterExport.padding(20) }.navigationTitle("YouTube chapters")
-                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { compactChapters = false } } }
-            }.interfaceScaled()
-        }
+        .sheet(isPresented: $settings, onDismiss: {
+            let action = settingsAction; settingsAction = nil
+            switch action {
+            case .project: compactProjectOptions = true
+            case .queue: onShowQueue()
+            case .storage: onManageStorage()
+            case .tour: stage = .rallies; GuidedTourStore.restart(stage: .editor)
+            case .analysis: player.pause(); onSave(); onBack()
+            case nil: break
+            }
+        }) { settingsPanel.interfaceScaled() }
         .sheet(isPresented: $compactProjectOptions, onDismiss: {
             if pendingCompactProjectExport { pendingCompactProjectExport = false; onSave(); onExportProject() }
         }) {
@@ -243,101 +275,115 @@ struct EditorWorkspace: View {
             Button("OK") { message = nil }
         } message: { Text(message ?? "") }
     }
-
-    private func header(desktop: Bool, condensed: Bool) -> some View {
-        Group {
-            if desktop {
-                HStack(spacing: 8) {
-                    VolleySpliceBrand(compact: condensed).frame(width: condensed ? 40 : 154, height: 34)
-                    Menu { projectMenuItems } label: {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("CURRENT REVIEW").font(.system(size: 8, weight: .bold))
-                            HStack(spacing: 4) { Text(project.sourceName).lineLimit(1).truncationMode(.middle); Image(systemName: "chevron.down") }
-                                .font(.system(size: 11))
-                        }.frame(maxWidth: condensed ? 125 : 190, alignment: .leading)
-                    }.buttonStyle(.plain).accessibilityLabel("Projects").accessibilityIdentifier("projectSelector")
-                    stageButton("Review", exported: false)
-                    stageButton("Export", exported: true)
-                    Spacer(minLength: 0)
-                    queueCounter("Review cleanup", count: presentation.pendingCleanup.count, identifier: "reviewCleanup", condensed: condensed, action: nextCleanup).guidedTourTarget("editor-review-queues")
-                    queueCounter("Review clips", count: reviewCuts.count, identifier: "reviewClips", condensed: condensed, action: nextReview)
-                    queueCounter("Review serves", count: score.enabled ? reviewServes.count : 0, identifier: "reviewServes", condensed: condensed, action: nextServeReview)
-                    if !condensed { headerStat("\(keptRallyCount)", label: "clips included") }
-                    headerStat(time(EditorMath.totalFinalMs(intervals)), label: "planned video")
-                        .accessibilityIdentifier("exportSummary").accessibilityValue("Wide workspace")
-                    Button(action: { settings = true }) { Image(systemName: "gearshape").frame(width: 22, height: 24) }
-                        .buttonStyle(EditorActionButtonStyle(background: EditorPalette.paper, foreground: EditorPalette.ink, minimumHeight: 44))
-                        .accessibilityLabel("Editor settings").accessibilityIdentifier("editorSettings").guidedTourTarget("editor-settings")
-                    moreMenu
-                }.padding(.horizontal, 8).padding(.vertical, 4)
-                    .overlay { RoundedRectangle(cornerRadius: 10).stroke(EditorPalette.rail) }
-                    .padding(.horizontal, 10).padding(.top, 4).padding(.bottom, 2)
-            } else { compactHeader }
+    private var courtsideDeck: some View {
+        CourtsideDeckWorkspace(navigation: $deck, draft: draft, presentation: presentation, queue: deckQueue,
+            bounds: bounds, playhead: playheadMs, playing: playing, sourceAvailable: player.currentItem != nil,
+            overlay: preparedOverlay, onSeek: { value in
+                player.pause(); playing = false; seek(value); deck.sourceSeek(time: playheadMs, rallies: rallyGroups)
+            }, onPlay: togglePlay, onRate: { rate in
+                edit { $0.playbackRate = rate }
+                if playing { player.playImmediately(atRate: rate) }
+            }, onTeam: { first, name in
+                let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !name.isEmpty else { return }
+                editScore { if first { $0.team1Name = name } else { $0.team2Name = name } }
+            }, onDecision: { keep in
+                let cleanup = suggestions.filter { suggestion in
+                    deck.focus?.cleanupIds.contains(suggestion.id) == true ||
+                        currentGroup.map { $0.coreStartMs < suggestion.endMs && suggestion.startMs < $0.coreEndMs } == true
+                }
+                replaceDraft(RallyReview.decide(draft, rally: currentGroup, cleanup: cleanup, keep: keep))
+            }, onServe: deckServe, onTrim: deckTrim, onNeighbor: deckNeighbor, onReview: deckNextReview,
+            onSelect: { rally in
+                navigateDeck(to: rally.keepStartMs, end: rally.keepEndMs)
+                deck.selectedId = rally.id; deck.focus = nil
+                deck.follow(time: rally.coreStartMs, rallies: rallyGroups)
+            }, onAdd: { range in
+                let occupied = rallyGroups.map { TimeRange(startMs: $0.keepStartMs, endMs: $0.keepEndMs) } +
+                    draft.ignoredIntervals.map { TimeRange(startMs: $0.startMs, endMs: $0.endMs) }
+                guard range.endMs - range.startMs >= RallyReview.minimumDurationMs,
+                      !occupied.contains(where: { $0.startMs < range.endMs && range.startMs < $0.endMs }) else { return }
+                let updated = EditorMath.addManual(draft, startMs: range.startMs, endMs: range.endMs, bounds: bounds)
+                replaceDraft(updated); refreshPresentation()
+                deck.selectedId = rallyGroups.first { $0.cutIds.contains(updated.cuts.last?.id ?? "") }?.id
+                deck.focus = nil; deck.browsing = false
+                navigateDeck(to: range.startMs, end: range.endMs)
+            }, video: {
+                ZStack {
+                    SourcePlayerView(player: player).contentShape(Rectangle()).onTapGesture { togglePlay() }
+                    if player.currentItem == nil {
+                        VStack(spacing: 12) {
+                            Text("Reconnect the source video to enable playback.").font(.callout).foregroundStyle(.white)
+                            if let onReconnectSource { Button("Reconnect source", action: onReconnectSource).buttonStyle(.borderedProminent) }
+                        }.padding()
+                    }
+                }
+            })
+    }
+    private func navigateDeck(to time: Int64, end: Int64) {
+        let resume = playing || player.rate > 0 || player.timeControlStatus == .waitingToPlayAtSpecifiedRate
+        seek(time); previewEndMs = deck.browsing ? nil : end
+        if resume, player.currentItem != nil { player.playImmediately(atRate: draft.playbackRate); playing = true }
+    }
+    private func visitReview(_ stop: RallyReviewStop) {
+        let time = EditorReview.firstReviewableTime(startMs: stop.startMs, endMs: stop.endMs, ignored: draft.ignoredIntervals) ?? stop.startMs
+        deck.browsing = false
+        navigateDeck(to: time, end: min(bounds.endMs, stop.endMs))
+        deck.visit(stop)
+    }
+    private func deckNextReview() {
+        guard let next = deckQueue.first(where: { $0.id != deck.focus?.id && $0.startMs >= playheadMs }) ??
+                deckQueue.first(where: { $0.id != deck.focus?.id }) ?? deckQueue.first else { return }
+        stage = .rallies; visitReview(next)
+    }
+    private func deckNeighbor(_ direction: Int) {
+        guard let group = currentGroup,
+              let next = RallyReview.neighbor(of: group, direction: direction, rallies: rallyGroups, effectiveIds: keptIds) else { return }
+        navigateDeck(to: next.keepStartMs, end: next.keepEndMs)
+        deck.selectedId = next.id; deck.focus = deckQueue.first { $0.rallyId == next.id }
+    }
+    private func deckTrim(_ start: Bool, _ time: Int64) {
+        guard let group = currentGroup else { return }
+        applyCoreTrim(selectedCutIds: group.cutIds, isStart: start, valueMs: time, minimumMs: RallyReview.minimumDurationMs)
+    }
+    private func applyCoreTrim(selectedCutIds: Set<String>, isStart: Bool, valueMs: Int64, minimumMs: Int64) {
+        player.pause(); playing = false; previewEndMs = nil
+        do {
+            guard let result = try RallyReview.trimBoundary(draft, selectedCutIds: selectedCutIds, isStart: isStart, valueMs: valueMs,
+                minimumDurationMs: minimumMs, frameMs: playheadMs, suggestions: allSuggestions, bounds: bounds, durationMs: project.durationMs),
+                replaceDraft(result.draft) else { return }
+            refreshPresentation(from: result.draft, reconciled: result.presentation)
+            if playheadMs != result.frameMs { seek(result.frameMs) }
+            deck.selectedId = result.selectedGroup.id
+        } catch { message = error.localizedDescription }
+    }
+    private func deckServe(_ marker: ServeMarker?, _ side: ServingSide?) {
+        editScore { state in
+            if let marker {
+                if let side, let index = state.serveMarkers.firstIndex(where: { $0.id == marker.id }) { state.serveMarkers[index].side = side }
+                else if side == nil { state = ScoreReducer.removeServe(state, markerId: marker.id) }
+            } else if let side, let group = currentGroup {
+                state = ScoreReducer.addServe(state, timestampMs: group.coreStartMs, side: side)
+                if let index = state.serveMarkers.firstIndex(where: { $0.timestampMs == group.coreStartMs }) { state.serveMarkers[index].rallyId = group.cuts.first?.id }
+            }
         }
     }
+    private func revealDeckTutorial() {
+        guard let step = GuidedTourStep(rawValue: tourState), step.stage == .editor else { return }
+        switch step {
+        case .deckList, .deckAdd: stage = .rallies; deck.browsing = true
+        case .deckVideo, .deckTrim, .deckTagging:
+            stage = .rallies; deck.browsing = false
+            if deck.selectedId == nil { deck.selectedId = rallyGroups.first?.id }
+        case .deckFullEditor: stage = .editor
+        case .deckExport: stage = .export
+        default: break
+        }
+    }
+
     private var projectMenuItems: some View {
         SavedProjectMenuItems(projects: savedProjects, names: projectNames, dates: projectDates, models: projectModels,
-            onNew: onNewProject, onSelect: onSelectProject)
-    }
-    private var moreMenu: some View {
-        Menu("More") {
-            Button("Change model or analyze again") { player.pause(); onSave(); onBack() }
-                .accessibilityIdentifier("changeRallyModel")
-            Button("Processing queue", action: onShowQueue).accessibilityIdentifier("editorProcessingQueue")
-            Button("Manage storage", action: onManageStorage).accessibilityIdentifier("manageStorage")
-            Button("Restart guided tour") { exportTab = false; GuidedTourStore.restart(stage: .editor) }.accessibilityIdentifier("replayTutorial")
-            Divider()
-            Button("Delete current project", role: .destructive) { deleteConfirmation = true }.accessibilityIdentifier("deleteCurrentProject")
-        }.accessibilityIdentifier("editorMore")
-    }
-    private var compactHeader: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 6) {
-                VolleySpliceBrand().fixedSize(horizontal: true, vertical: false).scaleEffect(0.78, anchor: .leading).frame(width: 134, height: 40, alignment: .leading)
-                Text("VIDEO EDITOR · v\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.0")")
-                    .font(.system(size: 8, weight: .bold)).tracking(0.5).foregroundStyle(EditorPalette.muted)
-                    .lineLimit(1).minimumScaleFactor(0.8).padding(5).background(EditorPalette.rail.opacity(0.2), in: RoundedRectangle(cornerRadius: 4))
-                Spacer(minLength: 0)
-                Button { settings = true } label: { Image(systemName: "gearshape.fill").font(.system(size: 22)).frame(width: 40, height: 40) }
-                    .buttonStyle(.plain).accessibilityLabel("Editor settings").accessibilityIdentifier("editorSettings").guidedTourTarget("editor-settings")
-            }
-            HStack(alignment: .bottom, spacing: 8) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("CURRENT PROJECT").font(.system(size: 9, weight: .black)).tracking(0.9).foregroundStyle(EditorPalette.green)
-                    Menu { projectMenuItems } label: {
-                        Text("\(project.sourceName) · ready to review").font(.system(size: 13, weight: .semibold)).lineLimit(1).truncationMode(.tail)
-                            .frame(maxWidth: .infinity, minHeight: 40).padding(.horizontal, 10)
-                            .overlay { RoundedRectangle(cornerRadius: 6).stroke(EditorPalette.rail).allowsHitTesting(false) }.contentShape(Rectangle())
-                    }.buttonStyle(.plain).accessibilityLabel("Current project, \(project.sourceName)").accessibilityIdentifier("projectSelector")
-                }
-                moreMenu.font(.system(size: 13, weight: .semibold)).frame(minWidth: 44, minHeight: 40)
-            }
-        }.padding(.horizontal, 12).padding(.vertical, 10)
-            .overlay { RoundedRectangle(cornerRadius: 10).stroke(EditorPalette.rail).allowsHitTesting(false) }
-    }
-    private var reviewButton: some View {
-        queueCounter("Review clips", count: reviewCuts.count, identifier: "reviewClips", action: nextReview)
-    }
-    private var reviewServesButton: some View {
-        queueCounter("Review serves", count: score.enabled ? reviewServes.count : 0, identifier: "reviewServes", action: nextServeReview)
-    }
-    private func headerStat(_ value: String, label: String) -> some View {
-        VStack(spacing: 2) {
-            Text(value).font(.system(size: 12, weight: .semibold, design: .monospaced))
-            Text(label).font(.system(size: 8)).foregroundStyle(EditorPalette.muted)
-        }.padding(.horizontal, 7).frame(minWidth: 68, minHeight: 40)
-            .overlay { RoundedRectangle(cornerRadius: 4).stroke(EditorPalette.rail) }
-            .accessibilityElement(children: .combine)
-    }
-    private func stageButton(_ title: String, exported: Bool) -> some View {
-        Button { exportTab = exported } label: {
-            VStack(spacing: 4) {
-                Text(title).font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(exportTab == exported ? EditorPalette.ink : EditorPalette.muted)
-                Rectangle().fill(exportTab == exported ? EditorPalette.green : EditorPalette.rail).frame(height: 2)
-            }.frame(width: 60, height: 36).contentShape(Rectangle())
-        }.buttonStyle(.plain).accessibilityIdentifier(exported ? "exportTab" : "reviewTab").guidedTourTarget(exported ? "editor-export" : "editor-review")
-            .accessibilityAddTraits(exportTab == exported ? .isSelected : [])
+            statuses: projectStatuses, onNew: onNewProject, onSelect: onSelectProject)
     }
     private func desktopWorkspace(size: CGSize) -> some View {
         let phone = UIDevice.current.userInterfaceIdiom == .phone
@@ -413,12 +459,12 @@ struct EditorWorkspace: View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    compactHeader
-                    compactWorkflow(onReview: { proxy.scrollTo("compact-review", anchor: .top) }, onExport: { proxy.scrollTo("compact-final-video", anchor: .top) })
                     compactSourceCard
-                    compactFinalVideo.id("compact-final-video").guidedTourTarget("editor-export")
                     compactCard { scoreSection(desktop: false).guidedTourTarget("editor-score-panel") }.id("compact-review")
                     videoSection(desktop: false)
+                    Toggle("Play only final cut", isOn: Binding(get: { draft.finalPreviewEnabled }, set: { value in
+                        edit { $0.finalPreviewEnabled = value }; lastPreviewSeek = -1
+                    })).font(.system(size: 13)).accessibilityIdentifier("finalCutPreview")
                     compactReviewQueues { target in proxy.scrollTo(target, anchor: .top) }.guidedTourTarget("editor-review-queues")
                     compactCard { gameTimeline(twoRows: true) }
                     compactCard { currentClipControls(desktop: false) }.id("compact-current-rally")
@@ -443,25 +489,6 @@ struct EditorWorkspace: View {
         content().frame(maxWidth: .infinity, alignment: .leading).padding(12)
             .overlay { RoundedRectangle(cornerRadius: 10).stroke(EditorPalette.rail) }
     }
-    private func compactWorkflow(onReview: @escaping () -> Void, onExport: @escaping () -> Void) -> some View {
-        HStack(spacing: 12) {
-            compactWorkflowStep(1, title: "Video", complete: true, current: false, identifier: "videoStage") { player.pause(); onSave(); onBack() }
-            Rectangle().fill(EditorPalette.rail).frame(maxWidth: .infinity).frame(height: 1)
-            compactWorkflowStep(2, title: "Review", complete: false, current: true, identifier: "reviewTab", action: onReview)
-            Rectangle().fill(EditorPalette.rail).frame(maxWidth: .infinity).frame(height: 1)
-            compactWorkflowStep(3, title: "Export", complete: false, current: false, identifier: "exportTab", action: onExport)
-        }
-    }
-    private func compactWorkflowStep(_ number: Int, title: String, complete: Bool, current: Bool, identifier: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                Text("\(number)").font(.system(size: 11, weight: .bold)).frame(width: 27, height: 27)
-                    .background(complete || current ? EditorPalette.acid : .clear, in: Circle())
-                    .overlay { Circle().stroke(current ? EditorPalette.green : EditorPalette.rail) }
-                Text(title).font(.system(size: 10, weight: .semibold))
-            }.frame(minHeight: 32)
-        }.buttonStyle(.plain).fixedSize(horizontal: true, vertical: false).accessibilityIdentifier(identifier).accessibilityAddTraits(current ? .isSelected : [])
-    }
     private var compactSourceCard: some View {
         compactCard {
             VStack(alignment: .leading, spacing: 8) {
@@ -477,48 +504,6 @@ struct EditorWorkspace: View {
                 }
                 Label("Saved on this device", systemImage: "circle.fill").font(.system(size: 10)).foregroundStyle(EditorPalette.green)
             }
-        }
-    }
-    private var compactFinalVideo: some View {
-        let pending = reviewCuts.count + presentation.pendingCleanup.count + (score.enabled ? reviewServes.count : 0)
-        return compactCard {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("YOUR FINAL VIDEO").font(.system(size: 10, weight: .black)).tracking(0.8).foregroundStyle(EditorPalette.orange)
-                Text("\(time(EditorMath.totalFinalMs(intervals))) · \(keptRallyCount) clips included").font(.system(size: 16, weight: .semibold))
-                    .accessibilityIdentifier("exportSummary").accessibilityValue("Compact workspace")
-                Text(pending == 0 ? "Everything that needs attention has been checked." : "\(pending) \(pending == 1 ? "item needs" : "items need") attention · \(reviewCuts.count) clips · \(presentation.pendingCleanup.count) cleanup · \(score.enabled ? reviewServes.count : 0) serves")
-                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(pending == 0 ? EditorPalette.green : EditorPalette.ink)
-                Text("Use the Settings gear to fine-tune automatic cleanup, extra time around clips, short breaks, and how many clips are flagged.").font(.system(size: 12)).foregroundStyle(EditorPalette.muted)
-                Toggle(isOn: Binding(get: { draft.finalPreviewEnabled }, set: { value in edit { $0.finalPreviewEnabled = value }; lastPreviewSeek = -1 })) {
-                    compactToggleLabel("Play only the final video", detail: "Skip every part that will not be saved")
-                }.accessibilityIdentifier("finalCutPreview")
-                if score.enabled {
-                    Toggle(isOn: Binding(get: { draft.renderScoreOverlay }, set: { value in edit { $0.renderScoreOverlay = value; if !value { $0.renderScoreTimeline = false } } })) {
-                        compactToggleLabel("Add scores to the final video", detail: "Preview the scoreboard and include it when you save")
-                    }.accessibilityIdentifier("renderScores")
-                    if draft.renderScoreOverlay {
-                        scoreVisibilityPicker
-                        Toggle(isOn: Binding(get: { draft.renderScoreTimeline }, set: { value in edit { $0.renderScoreTimeline = value } })) {
-                            compactToggleLabel("Show the point history", detail: "Show the two team rails beside the score when a new point starts")
-                        }.padding(.leading, 18).accessibilityIdentifier("renderPointTimeline")
-                    }
-                }
-                Divider()
-                Button("Save final video") { saveVideoWithOverlaySettings() }
-                    .buttonStyle(EditorActionButtonStyle(background: EditorPalette.green, foreground: .white, expand: true, minimumHeight: 48))
-                    .disabled(intervals.isEmpty || player.currentItem == nil).accessibilityIdentifier("exportVideo")
-                Button("YouTube chapters") { compactChapters = true }
-                    .buttonStyle(EditorActionButtonStyle(background: EditorPalette.paper, foreground: EditorPalette.ink, expand: true)).accessibilityIdentifier("youtubeChaptersButton")
-                Button("Project options") { compactProjectOptions = true }.font(.system(size: 12, weight: .semibold))
-                    .frame(maxWidth: .infinity, minHeight: 36).accessibilityIdentifier("projectOptions")
-                Text("The finished video and optional project files stay on this device.").font(.system(size: 10)).foregroundStyle(EditorPalette.muted)
-            }
-        }
-    }
-    private func compactToggleLabel(_ title: String, detail: String) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title).font(.system(size: 14, weight: .semibold))
-            Text(detail).font(.system(size: 12)).foregroundStyle(EditorPalette.muted)
         }
     }
     private func compactReviewQueues(scrollTo: @escaping (String) -> Void) -> some View {
@@ -618,7 +603,7 @@ struct EditorWorkspace: View {
             }
             Picker("Speed", selection: Binding(get: { draft.playbackRate }, set: { value in
                 edit { $0.playbackRate = value }; if playing { player.rate = value }
-            })) { ForEach([Float(1), 2, 4, 8], id: \.self) { Text("\(Int($0))×").tag($0) } }
+            })) { ForEach(EditorPlaybackPolicy.rates, id: \.self) { Text("\($0.formatted())×").tag($0) } }
                 .pickerStyle(.menu).font(isPhone ? .system(size: 11) : .body).controlSize(isPhone ? .mini : .regular).accessibilityIdentifier("playbackRate")
             Button(playing ? "Pause" : "Play", action: togglePlay)
                 .buttonStyle(EditorActionButtonStyle(background: EditorPalette.green, foreground: .white)).disabled(player.currentItem == nil).accessibilityIdentifier("playPause")
@@ -632,12 +617,12 @@ struct EditorWorkspace: View {
                 }
                 HStack(spacing: 8) {
                     Menu {
-                        ForEach([Float(1), 2, 4, 8], id: \.self) { rate in
-                            Button("\(Int(rate))x") {
+                        ForEach(EditorPlaybackPolicy.rates, id: \.self) { rate in
+                            Button("\(rate.formatted())x") {
                                 edit { $0.playbackRate = rate }; if playing { player.rate = rate }
                             }
                         }
-                    } label: { Text("Speed \u{00B7} \(Int(draft.playbackRate))x") }
+                    } label: { Text("Speed \u{00B7} \(draft.playbackRate.formatted())x") }
                         .buttonStyle(EditorActionButtonStyle(background: EditorPalette.paper, foreground: EditorPalette.ink, expand: true, minimumHeight: 48))
                         .accessibilityIdentifier("playbackRate")
                     Button(playing ? "Pause" : "Play", action: togglePlay)
@@ -762,56 +747,34 @@ struct EditorWorkspace: View {
         }
     }
     private func focusedTimeline(_ cut: EditableCut, desktop: Bool) -> some View {
-        let window = trimWindow ?? bounds
-        return VStack(alignment: .leading, spacing: 4) {
-            HStack { Text(time(window.startMs)); Spacer(); Text(time((window.startMs + window.endMs) / 2)); Spacer(); Text(time(window.endMs)) }
-                .font(.system(size: 10, design: .monospaced)).foregroundStyle(EditorPalette.muted)
-            GeometryReader { geometry in
-                TimelineTrack(cuts: [cut], ignored: draft.ignoredIntervals, intervals: intervals,
-                    reviewIds: Set(reviewCuts.map(\.id)), serves: score.enabled ? visibleScore.serveMarkers : [], switches: score.enabled ? visibleScore.sideSwitchMarkers : [],
-                    suggestions: suggestions, appliedSuggestionIds: presentation.appliedSuggestionIds,
-                    removedSuggestionIds: presentation.userRemovedSuggestionIds, removedCutIds: presentation.userRemovedCleanupCutIds,
-                    keptIds: keptIds, selectedCutIds: currentGroup?.cutIds ?? [], selectedSuggestionId: selectedSuggestionId, selectedServeId: currentServe?.id,
-                    range: window, playheadMs: playheadMs, onSeek: seek, onSelectCleanup: selectCleanup)
-                    .accessibilityIdentifier("focusedTimeline").guidedTourTarget("editor-focus")
-                trimHandle(cut, isStart: true, width: geometry.size.width, window: window)
-                trimHandle(cut, isStart: false, width: geometry.size.width, window: window)
-                if cut.origin == .inferred {
-                    paddingHandle(cut, isStart: true, width: geometry.size.width, window: window)
-                    paddingHandle(cut, isStart: false, width: geometry.size.width, window: window)
-                }
-            }.frame(height: isPhone ? 48 : 68).coordinateSpace(name: "trimTrack")
-            if !desktop { Text(cut.origin == .inferred ? "Orange outer handles adjust padding · green inner handles adjust rally length." : "Drag the green handles to adjust this rally's exact start and end.").font(isPhone ? .system(size: 10) : .caption2).foregroundStyle(EditorPalette.muted) }
-        }
-    }
-    private func trimHandle(_ cut: EditableCut, isStart: Bool, width: Double, window: TimeRange) -> some View {
-        let position = isStart ? cut.coreStartMs : cut.coreEndMs
-        let fraction = Double(position - window.startMs) / Double(max(1, window.endMs - window.startMs))
-        return RoundedRectangle(cornerRadius: 3).fill(EditorPalette.ink).frame(width: 16, height: isPhone ? 24 : 34)
-            .overlay { Text(isStart ? "‹" : "›").foregroundStyle(.white).font(.headline) }
-            .position(x: min(width - 8, max(8, fraction * width)), y: isPhone ? 18 : 24)
-            .gesture(DragGesture(coordinateSpace: .named("trimTrack")).onChanged { event in
-
-                let value = window.startMs + Int64(min(1, max(0, event.location.x / max(1, width))) * Double(window.endMs - window.startMs))
-                trim(cut, start: isStart ? value : cut.coreStartMs, end: isStart ? cut.coreEndMs : value)
-            }).accessibilityLabel(isStart ? "Rally core start" : "Rally core end").accessibilityIdentifier(isStart ? "trimStartHandle" : "trimEndHandle")
-            .accessibilityValue(String(format: "%.3f seconds", Double(position) / 1_000))
-    }
-    private func paddingHandle(_ cut: EditableCut, isStart: Bool, width: Double, window: TimeRange) -> some View {
-        let position = isStart ? cut.keepStartMs : cut.keepEndMs
-        let fraction = Double(position - window.startMs) / Double(max(1, window.endMs - window.startMs))
-        return RoundedRectangle(cornerRadius: 3).fill(EditorPalette.warning).frame(width: 18, height: isPhone ? 14 : 20)
-            .overlay { Text(isStart ? "‹" : "›").font(.headline).foregroundStyle(EditorPalette.ink) }
-            .position(x: min(width - 9, max(9, fraction * width)), y: isPhone ? 39 : 54)
-            .gesture(DragGesture(coordinateSpace: .named("trimTrack")).onChanged { event in
-
-                let value = window.startMs + Int64(min(1, max(0, event.location.x / max(1, width))) * Double(window.endMs - window.startMs))
-                setPaddingEdge(isStart: isStart, value: value)
-            }).accessibilityLabel(isStart ? "Extra time start" : "Extra time end").accessibilityIdentifier(isStart ? "paddingStartHandle" : "paddingEndHandle")
-            .accessibilityValue(String(format: "%.3f seconds", Double(position) / 1_000))
-            .accessibilityAdjustableAction { direction in
-                setPaddingEdge(isStart: isStart, value: position + (direction == .increment ? 100 : -100))
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Rally core").font(.system(size: 11, weight: .semibold)).foregroundStyle(EditorPalette.muted)
+            CoreTrimSurface(core: .init(startMs: cut.coreStartMs, endMs: cut.coreEndMs),
+                kept: .init(startMs: cut.keepStartMs, endMs: cut.keepEndMs), bounds: bounds, playhead: playheadMs,
+                startLabel: "Rally core start", endLabel: "Rally core end", startIdentifier: "trimStartHandle", endIdentifier: "trimEndHandle",
+                color: EditorPalette.ink, onTrim: { start, value in
+                    trim(cut, start: start ? value : cut.coreStartMs, end: start ? cut.coreEndMs : value)
+                }, track: { scale in focusedTrack(cut, window: scale.window) })
+                .id(currentGroup?.cutIds.sorted() ?? [cut.id])
+            if cut.origin == .inferred {
+                Text("Extra time").font(.system(size: 11, weight: .semibold)).foregroundStyle(EditorPalette.muted)
+                CoreTrimSurface(core: .init(startMs: cut.keepStartMs, endMs: cut.keepEndMs),
+                    kept: .init(startMs: cut.keepStartMs, endMs: cut.keepEndMs), bounds: bounds, playhead: playheadMs,
+                    startLabel: "Extra time start", endLabel: "Extra time end", startIdentifier: "paddingStartHandle", endIdentifier: "paddingEndHandle",
+                    color: EditorPalette.warning, onTrim: { start, value in setPaddingEdge(isStart: start, value: value) },
+                    track: { scale in focusedTrack(cut, window: scale.window) })
+                    .id(currentGroup?.cutIds.sorted() ?? [cut.id])
             }
+        }.accessibilityIdentifier("focusedTimeline").guidedTourTarget("editor-focus")
+    }
+    private func focusedTrack(_ cut: EditableCut, window: TimeRange) -> some View {
+        TimelineTrack(cuts: [cut], ignored: draft.ignoredIntervals, intervals: intervals,
+            reviewIds: Set(reviewCuts.map(\.id)), serves: score.enabled ? visibleScore.serveMarkers : [], switches: score.enabled ? visibleScore.sideSwitchMarkers : [],
+            suggestions: suggestions, appliedSuggestionIds: presentation.appliedSuggestionIds,
+            removedSuggestionIds: presentation.userRemovedSuggestionIds, removedCutIds: presentation.userRemovedCleanupCutIds,
+            keptIds: keptIds, selectedCutIds: currentGroup?.cutIds ?? [], selectedSuggestionId: selectedSuggestionId, selectedServeId: currentServe?.id,
+            range: window, playheadMs: playheadMs, onSeek: seek, onSelectCleanup: selectCleanup)
+            .padding(.horizontal, RallyTrimScale.handleWidth / 2)
     }
     private var rangeTools: some View {
         VStack(alignment: .leading, spacing: isPhone ? 6 : 10) {
@@ -846,7 +809,9 @@ struct EditorWorkspace: View {
     }
     private var scoreVisibilityPicker: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Picker("Score visibility", selection: $fadeScoreOverlay) {
+            Picker("Score visibility", selection: Binding(get: { draft.fadeScoreOverlay ?? fadeScoreOverlay }, set: { value in
+                fadeScoreOverlay = value; edit { $0.fadeScoreOverlay = value }
+            })) {
                 Text("Always visible").tag(false)
                 Text("Fade in and out").tag(true)
             }.pickerStyle(.menu).accessibilityIdentifier("scoreVisibility")
@@ -1053,6 +1018,16 @@ struct EditorWorkspace: View {
         NavigationStack {
             Form {
                 Section { InterfaceScaleControl() }
+                Section("Project") {
+                    Button("Project options") { settingsAction = .project; settings = false }.accessibilityIdentifier("projectOptions")
+                    Button("Change model or analyze again") { settingsAction = .analysis; settings = false }.accessibilityIdentifier("changeRallyModel")
+                    Button("Processing queue") { settingsAction = .queue; settings = false }.accessibilityIdentifier("editorProcessingQueue")
+                    Button("Manage storage") { settingsAction = .storage; settings = false }.accessibilityIdentifier("manageStorage")
+                    Button("Restart guided tour") { settingsAction = .tour; settings = false }
+                        .accessibilityIdentifier("replayTutorial")
+                    Text("Version \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.0")")
+                        .foregroundStyle(EditorPalette.muted)
+                }
                 Section("Padding and gaps") {
                     settingSlider("Extra time before each clip", value: draft.beforePaddingMs, identifier: "beforePadding") { before in
                         replaceDraft(EditorMath.applyPadding(draft, beforeMs: before, afterMs: draft.afterPaddingMs, durationMs: project.durationMs, gameWindow: bounds))
@@ -1121,7 +1096,9 @@ struct EditorWorkspace: View {
                 sectionHeading("FINAL VIDEO")
                 Toggle("Render scores", isOn: Binding(get: { draft.renderScoreOverlay }, set: { value in edit { $0.renderScoreOverlay = value } })).disabled(!score.enabled)
                     .accessibilityIdentifier("renderScoreOverlay")
-                if draft.renderScoreOverlay && score.enabled { scoreVisibilityPicker }
+                scoreVisibilityPicker
+                Toggle("Show point history", isOn: Binding(get: { draft.renderScoreTimeline }, set: { value in edit { $0.renderScoreTimeline = value } }))
+                    .disabled(!score.enabled || !draft.renderScoreOverlay).accessibilityIdentifier("renderPointTimeline")
                 Button("Save final video") { saveVideoWithOverlaySettings() }.buttonStyle(EditorActionButtonStyle(background: EditorPalette.green, foreground: .white)).disabled(intervals.isEmpty || player.currentItem == nil).accessibilityIdentifier("exportVideo")
                 if player.currentItem == nil { Text("Reconnect the source video to export MP4.").font(isPhone ? .system(size: 11) : .caption) }
         }
@@ -1174,13 +1151,14 @@ struct EditorWorkspace: View {
     }
 
     private func edit(_ operation: (inout EditorDraft) -> Void) { var value = draft; operation(&value); replaceDraft(value) }
-    private func replaceDraft(_ value: EditorDraft) {
+    @discardableResult private func replaceDraft(_ value: EditorDraft) -> Bool {
         var value = value; value.updatedAtMs = Int64(Date().timeIntervalSince1970 * 1_000)
-        do { try value.validate(durationMs: project.durationMs); project.draft = value; onSave() }
-        catch { message = error.localizedDescription }
+        do { try value.validate(durationMs: project.durationMs); project.draft = value; onSave(); return true }
+        catch { message = error.localizedDescription; return false }
     }
-    private func refreshPresentation() {
-        var input = draft
+    private func refreshPresentation(from source: EditorDraft? = nil, reconciled: EditorPresentation? = nil) {
+        let source = source ?? draft
+        var input = source
         // Save timestamps, transport and export checkboxes cannot affect review
         // materialization. Do not rebuild its caches when those controls change.
         input.updatedAtMs = 0; input.pendingManualStartMs = nil; input.pendingIgnoreStartMs = nil
@@ -1188,8 +1166,13 @@ struct EditorWorkspace: View {
         input.renderScoreOverlay = false; input.renderScoreTimeline = false; input.fadeScoreOverlay = nil; input.chapterOptions = nil
         guard input != preparedInput else { return }
         preparedInput = input
-        let updated = EditorPresentation(draft: draft, suggestions: allSuggestions, bounds: bounds, durationMs: project.durationMs)
+        let updated = reconciled ?? EditorPresentation(draft: source, suggestions: allSuggestions, bounds: bounds, durationMs: project.durationMs)
         presentation = updated
+        deckQueue = RallyReview.queue(presentation: updated, ignored: source.ignoredIntervals)
+        deck.initialReviewKeys.formUnion(deckQueue.map(\.id))
+        if let selected = deck.selectedId, !updated.groups.contains(where: { $0.id == selected }) {
+            deck.selectedId = updated.groups.first { $0.cutIds.contains(selected) }?.id
+        }
         preparedOverlay = PreparedScoreOverlay(tracking: updated.visibleScore, rallyRanges: updated.scoreRallyRanges,
             mergedRanges: updated.intervals.map { .init(startMs: $0.startMs, endMs: $0.endMs) })
     }
@@ -1208,15 +1191,11 @@ struct EditorWorkspace: View {
         replaceDraft(EditorReview.decideCleanup(draft, suggestion: suggestion, keep: keep, reviewedCutIds: currentGroup?.cutIds ?? []))
     }
     private func trim(_ cut: EditableCut, start: Int64, end: Int64) {
-        let members = rallyGroups.first { $0.cutIds.contains(cut.id) }?.cuts ?? [cut]
-        var value = draft
-        if start != cut.coreStartMs, let first = members.min(by: { $0.coreStartMs < $1.coreStartMs }) {
-            value = EditorMath.setCoreStart(value, cutId: first.id, valueMs: start, minimumMs: bounds.startMs)
+        if start != cut.coreStartMs {
+            applyCoreTrim(selectedCutIds: [cut.id], isStart: true, valueMs: start, minimumMs: EditorMath.minimumMarkMs)
+        } else if end != cut.coreEndMs {
+            applyCoreTrim(selectedCutIds: [cut.id], isStart: false, valueMs: end, minimumMs: EditorMath.minimumMarkMs)
         }
-        if end != cut.coreEndMs, let last = members.max(by: { $0.coreEndMs < $1.coreEndMs }) {
-            value = EditorMath.setCoreEnd(value, cutId: last.id, valueMs: end, maximumMs: bounds.endMs)
-        }
-        replaceDraft(value)
     }
     private func setPaddingEdge(isStart: Bool, value: Int64) {
         guard let group = currentGroup else { return }
@@ -1235,12 +1214,8 @@ struct EditorWorkspace: View {
         player.playImmediately(atRate: draft.playbackRate); playing = true
     }
     private func nextReview() {
-        let current = reviewCuts.first { $0.id == currentCut?.id }
-        let remaining = reviewCuts.filter { $0.id != current?.id }
-        if let current, let group = rallyGroups.first(where: { $0.id == current.id }) {
-            edit { $0.reviewedCutIds.formUnion(group.cutIds) }
-        }
-        guard let next = remaining.first(where: { $0.keepStartMs >= playheadMs }) ?? remaining.first,
+        let remaining = reviewCuts.filter { $0.id != currentCut?.id }
+        guard let next = remaining.first(where: { $0.keepStartMs >= playheadMs }) ?? remaining.first ?? reviewCuts.first,
               let timestamp = EditorReview.firstReviewableTime(startMs: next.keepStartMs, endMs: next.keepEndMs, ignored: draft.ignoredIntervals) else { return }
         exportTab = false; seek(timestamp)
     }
@@ -1261,36 +1236,51 @@ struct EditorWorkspace: View {
         else { next = reviewServes.first { $0.timestampMs >= playheadMs } ?? reviewServes[0] }
         exportTab = false; seek(next.timestampMs); serveReviewReveal += 1
     }
-    private func setTrimWindow() {
-        guard let cut = currentCut else { trimWindow = bounds; return }
-        trimWindow = .init(startMs: max(bounds.startMs, cut.keepStartMs - 5_000), endMs: min(bounds.endMs, cut.keepEndMs + 5_000))
-    }
     private func seek(_ value: Int64) {
         selectedSuggestionId = nil
         previewEndMs = nil
         let time = min(project.durationMs, max(0, value)); playheadMs = time
-        player.seek(to: CMTime(value: time, timescale: 1_000), toleranceBefore: .zero, toleranceAfter: .zero)
+        if stage != .rallies {
+            deck.selectedId = (RallyReview.at(time, in: rallyGroups) ?? rallyGroups.last { $0.coreStartMs <= time } ?? rallyGroups.first)?.id
+        }
+        seekGeneration += 1
+        let generation = seekGeneration
+        pendingSeekMs = time
+        player.seek(to: CMTime(value: time, timescale: 1_000), toleranceBefore: .zero, toleranceAfter: .zero) { _ in
+            DispatchQueue.main.async { if generation == seekGeneration { pendingSeekMs = nil } }
+        }
     }
     private func togglePlay() {
         guard player.currentItem != nil else { return }
-        previewEndMs = nil
-        if player.rate > 0 { player.pause(); playing = false }
-        else { if playheadMs >= project.durationMs { seek(bounds.startMs) }; player.playImmediately(atRate: draft.playbackRate); playing = true }
+        if stage != .rallies || deck.browsing { previewEndMs = nil }
+        if playing || player.timeControlStatus != .paused { player.pause(); playing = false }
+        else {
+            if stage == .rallies, !deck.browsing {
+                let start = currentGroup?.keepStartMs ?? deck.focus?.startMs ?? bounds.startMs
+                let end = min(bounds.endMs, currentGroup?.keepEndMs ?? deck.focus?.endMs ?? bounds.endMs)
+                let plan = RallyReview.focusedPlayback(frameMs: playheadMs, retained: .init(startMs: start, endMs: end))
+                if playheadMs != plan.positionMs { seek(plan.positionMs) }
+                previewEndMs = plan.endMs
+            } else if playheadMs >= project.durationMs { seek(bounds.startMs) }
+            player.playImmediately(atRate: draft.playbackRate); playing = true
+        }
     }
     private func pollPlayback() {
         let seconds = player.currentTime().seconds
-        if seconds.isFinite && seconds >= 0 {
+        if pendingSeekMs == nil, seconds.isFinite && seconds >= 0 {
             let value = Int64((seconds * 1_000).rounded())
             if value != playheadMs { playheadMs = value }
         }
-        let isPlaying = player.rate > 0
+        let isPlaying = player.timeControlStatus != .paused
         if playing != isPlaying { playing = isPlaying }
+        if playing, stage != .rallies || deck.browsing,
+           let rally = RallyReview.at(playheadMs, in: rallyGroups), deck.selectedId != rally.id { deck.selectedId = rally.id }
         if playing, let selected = suggestions.first(where: { $0.id == selectedSuggestionId }),
            playheadMs < max(bounds.startMs, selected.startMs - 2_000) || playheadMs > selected.endMs { selectedSuggestionId = nil }
         if playing, let end = previewEndMs, playheadMs >= end {
             player.pause(); playing = false; previewEndMs = nil; seek(end); return
         }
-        guard playing, draft.finalPreviewEnabled else { lastPreviewSeek = -1; return }
+        guard playing, stage != .rallies, draft.finalPreviewEnabled else { lastPreviewSeek = -1; return }
         if intervals.contains(where: { $0.startMs <= playheadMs && playheadMs < $0.endMs }) { lastPreviewSeek = -1; return }
         if let next = intervals.first(where: { $0.startMs > playheadMs }) {
             if lastPreviewSeek != next.startMs { lastPreviewSeek = next.startMs; seek(next.startMs) }
@@ -1305,7 +1295,7 @@ struct EditorWorkspace: View {
         var value = EditorMath.newDraft(ranges: cuts, durationMs: project.durationMs, gameWindow: bounds, sourceRevision: draft.sourceRevision)
         value.scoreTracking = draft.scoreTracking; value.renderScoreOverlay = draft.renderScoreOverlay; value.renderScoreTimeline = draft.renderScoreTimeline
         value.fadeScoreOverlay = draft.fadeScoreOverlay
-        replaceDraft(EditorMath.alignRallyServeMarkers(value)); setTrimWindow()
+        replaceDraft(EditorMath.alignRallyServeMarkers(value))
     }
     private func time(_ value: Int64, precise: Bool = false) -> String {
         let seconds = max(0, value) / 1_000
