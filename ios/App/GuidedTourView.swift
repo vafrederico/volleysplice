@@ -73,8 +73,8 @@ private struct GuidedTourCard: View {
             }
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    Text("TUTORIAL · \((steps.firstIndex(of: step) ?? 0) + 1) OF \(steps.count)")
-                        .font(.system(size: 10, weight: .bold, design: .monospaced)).foregroundStyle(orange)
+                    Text("TUTORIAL · \((steps.firstIndex(of: step) ?? 0) + 1) of \(steps.count)")
+                        .font(.system(size: 12, weight: .semibold)).foregroundStyle(orange)
                     Spacer()
                     Button("Close", action: close).accessibilityIdentifier("tutorialClose")
                 }

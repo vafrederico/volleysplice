@@ -32,6 +32,7 @@ struct SavedProjectMenuItems: View {
     let names: [URL: String]
     let dates: [URL: Date]
     var models: [URL: RallyModel] = [:]
+    var statuses: [URL: String] = [:]
     let onNew: () -> Void
     let onSelect: (URL) -> Void
     var body: some View {
@@ -41,7 +42,7 @@ struct SavedProjectMenuItems: View {
         ForEach(projects, id: \.self) { url in
             Button { onSelect(url) } label: {
                 Text(names[url] ?? url.lastPathComponent)
-                Text([models[url]?.displayName, dates[url]?.formatted(date: .abbreviated, time: .shortened)]
+                Text([statuses[url] ?? "Ready to review", models[url]?.displayName, dates[url]?.formatted(date: .abbreviated, time: .shortened)]
                     .compactMap { $0 }.joined(separator: " \u{00B7} "))
             }.accessibilityIdentifier("project-\(url.lastPathComponent)")
         }

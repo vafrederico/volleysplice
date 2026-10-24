@@ -1,0 +1,87 @@
+{
+  "referenceBase": "0c0f754f79e2da57ca4af29cbd9b638f2dd9b7cb",
+  "validationDate": "2026-10-24",
+  "portableCoreXCTest": {
+    "executed": 190,
+    "passed": 190,
+    "failed": 0,
+    "newRallyReviewTests": 12,
+    "runtime": "Linux XCTest"
+  },
+  "appBuild": {
+    "target": "ARM64 iOS",
+    "configuration": "debug",
+    "swift": "6.4.1",
+    "xtool": "1.22.2",
+    "sdk": "iOS 26.2",
+    "status": "built and development-signed",
+    "install": false,
+    "sourceRoot": "actual isolated checkout",
+    "productionBundleId": "com.volleysplice.VolleySplice",
+    "labSubstitutions": "external staging only"
+  },
+  "hostedTypecheck": {
+    "integrationSourceFiles": 13,
+    "uiSourceFiles": 6,
+    "target": "ARM64 iOS",
+    "passed": true,
+    "packagedOrExecuted": false
+  },
+  "browserProbe": {
+    "renderer": "Tokamak StaticHTML",
+    "revision": "e0d8e9db462938610337327ade58161aa3b698ac",
+    "source": "exact app CourtsideReviewControls.swift",
+    "widths": [
+      390,
+      768,
+      844
+    ],
+    "compiledLocally": true,
+    "renderedLocally": true,
+    "consoleErrors": 0,
+    "nativeSwiftUI": false,
+    "shell": "synthetic",
+    "stateActionsExecuted": false,
+    "limitation": "Intrinsic-width grid/frame expansion differs from native SwiftUI; not native layout approval."
+  },
+  "auditFixes": [
+    "Updated padded bounds retain the viewed trim frame",
+    "Local trim window with distant retained-neighbor edge actions",
+    "Accessible native source sliders in browser and explicit Add flow"
+  ],
+  "privacy": {
+    "genericChangedFileScan": "pass",
+    "ledgerIdentityAudit": "not run; ledger configuration unset"
+  },
+  "storage": {
+    "freeGiBAtCompletion": 32.46,
+    "requiredMinimumGiB": 25
+  },
+  "notRun": [
+    "Apple-runtime UI/media/gesture/accessibility execution",
+    "Device installation",
+    "Simulator",
+    "Mac VM",
+    "WDA",
+    "End-to-end video export"
+  ],
+  "verifiedSourceSha256": {
+    "ios/App/CourtsideDeck.swift": "e289f10cd370c670067f1315aa599201953133889ba65a8f756bf0a7c1f96a32",
+    "ios/App/CourtsideReviewControls.swift": "2d7bef797db808358de0e30860a8be8c9e155d5796c717bec56a4f9a625b01c1",
+    "ios/App/EditorWorkspace.swift": "6a7dfc4692f95ae498f3472b64898b6495f2140c8aa45f49192dac71e54a89be",
+    "ios/App/GuidedTourView.swift": "b2f1c9bb20aae126961a166492ea0990fdb2fb67ed87e3208e96ca034f09ac1f",
+    "ios/App/NewProjectWorkspace.swift": "0781d9f349856b5d4cb6c2a42c6dbd210c00e74ac8fd6f0268778ab42a3c6150",
+    "ios/App/VolleySpliceApp.swift": "642066735aeecaa64c42d8b583d08b7f45a021bee7a443c88f283ea961f168c3",
+    "ios/Sources/VolleyCore/GuidedTour.swift": "c2e95bdc9b15dcde88ecdc0f90e5f943b600afa7c31a528bc276430b9a181047",
+    "ios/Sources/VolleyCore/RallyReview.swift": "14cd07348364728a42303f469476ddd70513c62e86e4570d5ab57b14c61d0ee3",
+    "ios/Tests/AppUITests/CourtsideDeckUITests.swift": "0a60a5088abf81afc88379a1a0e42f83457792ce699eac1c4146436d1329c63a",
+    "ios/Tests/AppUITests/EditorParityUITests.swift": "cd75f00bc0b0f57d758d06103fc104855687b73b8c5e17a3b0be09a38292d0b7",
+    "ios/Tests/AppUITests/EditorTutorialUITests.swift": "20374078854c61be4b0347db647278e59375696afbb8bd6cd02b2f8dc522af96",
+    "ios/Tests/AppUITests/ReferenceProjectUITests.swift": "eb0cb4f03577c05afefcb92b5bde146c5013a445bf22bdd4f85a697ea14dfee8",
+    "ios/Tests/AppUITests/TimelineScoreVisibilityUITests.swift": "4e045c43233f88c00b61c3b2792160f20e307042ac22dd271c5de5d6335f3a49",
+    "ios/Tests/VolleyCoreTests/GuidedTourTests.swift": "a7e60a59075c14882d18f7beca4eca7caa3ec70d602781c9963b0efbb5ea1167",
+    "ios/Tests/VolleyCoreTests/RallyReviewTests.swift": "c8bd991b01d1e5a667023270cc1756ab839fe96963cfa024074859fea26bcf85",
+    "ios/VolleySplice.xcodeproj/project.pbxproj": "d954ae54bba553aa889b8abe100a9b038ee32db0708bf9ac68bde4ca1f3c2b8c"
+  },
+  "sourceHashNormalization": "Source bytes with CRLF normalized to LF"
+}

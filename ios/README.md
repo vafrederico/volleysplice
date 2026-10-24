@@ -8,6 +8,10 @@ AVFoundation, PhotoKit and thin Objective-C++ bridges for OpenCV primitives and
 ONNX Runtime.
 Android is the reference for analysis contracts and editor behavior.
 
+The default rally-review workflow and available Windows validation are documented
+in [Courtside Deck](COURTSIDE-DECK.md). The existing full Editor remains available
+through the Editor pill; all workspace tabs share the same draft and AVPlayer.
+
 ## Build
 
 For a signed App Store/TestFlight release without a local Mac, use the manual

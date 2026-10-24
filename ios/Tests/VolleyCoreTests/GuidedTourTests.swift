@@ -2,23 +2,25 @@ import XCTest
 @testable import VolleyCore
 
 final class GuidedTourTests: XCTestCase {
-    func testAndroidSetupHandsOffToEditorInOrder() {
+    func testSetupHandsOffToRalliesInOrder() {
         XCTAssertEqual(GuidedTourStep.setupSource.next(), .setupWindow)
         XCTAssertEqual(GuidedTourStep.setupWindow.next(), .setupCreate)
-        XCTAssertEqual(GuidedTourStep.setupCreate.next(), .editorSettings)
+        XCTAssertEqual(GuidedTourStep.setupCreate.next(), .deckVideo)
     }
-    func testAndroidEditorFollowsControlsTopToBottom() {
-        let steps: [GuidedTourStep] = [.editorSettings, .editorExport, .editorScoreToggle, .editorScorePanel,
-                                     .editorVideo, .editorReviewQueues, .editorOverview, .editorFocus, .editorMarking]
+    func testCourtsideTourFollowsActualWorkflow() {
+        let steps = GuidedTourStep.visibleSteps(stage: .editor, scoreTrackingEnabled: true)
+        XCTAssertEqual(steps, [.deckVideo, .deckTrim, .deckTagging, .deckList, .deckAdd, .deckFullEditor, .deckExport])
         for pair in zip(steps, steps.dropFirst()) { XCTAssertEqual(pair.0.next(), pair.1) }
-        XCTAssertNil(GuidedTourStep.editorMarking.next())
+        XCTAssertNil(GuidedTourStep.deckExport.next())
     }
-    func testDisabledScoreTrackingExplainsToggleAndSkipsPanel() {
-        XCTAssertEqual(GuidedTourStep.editorExport.next(scoreTrackingEnabled: false), .editorScoreToggle)
-        XCTAssertEqual(GuidedTourStep.editorScoreToggle.next(scoreTrackingEnabled: false), .editorVideo)
-        var progress = GuidedTourProgress(stored: GuidedTourStep.editorScorePanel.rawValue)
-        progress.enter(stage: .editor, scoreTrackingEnabled: false)
-        XCTAssertEqual(progress.current(stage: .editor), .editorVideo)
+    func testLegacyProgressMigratesButDismissalDoesNotRestart() {
+        for step in [GuidedTourStep.editorSettings, .editorScorePanel, .editorMarking] {
+            var progress = GuidedTourProgress(stored: step.rawValue)
+            progress.enter(stage: .editor, scoreTrackingEnabled: false)
+            XCTAssertEqual(progress.current(stage: .editor), .deckVideo)
+        }
+        XCTAssertEqual(GuidedTourStep.visibleSteps(stage: .editor, scoreTrackingEnabled: false),
+                       GuidedTourStep.visibleSteps(stage: .editor, scoreTrackingEnabled: true))
     }
     func testActualSourceAndEditorRequiredBeforeSetupAdvances() {
         var progress = GuidedTourProgress(); progress.enter(stage: .setup)
@@ -29,7 +31,7 @@ final class GuidedTourTests: XCTestCase {
         progress.advance(stage: .setup, sourceReady: true)
         XCTAssertEqual(progress.current(stage: .setup), .setupCreate)
         progress.enter(stage: .editor)
-        XCTAssertEqual(progress.current(stage: .editor), .editorSettings)
+        XCTAssertEqual(progress.current(stage: .editor), .deckVideo)
     }
     func testDismissalAndCompletionSurviveStageChangesUntilReplay() throws {
         for value in ["done", "dismissed"] {
@@ -38,7 +40,7 @@ final class GuidedTourTests: XCTestCase {
             progress.enter(stage: .editor)
             XCTAssertNil(progress.current(stage: .editor))
             progress.restart(stage: .editor)
-            XCTAssertEqual(progress.current(stage: .editor), .editorSettings)
+            XCTAssertEqual(progress.current(stage: .editor), .deckVideo)
             progress.restart(stage: .setup)
             XCTAssertEqual(progress.current(stage: .setup), .setupSource)
         }

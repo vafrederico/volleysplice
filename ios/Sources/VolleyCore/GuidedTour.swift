@@ -7,6 +7,13 @@ public enum GuidedTourStep: String, CaseIterable, Codable, Sendable {
     case setupSource = "SETUP_SOURCE"
     case setupWindow = "SETUP_WINDOW"
     case setupCreate = "SETUP_CREATE"
+    case deckVideo = "DECK_VIDEO"
+    case deckTrim = "DECK_TRIM"
+    case deckTagging = "DECK_TAGGING"
+    case deckList = "DECK_LIST"
+    case deckAdd = "DECK_ADD"
+    case deckFullEditor = "DECK_FULL_EDITOR"
+    case deckExport = "DECK_EXPORT"
     case editorSettings = "EDITOR_SETTINGS"
     case editorExport = "EDITOR_EXPORT"
     case editorScoreToggle = "EDITOR_SCORE_TOGGLE"
@@ -23,6 +30,13 @@ public enum GuidedTourStep: String, CaseIterable, Codable, Sendable {
     public var action: String { content.4 }
     private var content: (GuidedTourStage, String, String, String, String) {
         switch self {
+        case .deckVideo: return (.editor, "deck-video", "Review one rally at a time", "Rallies opens first. Watch the video and use the progress bar to see what still needs a decision. Playback speed is shared with Editor.", "Next")
+        case .deckTrim: return (.editor, "deck-trim", "Keep, remove, or trim", "Use Keep or Remove to decide. Drag either trim end or nudge it by one second. Previous rally, Next review and Next rally move without making decisions.", "Next")
+        case .deckTagging: return (.editor, "deck-tagging", "Check the serving side", "Choose Near, Far, or Not a serve. Tap a team name above the video to edit it. Score tracking can be enabled in Editor.", "Next")
+        case .deckList: return (.editor, "deck-list", "Browse all rallies", "Scroll the rally, score and time rows. The circle follows the video; the diamond marks the center of your list. Seek on the source timeline to follow the video again.", "Next")
+        case .deckAdd: return (.editor, "deck-add", "Add a missed rally explicitly", "Seek into a gap, then tap Add missing rally. Check its start and end and confirm Add rally. Browsing and this tutorial never add or change clips for you.", "Next")
+        case .deckFullEditor: return (.editor, "deck-editor", "Open the full Editor", "The Editor pill opens the existing full workspace for score markers, cleanup, ignored footage and detailed controls. All three tabs share the same edits and video position.", "Next")
+        case .deckExport: return (.editor, "deck-export", "Save the finished game", "Export contains score visibility, point history, Save final video, chapters and Save project. Settings holds project options and Restart guided tour.", "Finish tutorial")
         case .setupSource: return (.setup, "setup-source", "Choose your video", "Pick a game video from this device. Your video stays here and is not uploaded.", "Choose video first")
         case .setupWindow: return (.setup, "setup-window", "Choose the part with the game", "If the whole video is game footage, leave it set to the full video. Otherwise, move to the game’s start and end and mark them.", "Next")
         case .setupCreate: return (.setup, "setup-create", "Let VolleySplice find the rallies", "Tap Find rallies. Keep VolleySplice open while it prepares the suggested clips; the editor opens when they are ready.", "Find rallies first")
@@ -38,12 +52,15 @@ public enum GuidedTourStep: String, CaseIterable, Codable, Sendable {
         }
     }
     public func next(scoreTrackingEnabled: Bool = true) -> GuidedTourStep? {
+        if self == .setupCreate { return .deckVideo }
+        if self == .deckExport { return nil }
         let steps = Self.allCases.filter { scoreTrackingEnabled || $0 != .editorScorePanel }
         guard let index = steps.firstIndex(of: self), index + 1 < steps.count else { return nil }
         return steps[index + 1]
     }
     public static func visibleSteps(stage: GuidedTourStage, scoreTrackingEnabled: Bool) -> [Self] {
-        allCases.filter { $0.stage == stage && (scoreTrackingEnabled || $0 != .editorScorePanel) }
+        if stage == .editor { return [.deckVideo, .deckTrim, .deckTagging, .deckList, .deckAdd, .deckFullEditor, .deckExport] }
+        return allCases.filter { $0.stage == stage }
     }
 }
 
@@ -51,11 +68,14 @@ public struct GuidedTourProgress: Equatable, Codable, Sendable {
     public var stored: String?
     public init(stored: String? = nil) { self.stored = stored }
     public mutating func restart(stage: GuidedTourStage) {
-        stored = (stage == .setup ? GuidedTourStep.setupSource : .editorSettings).rawValue
+        stored = (stage == .setup ? GuidedTourStep.setupSource : .deckVideo).rawValue
     }
     public mutating func enter(stage: GuidedTourStage, scoreTrackingEnabled: Bool = true) {
         if stored == nil { restart(stage: stage) }
         if stage == .editor, let step = stored.flatMap(GuidedTourStep.init(rawValue:)), step.stage == .setup {
+            restart(stage: .editor)
+        }
+        if stage == .editor, let step = stored.flatMap(GuidedTourStep.init(rawValue:)), step.rawValue.hasPrefix("EDITOR_") {
             restart(stage: .editor)
         }
         if !scoreTrackingEnabled && stored == GuidedTourStep.editorScorePanel.rawValue {

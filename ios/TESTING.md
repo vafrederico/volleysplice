@@ -9,12 +9,17 @@ interval counts or passing a self-roundtrip does not prove cross-platform parity
 | Area | Tests |
 | --- | --- |
 | DSP and frozen inference | `AudioFeatureTests`, `FeatureMathTests`, `ModelRunnerTests`, `ServingSideInferenceTests`, `SideSwitchInferenceTests`, `SuppressionTests` |
-| Editing, scoring and export timing | `ProjectContractTests`, `RallyStartMarkerTests`, `EditorReviewTests`, `ScoreTrackingTests`, `ScoreOverlayTests`, `ChaptersTests`, `ExportTimelineTests` |
+| Editing, scoring and export timing | `ProjectContractTests`, `RallyStartMarkerTests`, `EditorReviewTests`, `RallyReviewTests`, `ScoreTrackingTests`, `ScoreOverlayTests`, `ChaptersTests`, `ExportTimelineTests` |
 | Storage, queue and progress | `ProjectPersistenceTests`, `AppStorageTests`, `ProcessingJobTests`, `RecordingImportTests`, `AnalysisProgressTests` |
 | Layout and tutorial state | `EditorLayoutTests`, `InterfaceScaleTests`, `GuidedTourTests` |
 | Hosted media and persistence | `FeatureExtractionIntegrationTests`, `RenderingIntegrationTests`, `SourceVideoAccessTests`, `PhotoKitVideoSourceTests`, `QueueSnapshotTests`, `EditorProjectBindingTests` |
 | Orientation declaration | `AppOrientationDeclarationTests` reads the processed app plist, including device-qualified orientation keys |
-| SwiftUI behavior | `WorkspaceUITests`, `EditorParityUITests`, `EditorTutorialUITests`, `TimelineScoreVisibilityUITests`, `ReferenceProjectUITests` |
+| SwiftUI behavior | `WorkspaceUITests`, `EditorParityUITests`, `EditorTutorialUITests`, `CourtsideDeckUITests`, `TimelineScoreVisibilityUITests`, `ReferenceProjectUITests` |
+
+For the current Windows/WSL compile and portable-test route without an Apple
+runtime/device, see [Courtside Deck validation](COURTSIDE-DECK.md). The local
+[compatible SwiftUI control probe](Previews/CourtsideDeck/README.md) is separate
+from native UI testing and cannot establish media, gesture or layout fidelity.
 
 Run portable tests with `scripts/test-core.ps1` on the configured lab, or
 `swift test` from this directory after staging the required canonical fixtures.

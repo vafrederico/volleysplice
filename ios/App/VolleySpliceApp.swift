@@ -50,6 +50,22 @@ struct VolleySpliceApp: App {
     @Published var exportURL: URL?
     @Published var project: ProjectDocument?
     @Published var projects: [URL] = []
+    var projectStatuses: [URL: String] {
+        var values: [URL: String] = [:]
+        for job in queue.jobs where job.state != .completed {
+            let safeId = job.projectId.filter { $0.isLetter || $0.isNumber || $0 == "-" }
+            let url = documents.appendingPathComponent("project-\(safeId).volleyproject.json")
+            switch job.state {
+            case .queued: values[url] = "Queued"
+            case .running: values[url] = job.kind == .scores ? "Preparing scores" : job.kind == .videoExport ? "Exporting" : "Analyzing"
+            case .cancelling: values[url] = "Stopping"
+            case .failed, .interrupted: values[url] = "Needs attention"
+            case .cancelled: values[url] = "Stopped"
+            case .completed: break
+            }
+        }
+        return values
+    }
     @Published private(set) var projectModels: [URL: RallyModel] = [:]
     @Published private(set) var projectNames: [URL: String] = [:]
     @Published private(set) var projectDates: [URL: Date] = [:]
@@ -467,7 +483,7 @@ struct WorkspaceView: View {
             EditorWorkspace(project: Self.editorBinding($model.project, snapshot: project), player: model.player,
                             onSave: { if model.project?.id == project.id { model.saveProject() } }, onExportProject: { model.exportProject() },
                             onExportVideo: { model.exportVideo() }, onBack: { model.flushProject(); model.showEditor = false; model.player.pause() },
-                            savedProjects: model.projects, projectNames: model.projectNames, projectDates: model.projectDates, projectModels: model.projectModels,
+                            savedProjects: model.projects, projectNames: model.projectNames, projectDates: model.projectDates, projectModels: model.projectModels, projectStatuses: model.projectStatuses,
                             onSelectProject: model.openProject, onNewProject: model.beginNewProject,
                             onManageStorage: { if model.flushProject() { model.showStorage = true } },
                             onDeleteProject: model.deleteCurrentProject, onShowQueue: { model.showQueue = true },
