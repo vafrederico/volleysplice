@@ -12,6 +12,26 @@ The default rally-review workflow and available Windows validation are documente
 in [Courtside Deck](COURTSIDE-DECK.md). The existing full Editor remains available
 through the Editor pill; all workspace tabs share the same draft and AVPlayer.
 
+## Testing phone layouts on iPad
+
+In a Debug build, open the Settings cogwheel and enable **Test as iPhone** under
+Developer testing. The app uses a centered 390 × 844-point phone viewport with
+phone safe-area spacing and compact layout rules. Rotate the iPad to test the
+844 × 390-point landscape layout. Disable the toggle to return to the normal
+iPad workspace. Switching preserves the project, edits, selected pill and player.
+The toggle is also available from setup Settings and persists across launches.
+
+This runs the native controls and AVPlayer on the iPad. Modal presentation,
+keyboards, alerts and file/share pickers still belong to iPadOS; it does not emulate iPhone hardware,
+display density or device-specific safe areas. Release builds contain neither
+the toggle nor the phone-viewport behavior.
+
+For repeatable controls checks, a Debug build can be launched explicitly with
+`--device-ui-fixture`. This opens the bundled synthetic 20-second test project;
+normal launches never create it. Its reserved destination is replaced only if it
+already identifies itself as a synthetic fixture. Existing projects, source
+recordings and queue entries are preserved.
+
 ## Build
 
 For a signed App Store/TestFlight release without a local Mac, use the manual

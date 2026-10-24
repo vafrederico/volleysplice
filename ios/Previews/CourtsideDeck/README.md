@@ -25,6 +25,8 @@ the real control source, package manifest and synthetic `Preview.swift` into tha
 directory. It never modifies the source checkout or native app. The host adapter
 supplies StaticHTML's missing `disabled` convenience modifier by setting its
 environment and places the generated document in a normal block-flow body.
+It also ignores `contentShape`, since StaticHTML has no native hit testing;
+interaction bounds require device checks.
 
 The [portrait](rendered/portrait.html), [tablet](rendered/tablet.html) and
 [landscape](rendered/landscape.html) outputs contain the locally compiled shared
@@ -49,3 +51,7 @@ Bounded alternatives research used primary documentation:
 - [Tokamak's static renderer](https://github.com/TokamakUI/Tokamak/blob/main/Sources/TokamakStaticHTML/StaticHTMLRenderer.swift)
   supplies the local source-reuse probe. Native Apple framework fidelity is
   outside its scope.
+
+The checked-in HTML probes and `verification.json` describe the earlier portable
+preview pass. Current native verification, including UIKit footer targets, is in
+[the device receipt](device-verification.json). Raw device captures remain local.

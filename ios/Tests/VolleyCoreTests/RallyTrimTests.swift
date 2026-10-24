@@ -40,7 +40,7 @@ final class RallyTrimTests: XCTestCase {
         XCTAssertEqual(serveResult.selectedGroup.cutIds, ["a"])
         XCTAssertEqual(serveResult.frameMs, 18_000)
     }
-    func testPaddingNeverCollapsesShortCoreTargets() {
+    func testFullEditorDetailKeepsShortCoreTargetsDistinct() {
         for (duration, padding): (Int64, Int64) in [(500, 10_000), (100, 2_000)] {
             let core = TimeRange(startMs: 25_000, endMs: 25_000 + duration)
             let kept = TimeRange(startMs: core.startMs - padding, endMs: core.endMs + padding)
@@ -51,6 +51,25 @@ final class RallyTrimTests: XCTestCase {
             XCTAssertGreaterThan(scale.hiddenPadding(kept).afterMs, 0)
             XCTAssertEqual(scale.time(atX: scale.x(core.startMs)), core.startMs)
             XCTAssertEqual(scale.time(atX: scale.x(core.endMs)), core.endMs)
+        }
+    }
+    func testDeckKeepsShortCoreHandlesAtTrueTimeEvenWithLargePadding() {
+        for (duration, padding): (Int64, Int64) in [(500, 10_000), (100, 2_000)] {
+            var cut = EditableCut(id: "short", coreStartMs: 25_000, coreEndMs: 25_000 + duration)
+            cut.keepStartMs = cut.coreStartMs - padding; cut.keepEndMs = cut.coreEndMs + padding
+            let rally = EditableRallyGroup(cuts: [cut])
+            let core = TimeRange(startMs: cut.coreStartMs, endMs: cut.coreEndMs)
+            let context = RallyReview.context(for: rally, rallies: [rally], effectiveIds: [cut.id], bounds: bounds)
+            let scale = RallyTrimScale(core: core, bounds: bounds, width: 306, context: context)
+            let handles = scale.handles(for: core, spreadForTouch: false)
+            XCTAssertFalse(handles.spreadForTouch)
+            XCTAssertLessThan(handles.endX - handles.startX, 10)
+            XCTAssertEqual(handles.startX, scale.x(core.startMs), accuracy: 0.000001)
+            XCTAssertEqual(handles.endX, scale.x(core.endMs), accuracy: 0.000001)
+            XCTAssertEqual(scale.time(atX: handles.startX), core.startMs)
+            XCTAssertEqual(scale.time(atX: handles.endX), core.endMs)
+            XCTAssertLessThanOrEqual(context.startMs, cut.keepStartMs)
+            XCTAssertGreaterThanOrEqual(context.endMs, cut.keepEndMs)
         }
     }
     func testNarrowTracksKeepEachTargetInsideItsOwnRegion() {

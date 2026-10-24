@@ -72,7 +72,10 @@ public enum RallyReview {
         return rallies.dropFirst(index + 1).first { retained($0, effectiveIds: effectiveIds) }
     }
     public static func context(for rally: EditableRallyGroup, rallies: [EditableRallyGroup], effectiveIds: Set<String>, bounds: TimeRange) -> TimeRange {
-        coreWindow(.init(startMs: rally.coreStartMs, endMs: rally.coreEndMs), bounds: bounds)
+        let previous = neighbor(of: rally, direction: -1, rallies: rallies, effectiveIds: effectiveIds)
+        let next = neighbor(of: rally, direction: 1, rallies: rallies, effectiveIds: effectiveIds)
+        return .init(startMs: max(bounds.startMs, min(rally.coreStartMs - 8_000, rally.keepStartMs, previous.map { $0.keepStartMs - 2_000 } ?? Int64.max)),
+                     endMs: min(bounds.endMs, max(rally.coreEndMs + 8_000, rally.keepEndMs, next.map { $0.keepEndMs + 2_000 } ?? Int64.min)))
     }
     public static func coreWindow(_ core: TimeRange, bounds: TimeRange) -> TimeRange {
         let margin = min(8_000, max(0, core.endMs - core.startMs) / 2)
@@ -149,8 +152,12 @@ public struct RallyTrimScale: Equatable, Sendable {
     public let width: Double
     public var inset: Double { Self.handleWidth / 2 }
     public var usableWidth: Double { max(1, width - Self.handleWidth) }
-    public init(core: TimeRange, bounds: TimeRange, width: Double) {
+    public init(core: TimeRange, bounds: TimeRange, width: Double, context: TimeRange? = nil) {
         self.width = max(Self.handleWidth * 2, width)
+        if let context {
+            window = .init(startMs: max(bounds.startMs, context.startMs), endMs: min(bounds.endMs, context.endMs))
+            return
+        }
         let duration = max(1, core.endMs - core.startMs)
         let usable = max(1, self.width - Self.handleWidth)
         let separation = min(Self.minimumCenterGap, usable)
@@ -164,11 +171,11 @@ public struct RallyTrimScale: Equatable, Sendable {
     public func time(atX x: Double) -> Int64 {
         window.startMs + Int64((min(1, max(0, (x - inset) / usableWidth)) * Double(max(1, window.endMs - window.startMs))).rounded())
     }
-    public func handles(for core: TimeRange) -> RallyTrimHandles {
+    public func handles(for core: TimeRange, spreadForTouch: Bool = true) -> RallyTrimHandles {
         let left = inset, right = width - inset
         let a = min(right, max(left, x(core.startMs))), b = min(right, max(left, x(core.endMs)))
         let gap = min(Self.minimumCenterGap, usableWidth)
-        guard b - a < gap else { return .init(startX: a, endX: b, spreadForTouch: false) }
+        guard spreadForTouch, b - a < gap else { return .init(startX: a, endX: b, spreadForTouch: false) }
         let middle = min(right - gap / 2, max(left + gap / 2, (a + b) / 2))
         return .init(startX: middle - gap / 2, endX: middle + gap / 2, spreadForTouch: true)
     }

@@ -1,0 +1,184 @@
+{
+  "validationDate": "2026-10-24",
+  "runtime": "Physical iPad, iPadOS 26.6.2; WDA through XCTest",
+  "version": "1.0.0",
+  "build": 2,
+  "portableXCTest": {
+    "passed": 206,
+    "failed": 0,
+    "runtime": "Linux XCTest"
+  },
+  "nativeWorkflowChecks": {
+    "phone-portrait": {
+      "passed": 19,
+      "failed": 0,
+      "checks": [
+        "Rallies default; correct selected rally and source frame",
+        "Boundary \u00b11s changes and restores end without losing retained frame",
+        "Continuous end-handle drag updates bounds while retaining frame",
+        "Keep / Remove / Keep actions; review progress changes",
+        "Focused timeline seeks video without changing rally or bounds",
+        "Near, Far and visible Not a serve controls work",
+        "Team name editable through native alert",
+        "Next review moves the player without resolving review work",
+        "Playback and Previous / Next rally preserve playing at selected speed",
+        "Browser slider and vertical rail seek video, select rally and scroll list to late source",
+        "Manual rally-list scroll leaves video fixed; Follow video reconnects list",
+        "Source sidebar collapses and expands",
+        "Gap seek stays in Rallies; Add seek rejects existing footage; Cancel creates nothing",
+        "Explicit Add creates exactly one rally; Edit selected opens focus",
+        "Full Editor boundary edit appears in Rallies",
+        "Full Editor shares team edits and source playhead with Rallies",
+        "Export settings reachable and editable; save video enabled",
+        "Score visibility choices work; Save video opens destination dialog and cancels",
+        "Settings contains project, tutorial and correct debug testing state"
+      ]
+    },
+    "phone-landscape": {
+      "passed": 19,
+      "failed": 0,
+      "checks": [
+        "Rallies default; correct selected rally and source frame",
+        "Boundary \u00b11s changes and restores end without losing retained frame",
+        "Continuous end-handle drag updates bounds while retaining frame",
+        "Keep / Remove / Keep actions; review progress changes",
+        "Focused timeline seeks video without changing rally or bounds",
+        "Near, Far and visible Not a serve controls work",
+        "Team name editable through native alert",
+        "Next review moves the player without resolving review work",
+        "Playback and Previous / Next rally preserve playing at selected speed",
+        "Browser slider and vertical rail seek video, select rally and scroll list to late source",
+        "Manual rally-list scroll leaves video fixed; Follow video reconnects list",
+        "Source sidebar collapses and expands",
+        "Gap seek stays in Rallies; Add seek rejects existing footage; Cancel creates nothing",
+        "Explicit Add creates exactly one rally; Edit selected opens focus",
+        "Full Editor boundary edit appears in Rallies",
+        "Full Editor shares team edits and source playhead with Rallies",
+        "Export settings reachable and editable; save video enabled",
+        "Score visibility choices work; Save video opens destination dialog and cancels",
+        "Settings contains project, tutorial and correct debug testing state"
+      ]
+    },
+    "ipad-portrait": {
+      "passed": 19,
+      "failed": 0,
+      "checks": [
+        "Rallies default; correct selected rally and source frame",
+        "Boundary \u00b11s changes and restores end without losing retained frame",
+        "Continuous end-handle drag updates bounds while retaining frame",
+        "Keep / Remove / Keep actions; review progress changes",
+        "Focused timeline seeks video without changing rally or bounds",
+        "Near, Far and visible Not a serve controls work",
+        "Team name editable through native alert",
+        "Next review moves the player without resolving review work",
+        "Playback and Previous / Next rally preserve playing at selected speed",
+        "Browser slider and vertical rail seek video, select rally and scroll list to late source",
+        "Manual rally-list scroll leaves video fixed; Follow video reconnects list",
+        "Source sidebar collapses and expands",
+        "Gap seek stays in Rallies; Add seek rejects existing footage; Cancel creates nothing",
+        "Explicit Add creates exactly one rally; Edit selected opens focus",
+        "Full Editor boundary edit appears in Rallies",
+        "Full Editor shares team edits and source playhead with Rallies",
+        "Export settings reachable and editable; save video enabled",
+        "Score visibility choices work; Save video opens destination dialog and cancels",
+        "Settings contains project, tutorial and correct debug testing state"
+      ]
+    },
+    "ipad-landscape": {
+      "passed": 19,
+      "failed": 0,
+      "checks": [
+        "Rallies default; correct selected rally and source frame",
+        "Boundary \u00b11s changes and restores end without losing retained frame",
+        "Continuous end-handle drag updates bounds while retaining frame",
+        "Keep / Remove / Keep actions; review progress changes",
+        "Focused timeline seeks video without changing rally or bounds",
+        "Near, Far and visible Not a serve controls work",
+        "Team name editable through native alert",
+        "Next review moves the player without resolving review work",
+        "Playback and Previous / Next rally preserve playing at selected speed",
+        "Browser slider and vertical rail seek video, select rally and scroll list to late source",
+        "All rally cards fit; list touch leaves video fixed",
+        "Source sidebar collapses and expands",
+        "Gap seek stays in Rallies; Add seek rejects existing footage; Cancel creates nothing",
+        "Explicit Add creates exactly one rally; Edit selected opens focus",
+        "Full Editor boundary edit appears in Rallies",
+        "Full Editor shares team edits and source playhead with Rallies",
+        "Export settings reachable and editable; save video enabled",
+        "Score visibility choices work; Save video opens destination dialog and cancels",
+        "Settings contains project, tutorial and correct debug testing state"
+      ]
+    }
+  },
+  "totalNativeWorkflowChecks": 76,
+  "extraChecks": [
+    "Play, Pause and Queue use independent touch targets",
+    "Toggling phone mode preserves Export selection, project, rally bounds, edited team and paused playhead"
+  ],
+  "builds": {
+    "debug": "ARM64 iOS, development-signed and installed",
+    "release": "ARM64 iOS, development-signed; not installed"
+  },
+  "releaseGuard": {
+    "debugPositiveControl": true,
+    "phoneToggleAndFixtureKeysAbsent": true,
+    "deviceFamilies": [
+      1,
+      2
+    ],
+    "iPadOrientations": [
+      "UIInterfaceOrientationPortrait",
+      "UIInterfaceOrientationPortraitUpsideDown",
+      "UIInterfaceOrientationLandscapeLeft",
+      "UIInterfaceOrientationLandscapeRight"
+    ]
+  },
+  "completionState": {
+    "testAsIPhone": false,
+    "scoreFade": false,
+    "originalPreferencesRestored": true,
+    "parkedAwake": true
+  },
+  "dataPreservation": {
+    "preExistingMetadataFilesCompared": 5,
+    "changedProjectMetadataFiles": 0,
+    "preferencesIntentionallyChanged": true,
+    "originalQueueJobs": "Two existing cancelled jobs were not resumed or removed"
+  },
+  "evidence": {
+    "rawDeviceCaptures": "Retained in external local lab storage; not published",
+    "fixture": "Bundled synthetic 20-second UI video",
+    "phoneProfilesPoints": {
+      "portrait": [
+        390,
+        844
+      ],
+      "landscape": [
+        844,
+        390
+      ]
+    }
+  },
+  "notQualified": [
+    "Actual iPhone hardware or device-specific safe areas",
+    "iPhone system keyboard and modal presentation",
+    "Long-recording playback, audio or media-export performance",
+    "VoiceOver, Dynamic Type, multitasking or every orientation variant",
+    "Formal hosted integration and UI XCTest suites in this round"
+  ],
+  "privacy": {
+    "genericAddedTextChecks": "pass",
+    "ledgerAwareAudit": "not run; ledger configuration unset"
+  },
+  "macVMUsed": false,
+  "simulatorUsed": false,
+  "compatibleControlProbe": {
+    "compiledAndRenderedLocally": true,
+    "widths": [
+      390,
+      768,
+      844
+    ],
+    "renderer": "Tokamak StaticHTML; portable fallback only"
+  }
+}

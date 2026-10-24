@@ -5,8 +5,8 @@ private struct CoreTrimHeight: PreferenceKey {
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
 }
 
-/// Both native workspaces use the same short-core scale and independent targets.
-/// Padding remains real export time; portions outside this detail view are named.
+/// The deck supplies a uniform source-time context including retained neighbors.
+/// The full editor can still request its existing core detail scale.
 struct CoreTrimSurface<Track: View>: View {
     let core: TimeRange
     let kept: TimeRange
@@ -15,14 +15,15 @@ struct CoreTrimSurface<Track: View>: View {
     let startLabel: String, endLabel: String
     let startIdentifier: String, endIdentifier: String
     var color = EditorPalette.green
+    var contextWindow: TimeRange? = nil
     let onTrim: (Bool, Int64) -> Void
     @ViewBuilder var track: (RallyTrimScale) -> Track
     @State private var drag: RallyTrimDrag?
     @State private var contentHeight: CGFloat = 100
     var body: some View {
         GeometryReader { geometry in
-            let scale = drag?.scale ?? RallyTrimScale(core: core, bounds: bounds, width: geometry.size.width)
-            let handles = scale.handles(for: core)
+            let scale = drag?.scale ?? RallyTrimScale(core: core, bounds: bounds, width: geometry.size.width, context: contextWindow)
+            let handles = scale.handles(for: core, spreadForTouch: contextWindow == nil)
             let hidden = scale.hiddenPadding(kept)
             VStack(spacing: 4) {
                 HStack {

@@ -6,6 +6,8 @@ import Foundation
 // consumed by the real button style; it does not establish interactive behavior.
 extension View {
     func disabled(_ disabled: Bool) -> some View { environment(\.isEnabled, !disabled) }
+    // StaticHTML has no hit testing. Native interaction bounds are tested on device.
+    func contentShape<S: Shape>(_ shape: S) -> some View { self }
 }
 
 /// Synthetic composition around the app's exact layout-only control source.

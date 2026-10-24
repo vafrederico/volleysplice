@@ -2,10 +2,12 @@
 
 Rallies is the initial workspace. Rallies, the existing full Editor, and Export
 share one `ProjectDocument.draft`, score tracking, AVPlayer, source position and
-playback rate. Navigation and list position are separate view state. No synthetic
-data enters the app; the preview harness is independent of the app target.
+playback rate. Navigation and list position are separate view state. Normal
+launches use real projects. An explicit Debug-only device fixture supports native
+controls checks; the compatible-renderer preview remains independent.
 
-The reference is Android Courtside Deck C1 at `0c0f754f`, including
+The reference is Android Courtside Deck C1, including the linear timeline restored
+before `91b6e6d3`, with
 [`RallyReviewWorkspace.kt`](../android/app/src/main/java/com/volleycut/nativeanalysis/RallyReviewWorkspace.kt),
 [`RallyReviewModels.kt`](../android/app/src/main/java/com/volleycut/nativeanalysis/RallyReviewModels.kt)
 and the [native reference captures](../artifacts/design-experiments/courtside-deck/native/verification.json).
@@ -33,15 +35,20 @@ native system sans typography. The full Editor retains its established palette.
 - Both team names edit shared score state. Rate changes update the persisted
   draft and the running player. Previous rally, Next review and Next rally retain
   paused/playing/waiting-to-play intent and replace the preview stop boundary.
+  Navigation stays below the scrolling review controls. Native buttons provide
+  full touch targets even when the landscape interface is scaled down. The queue
+  strip has a bounded native target so it cannot intercept the transport above it.
+  Tablet portrait gives the player most of the available height while reserving
+  space for review controls.
 - Trimming pauses for inspection. Drag handles and one-second nudges retain the
   current frame within the **updated padded/retained range**, clamping only an
   excluded frame. Rally-bound serve timestamps follow existing editor math.
-- Both native workspaces use a local core scale independent of retained padding.
-  Context shrinks for short cores and narrow panes. Separate 44-point touch targets
-  remain inside the track; if a held trim shrinks the core, spread handles connect
-  to exact boundary ticks. Padding and playback outside the view are named explicitly.
-  Distant retained neighbors remain labeled edge actions. Drag translation uses the
-  original boundary and frozen scale, so touching away from the center cannot jump it.
+- The deck uses one linear source-time scale containing the selected rally, its
+  padding and both nearest retained neighbors. Real gaps keep their proportional
+  width. It never compresses gaps or zooms automatically to enlarge short cores;
+  the one-second buttons remain available for those. The full Editor retains its
+  existing core detail scale. Drag translation uses the original boundary and a
+  frozen scale, so touching away from the center cannot jump the edge.
 - Trim writes reconcile the current presentation before resolving the selected
   group's retained range. Joining a previous or next rally preserves a frame in
   the newly retained footage; serves and unresolved reviews still separate groups.
@@ -49,6 +56,9 @@ native system sans typography. The full Editor retains its established palette.
   Manual list dragging suspends follow and updates its independent center marker.
   Source seeking follows video, selects intersected rallies and scrolls the list;
   gaps retain the previous selection and emphasize Add missing.
+  On iOS 18+, native scroll phases observe interaction without competing with the
+  scroll view's pan gesture. The source rail has a fixed gesture frame, and the
+  source slider reserves stable space for its changing status text.
 - Native source sliders expose adjustable/set-value accessibility in the browser
   and Add sheet. The vertical source rail also has adjustable actions and distinct
   circle/video and diamond/list-center markers. Add can open inside existing
@@ -63,33 +73,55 @@ native system sans typography. The full Editor retains its established palette.
   workspace/browser. Advancing it changes navigation only. Completed/dismissed
   progress stays dismissed; unfinished legacy editor steps migrate to the new tour.
 
+The Debug-only [Test as iPhone setting](README.md#testing-phone-layouts-on-ipad)
+constrains the native iPad app to phone points and compact layout rules. It keeps
+the editor's identity and state while switching. Universal iPad builds support
+portrait and landscape with the toggle off.
+
 ## Available validation
 
-The Windows/WSL lab ran **200 portable core XCTest cases with zero failures**,
-including twenty-two new rally-review/trim regressions. The ARM64 iOS app was built and
-development-signed through the current-source xtool path using `-NoInstall`.
-These results establish source compilation and portable behavior, not native UI
-execution. Production bundle identity remains `com.volleysplice.VolleySplice`;
-lab-only signing substitutions stay in external staging.
+The Windows/WSL lab passed **206 portable core XCTest cases** and **76 native
+workflow checks** on the physical iPad. The [device receipt](Previews/CourtsideDeck/device-verification.json)
+records nineteen checks in each of four layouts: the phone viewport in portrait
+and landscape, then the normal iPad workspace in portrait and landscape.
 
-The test invocation uses the actual checkout, serially with the app build:
+Native checks covered retained-frame trimming and continuous handle dragging,
+focused/source/vertical timeline seeking, explicit keep/remove and serve states,
+Not a serve removal/replacement, team editing, rate changes, playing navigation,
+review progress, list following and its separate center marker, collapse/expand,
+explicit Add/cancel, shared Editor edits/playhead, Export settings and destination
+cancellation, and Settings reachability. Lists were scrolled where their rows
+overflowed; the large landscape iPad viewport fits all six fixture cards.
+Toggling phone mode also preserved the selected Export pill, project, rally bounds,
+edited team and paused playhead. The original always-visible score preference was
+restored, and the device was left in normal iPad mode, parked awake.
+
+Both Debug and Release ARM64 iOS apps built and were development-signed using the
+current checkout. Debug was installed without resetting application data. Release
+used `-NoInstall`; its executable excludes the debug preference, toggle and fixture
+launch keys, with the Debug executable serving as a positive control. Production
+bundle identity remains `com.volleysplice.VolleySplice`; lab signing substitutions
+stay outside the repository. No Mac VM or Simulator was used.
+
+The serial validation commands are:
 
 ```powershell
 & "$env:VOLLEYCUT_IOS_LAB_ROOT/xtool/test-xctests.ps1" -SourceRoot $PWD -Target portable
-& "$env:VOLLEYCUT_IOS_LAB_ROOT/xtool/test-app.ps1" -SourceRoot $PWD -NoInstall
+& "$env:VOLLEYCUT_IOS_LAB_ROOT/xtool/test-app.ps1" -SourceRoot $PWD
+& "$env:VOLLEYCUT_IOS_LAB_ROOT/xtool/test-app.ps1" -SourceRoot $PWD -Configuration release -NoInstall
 ```
 
-`RallyReviewTests` covers orphan work, ignored ranges, overlapping padding/serve
-identity, explicit decisions, gap navigation, retained neighbors, nonzero-padding
-frame retention, hour-long gaps and Add seeking without draft writes.
-`RallyTrimTests` adds both merge directions, serve/review boundaries, padded
-100/500ms cores, narrow tracks, frozen drag geometry, preserved focus during
-context seeking, focused playback stops and shared fractional/4x/8x rates.
-`CourtsideDeckUITests` and the updated existing UI tests describe Apple-runtime
-checks for the new navigation, shared team edits and native source-slider seeking.
-All thirteen hosted integration-test sources and six UI-test sources typechecked
-for ARM64 iOS. They have not been packaged or executed as Apple-runtime suites
-during this change.
+`RallyReviewTests` and `RallyTrimTests` cover nonzero padding, both merge directions,
+ignored/review/serve boundaries, uniform distant-neighbor context, true short-core
+handle positions, frozen drag geometry, focus preservation and playback policy.
+`PhoneTestLayoutTests` cover logical dimensions, reserved edges, fitting small
+windows and the same automatic density/layout rules as a native phone.
+
+The media is a short synthetic UI fixture. These checks do not qualify actual
+iPhone hardware, iPhone system dialogs/keyboard, long-video decoding/audio/export,
+VoiceOver, Dynamic Type, multitasking or every rotation variant. Existing hosted
+integration/UI test sources were typechecked during the initial port; those
+formal Apple-runtime suites were not packaged or executed in this round.
 
 ## Local compatible SwiftUI preview
 
@@ -111,8 +143,5 @@ Rallies keeps its own progress strip; root review metrics appear only in Editor
 and Export. Seeking focused context retains the selected rally, while browser
 source seeking resumes list following and selection.
 
-Apple-runtime validation remains required for both landscape rotations, notches,
-portrait/tablet split view, Dynamic Type/VoiceOver focus and set-value behavior,
-list gestures/scroll anchoring, drag hit testing, AVPlayer seeks/buffering/preview
-stops, score timing, export media and system-sheet presentation. No Mac VM,
-Simulator, iPad, WDA session, device installation or installed-app data was used.
+The compatible preview remains a source/rendering aid. Current native behavior
+and its qualification limits are recorded in the device validation section above.

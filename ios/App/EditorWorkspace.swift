@@ -22,7 +22,7 @@ enum EditorPalette {
 }
 
 private struct CompactPhoneEditorKey: EnvironmentKey { static let defaultValue = false }
-private extension EnvironmentValues {
+extension EnvironmentValues {
     var compactPhoneEditor: Bool {
         get { self[CompactPhoneEditorKey.self] }
         set { self[CompactPhoneEditorKey.self] = newValue }
@@ -102,9 +102,10 @@ struct EditorWorkspace: View {
     @State private var serveReviewReveal = 0
     @AppStorage(GuidedTourStore.key) private var tourState = ""
     @Environment(\.interfaceScale) private var interfaceScale
+    @Environment(\.phoneTestLayout) private var phoneTest
     @State private var deviceOrientation = UIDevice.current.orientation
     private var landscapeWindow: UIWindow? {
-        guard isPhone else { return nil }
+        guard isPhone, phoneTest == nil else { return nil }
         let window = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
             .flatMap(\.windows).first(where: \.isKeyWindow)
         guard let window, window.bounds.width > window.bounds.height else { return nil }
@@ -125,7 +126,7 @@ struct EditorWorkspace: View {
             bottom: 0,
             trailing: orientation == .landscapeRight ? max(0, window.safeAreaInsets.right - 12) / interfaceScale : 0)
     }
-    private var isPhone: Bool { UIDevice.current.userInterfaceIdiom == .phone }
+    private var isPhone: Bool { phoneTest != nil || UIDevice.current.userInterfaceIdiom == .phone }
     @AppStorage("desktop_editor_layout.leftSidebarWidth") private var leftWidth = 292.0
     @AppStorage("desktop_editor_layout.rightSidebarWidth") private var rightWidth = 292.0
     @AppStorage("desktop_editor_layout.phoneLeftSidebarWidth") private var phoneLeftWidth = 180.0
@@ -386,7 +387,7 @@ struct EditorWorkspace: View {
             statuses: projectStatuses, onNew: onNewProject, onSelect: onSelectProject)
     }
     private func desktopWorkspace(size: CGSize) -> some View {
-        let phone = UIDevice.current.userInterfaceIdiom == .phone
+        let phone = isPhone
         let rightMinimum = phone ? EditorLayout.phoneRightSidebarMinimum(reclaimedSpace: landscapeSpace.trailing) : 220
         let widths = EditorLayout.sidebarWidths(availableWidth: Double(size.width - landscapeSpace.leading - landscapeSpace.trailing),
             left: phone ? phoneLeftWidth : leftWidth, right: phone ? phoneRightWidth : rightWidth, rightMinimum: rightMinimum)
@@ -1018,6 +1019,9 @@ struct EditorWorkspace: View {
         NavigationStack {
             Form {
                 Section { InterfaceScaleControl() }
+                #if DEBUG
+                PhoneTestControls()
+                #endif
                 Section("Project") {
                     Button("Project options") { settingsAction = .project; settings = false }.accessibilityIdentifier("projectOptions")
                     Button("Change model or analyze again") { settingsAction = .analysis; settings = false }.accessibilityIdentifier("changeRallyModel")

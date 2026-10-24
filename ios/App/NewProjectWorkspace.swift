@@ -14,9 +14,17 @@ enum SetupPalette {
 /// Android Brand.kt uses the transparent icon and text, never the white splash logo.
 struct VolleySpliceBrand: View {
     var compact = false
+    private static let bundledMark: UIImage? = Bundle.main.url(forResource: "BrandMark", withExtension: "png")
+        .flatMap { UIImage(contentsOfFile: $0.path) }
+    private var mark: Image {
+        if let image = Self.bundledMark {
+            return Image(uiImage: image)
+        }
+        return Image("BrandMark")
+    }
     var body: some View {
         HStack(spacing: 4) {
-            Image("BrandMark").resizable().scaledToFit().frame(width: compact ? 28 : 36, height: compact ? 28 : 36)
+            mark.resizable().scaledToFit().frame(width: compact ? 28 : 36, height: compact ? 28 : 36)
             if !compact {
                 (Text("volley").foregroundColor(Color(red: 5 / 255, green: 43 / 255, blue: 80 / 255)) +
                  Text("splice").foregroundColor(Color(red: 8 / 255, green: 117 / 255, blue: 245 / 255)))
@@ -411,6 +419,9 @@ private struct SetupSettings: View {
         NavigationStack {
             Form {
                 Section { InterfaceScaleControl() }
+                #if DEBUG
+                PhoneTestControls()
+                #endif
                 Section {
                     Button("Manage storage") {
                         if model.flushProject() { showStorage = true }

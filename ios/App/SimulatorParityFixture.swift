@@ -3,12 +3,19 @@ import Foundation
 
 /// Synthetic editor interaction fixture, NOT model predictions or inference parity
 /// evidence. Media is the Android overlay test's 1-second MP4 repeated to 20s by
-/// stream copy. Only the explicit UI-test launch argument enables this in Simulator.
+/// stream copy. Explicit debug launch arguments enable it in Simulator or on a
+/// physical test device. Production projects and source recordings are untouched.
 @MainActor enum SimulatorParityFixture {
     private static var opened = false
     static func openIfRequested(_ model: WorkspaceModel) async {
-        #if DEBUG && targetEnvironment(simulator)
-        guard !opened, ProcessInfo.processInfo.arguments.contains("--parity-editor") else { return }
+        #if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        #if targetEnvironment(simulator)
+        let requested = arguments.contains("--parity-editor") || arguments.contains("--device-ui-fixture")
+        #else
+        let requested = arguments.contains("--device-ui-fixture")
+        #endif
+        guard !opened, requested else { return }
         opened = true
         do {
             guard let bundledSource = Bundle.main.url(forResource: "ios-editor-fixture", withExtension: "mp4") else {
@@ -42,7 +49,14 @@ import Foundation
                     model.queue.remove(job.id)
                 }
             }
-            let prepared = try await ProjectPersistence.prepare(fixture, to: model.projectURL(fixture))
+            let destination = model.projectURL(fixture)
+            if FileManager.default.fileExists(atPath: destination.path) {
+                let existing = try ProjectDocument.load(from: destination)
+                guard existing.feedback?["syntheticUIFixture"]?.bool == true else {
+                    throw ProjectError.invalid("Reserved UI fixture destination contains a non-fixture project")
+                }
+            }
+            let prepared = try await ProjectPersistence.prepare(fixture, to: destination)
             let project = try ProjectPersistence.publish(prepared)
             model.player.pause()
             model.project = project; model.source = source; model.media = media
@@ -62,7 +76,7 @@ import Foundation
         #endif
     }
 
-    #if DEBUG && targetEnvironment(simulator)
+    #if DEBUG
     private static func document() throws -> ProjectDocument {
         let cuts: [EditableCut] = [
             .init(id: "R001", coreStartMs: 1_000, coreEndMs: 2_500, keepStartMs: 500, keepEndMs: 3_000),

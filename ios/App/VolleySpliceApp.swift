@@ -8,8 +8,10 @@ struct VolleySpliceApp: App {
     @StateObject private var model = WorkspaceModel()
     var body: some Scene {
         WindowGroup {
-            WorkspaceView(model: model)
+            PhoneTestViewport {
+                WorkspaceView(model: model)
                 .interfaceScaled(isWindow: true)
+            }
                 .preferredColorScheme(.light)
                 .onAppear { setIdle(scenePhase); model.queue.sceneChanged(scenePhase) }
                 .onChange(of: scenePhase) { _, phase in
@@ -478,6 +480,7 @@ struct WorkspaceView: View {
         })
     }
     var body: some View {
+        VStack(spacing: 0) {
         Group {
         if model.showEditor, let project = model.project {
             EditorWorkspace(project: Self.editorBinding($model.project, snapshot: project), player: model.player,
@@ -494,14 +497,13 @@ struct WorkspaceView: View {
             NewProjectWorkspace(model: model, chooseVideo: { choosingReconnectSource = false; choosingVideoSource = true }, openSaved: { pickerKind = .project; importing = true })
         }
         }
+        ProcessingQueueBar(queue: model.queue) { model.showQueue = true }
+            .background(paper).foregroundStyle(ink).tint(Color(red: 47 / 255, green: 104 / 255, blue: 85 / 255))
+        }
         .guidedTour(stage: model.showEditor ? .editor : .setup, sourceReady: model.media != nil,
                     scoreTrackingEnabled: model.project?.draft.scoreTracking["enabled"]?.bool ?? false)
         .modifier(ExportDestinationPresentation(model: model))
         .task { await SimulatorParityFixture.openIfRequested(model) }
-        .safeAreaInset(edge: .bottom) {
-            ProcessingQueueBar(queue: model.queue) { model.showQueue = true }
-                .background(paper).foregroundStyle(ink).tint(Color(red: 47 / 255, green: 104 / 255, blue: 85 / 255))
-        }
         .sheet(isPresented: $model.showQueue, onDismiss: {
             let action = model.afterQueueDismiss; model.afterQueueDismiss = nil; action?()
         }) {
