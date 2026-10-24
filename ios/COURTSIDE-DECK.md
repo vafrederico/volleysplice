@@ -36,9 +36,15 @@ native system sans typography. The full Editor retains its established palette.
 - Trimming pauses for inspection. Drag handles and one-second nudges retain the
   current frame within the **updated padded/retained range**, clamping only an
   excluded frame. Rally-bound serve timestamps follow existing editor math.
-- The local trim window includes the selected padded range and eight seconds of
-  context on either side. Distant retained neighbors are labeled edge actions;
-  hour-long gaps never stretch that window. The window stays stable during a trim.
+- Both native workspaces use a local core scale independent of retained padding.
+  Context shrinks for short cores and narrow panes. Separate 44-point touch targets
+  remain inside the track; if a held trim shrinks the core, spread handles connect
+  to exact boundary ticks. Padding and playback outside the view are named explicitly.
+  Distant retained neighbors remain labeled edge actions. Drag translation uses the
+  original boundary and frozen scale, so touching away from the center cannot jump it.
+- Trim writes reconcile the current presentation before resolving the selected
+  group's retained range. Joining a previous or next rally preserves a frame in
+  the newly retained footage; serves and unresolved reviews still separate groups.
 - The browser uses scrollable rally/score/source-time rows without thumbnails.
   Manual list dragging suspends follow and updates its independent center marker.
   Source seeking follows video, selects intersected rallies and scrolls the list;
@@ -59,8 +65,8 @@ native system sans typography. The full Editor retains its established palette.
 
 ## Available validation
 
-The Windows/WSL lab ran **190 portable core XCTest cases with zero failures**,
-including twelve new rally-review regressions. The ARM64 iOS app was built and
+The Windows/WSL lab ran **200 portable core XCTest cases with zero failures**,
+including twenty-two new rally-review/trim regressions. The ARM64 iOS app was built and
 development-signed through the current-source xtool path using `-NoInstall`.
 These results establish source compilation and portable behavior, not native UI
 execution. Production bundle identity remains `com.volleysplice.VolleySplice`;
@@ -76,6 +82,9 @@ The test invocation uses the actual checkout, serially with the app build:
 `RallyReviewTests` covers orphan work, ignored ranges, overlapping padding/serve
 identity, explicit decisions, gap navigation, retained neighbors, nonzero-padding
 frame retention, hour-long gaps and Add seeking without draft writes.
+`RallyTrimTests` adds both merge directions, serve/review boundaries, padded
+100/500ms cores, narrow tracks, frozen drag geometry, preserved focus during
+context seeking, focused playback stops and shared fractional/4x/8x rates.
 `CourtsideDeckUITests` and the updated existing UI tests describe Apple-runtime
 checks for the new navigation, shared team edits and native source-slider seeking.
 All thirteen hosted integration-test sources and six UI-test sources typechecked
@@ -96,6 +105,11 @@ controls cluster at intrinsic widths, and the synthetic video slot shrinks.
 Consequently these probes establish local source reuse and rendered control
 content, not C1 geometry or final native layout fidelity. No project source or
 private data was submitted to a hosted playground.
+The shared `CoreTrimSurface` is compiled by the ARM64 app build; it is not part of
+the Tokamak control probes. The tutorial's full Editor step opens that workspace.
+Rallies keeps its own progress strip; root review metrics appear only in Editor
+and Export. Seeking focused context retains the selected rally, while browser
+source seeking resumes list following and selection.
 
 Apple-runtime validation remains required for both landscape rotations, notches,
 portrait/tablet split view, Dynamic Type/VoiceOver focus and set-value behavior,

@@ -12,6 +12,7 @@ final class GuidedTourTests: XCTestCase {
         XCTAssertEqual(steps, [.deckVideo, .deckTrim, .deckTagging, .deckList, .deckAdd, .deckFullEditor, .deckExport])
         for pair in zip(steps, steps.dropFirst()) { XCTAssertEqual(pair.0.next(), pair.1) }
         XCTAssertNil(GuidedTourStep.deckExport.next())
+        XCTAssertEqual(GuidedTourStep.deckFullEditor.target, "editor-video")
     }
     func testLegacyProgressMigratesButDismissalDoesNotRestart() {
         for step in [GuidedTourStep.editorSettings, .editorScorePanel, .editorMarking] {

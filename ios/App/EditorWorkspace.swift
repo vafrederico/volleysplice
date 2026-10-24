@@ -83,7 +83,6 @@ struct EditorWorkspace: View {
     @State private var pendingSeekMs: Int64?
     @State private var compactProjectOptions = false
     @State private var pendingCompactProjectExport = false
-    @State private var trimWindow: TimeRange?
     @State private var resetConfirmation = false
     @State private var deleteConfirmation = false
     @State private var allSuggestions: [SuppressionRegion] = []
@@ -145,10 +144,12 @@ struct EditorWorkspace: View {
     private var pendingConfidenceIds: Set<String> { presentation.pendingConfidenceIds }
     private var rallyGroups: [EditableRallyGroup] { presentation.groups }
     private var currentGroup: EditableRallyGroup? {
-        if let group = rallyGroups.first(where: { $0.id == deck.selectedId }) { return group }
-        if stage == .rallies, deck.focus != nil { return nil }
-        if let selected = suggestions.first(where: { $0.id == selectedSuggestionId }),
+        if stage != .rallies, let selected = suggestions.first(where: { $0.id == selectedSuggestionId }),
            let group = rallyGroups.first(where: { $0.cuts.contains { $0.coreStartMs < selected.endMs && selected.startMs < $0.coreEndMs } }) { return group }
+        if stage == .rallies {
+            if let group = rallyGroups.first(where: { $0.id == deck.selectedId }) { return group }
+            if deck.focus != nil { return nil }
+        }
         return rallyGroups.first { $0.keepStartMs <= playheadMs && playheadMs < $0.coreEndMs } ??
         rallyGroups.last { $0.coreStartMs <= playheadMs } ?? rallyGroups.first
     }
@@ -216,7 +217,7 @@ struct EditorWorkspace: View {
         .background(EditorPalette.paper.ignoresSafeArea())
         .onAppear {
             allSuggestions = (try? project.feedback.map(ProjectArchive.suppressionRegions)) ?? []
-            refreshPresentation(); pollPlayback(); setTrimWindow()
+            refreshPresentation(); pollPlayback()
             deck.initialReviewKeys = Set(deckQueue.map(\.id))
             if let first = deckQueue.first { visitReview(first) }
             else { deck.selectedId = rallyGroups.first?.id; deck.browsing = true }
@@ -227,7 +228,6 @@ struct EditorWorkspace: View {
         .onChange(of: stage) { _, value in
             if value != .rallies { previewEndMs = nil }
             if value == .rallies {
-                setTrimWindow()
                 if deck.focus?.rallyId != deck.selectedId { deck.focus = deckQueue.first { $0.rallyId == deck.selectedId } }
             }
         }
@@ -236,7 +236,6 @@ struct EditorWorkspace: View {
         .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in
             deviceOrientation = UIDevice.current.orientation
         }
-        .onChange(of: currentCut?.id) { _, _ in setTrimWindow() }
         .onDisappear { player.pause(); onSave() }
         .sheet(isPresented: $settings, onDismiss: {
             let action = settingsAction; settingsAction = nil
@@ -280,7 +279,7 @@ struct EditorWorkspace: View {
         CourtsideDeckWorkspace(navigation: $deck, draft: draft, presentation: presentation, queue: deckQueue,
             bounds: bounds, playhead: playheadMs, playing: playing, sourceAvailable: player.currentItem != nil,
             overlay: preparedOverlay, onSeek: { value in
-                player.pause(); playing = false; seek(value); deck.follow(time: playheadMs, rallies: rallyGroups)
+                player.pause(); playing = false; seek(value); deck.sourceSeek(time: playheadMs, rallies: rallyGroups)
             }, onPlay: togglePlay, onRate: { rate in
                 edit { $0.playbackRate = rate }
                 if playing { player.playImmediately(atRate: rate) }
@@ -345,17 +344,18 @@ struct EditorWorkspace: View {
     }
     private func deckTrim(_ start: Bool, _ time: Int64) {
         guard let group = currentGroup else { return }
+        applyCoreTrim(selectedCutIds: group.cutIds, isStart: start, valueMs: time, minimumMs: RallyReview.minimumDurationMs)
+    }
+    private func applyCoreTrim(selectedCutIds: Set<String>, isStart: Bool, valueMs: Int64, minimumMs: Int64) {
         player.pause(); playing = false; previewEndMs = nil
-        let frame = playheadMs
-        let value = start ? min(max(bounds.startMs, time), group.coreEndMs - RallyReview.minimumDurationMs) :
-            max(min(bounds.endMs, time), group.coreStartMs + RallyReview.minimumDurationMs)
-        trim(group.asEditableCut(), start: start ? value : group.coreStartMs, end: start ? group.coreEndMs : value)
-        refreshPresentation()
-        if let updated = rallyGroups.first(where: { $0.cutIds.contains(group.id) }) {
-            deck.selectedId = updated.id
-            let retainedFrame = RallyReview.frameAfterTrim(frame, range: .init(startMs: updated.keepStartMs, endMs: updated.keepEndMs))
-            if frame != retainedFrame { seek(retainedFrame) }
-        }
+        do {
+            guard let result = try RallyReview.trimBoundary(draft, selectedCutIds: selectedCutIds, isStart: isStart, valueMs: valueMs,
+                minimumDurationMs: minimumMs, frameMs: playheadMs, suggestions: allSuggestions, bounds: bounds, durationMs: project.durationMs),
+                replaceDraft(result.draft) else { return }
+            refreshPresentation(from: result.draft, reconciled: result.presentation)
+            if playheadMs != result.frameMs { seek(result.frameMs) }
+            deck.selectedId = result.selectedGroup.id
+        } catch { message = error.localizedDescription }
     }
     private func deckServe(_ marker: ServeMarker?, _ side: ServingSide?) {
         editScore { state in
@@ -375,7 +375,7 @@ struct EditorWorkspace: View {
         case .deckVideo, .deckTrim, .deckTagging:
             stage = .rallies; deck.browsing = false
             if deck.selectedId == nil { deck.selectedId = rallyGroups.first?.id }
-        case .deckFullEditor: stage = .rallies
+        case .deckFullEditor: stage = .editor
         case .deckExport: stage = .export
         default: break
         }
@@ -603,7 +603,7 @@ struct EditorWorkspace: View {
             }
             Picker("Speed", selection: Binding(get: { draft.playbackRate }, set: { value in
                 edit { $0.playbackRate = value }; if playing { player.rate = value }
-            })) { ForEach([Float(1), 2, 4, 8], id: \.self) { Text("\(Int($0))×").tag($0) } }
+            })) { ForEach(EditorPlaybackPolicy.rates, id: \.self) { Text("\($0.formatted())×").tag($0) } }
                 .pickerStyle(.menu).font(isPhone ? .system(size: 11) : .body).controlSize(isPhone ? .mini : .regular).accessibilityIdentifier("playbackRate")
             Button(playing ? "Pause" : "Play", action: togglePlay)
                 .buttonStyle(EditorActionButtonStyle(background: EditorPalette.green, foreground: .white)).disabled(player.currentItem == nil).accessibilityIdentifier("playPause")
@@ -617,12 +617,12 @@ struct EditorWorkspace: View {
                 }
                 HStack(spacing: 8) {
                     Menu {
-                        ForEach([Float(1), 2, 4, 8], id: \.self) { rate in
-                            Button("\(Int(rate))x") {
+                        ForEach(EditorPlaybackPolicy.rates, id: \.self) { rate in
+                            Button("\(rate.formatted())x") {
                                 edit { $0.playbackRate = rate }; if playing { player.rate = rate }
                             }
                         }
-                    } label: { Text("Speed \u{00B7} \(Int(draft.playbackRate))x") }
+                    } label: { Text("Speed \u{00B7} \(draft.playbackRate.formatted())x") }
                         .buttonStyle(EditorActionButtonStyle(background: EditorPalette.paper, foreground: EditorPalette.ink, expand: true, minimumHeight: 48))
                         .accessibilityIdentifier("playbackRate")
                     Button(playing ? "Pause" : "Play", action: togglePlay)
@@ -747,56 +747,34 @@ struct EditorWorkspace: View {
         }
     }
     private func focusedTimeline(_ cut: EditableCut, desktop: Bool) -> some View {
-        let window = trimWindow ?? bounds
-        return VStack(alignment: .leading, spacing: 4) {
-            HStack { Text(time(window.startMs)); Spacer(); Text(time((window.startMs + window.endMs) / 2)); Spacer(); Text(time(window.endMs)) }
-                .font(.system(size: 10, design: .monospaced)).foregroundStyle(EditorPalette.muted)
-            GeometryReader { geometry in
-                TimelineTrack(cuts: [cut], ignored: draft.ignoredIntervals, intervals: intervals,
-                    reviewIds: Set(reviewCuts.map(\.id)), serves: score.enabled ? visibleScore.serveMarkers : [], switches: score.enabled ? visibleScore.sideSwitchMarkers : [],
-                    suggestions: suggestions, appliedSuggestionIds: presentation.appliedSuggestionIds,
-                    removedSuggestionIds: presentation.userRemovedSuggestionIds, removedCutIds: presentation.userRemovedCleanupCutIds,
-                    keptIds: keptIds, selectedCutIds: currentGroup?.cutIds ?? [], selectedSuggestionId: selectedSuggestionId, selectedServeId: currentServe?.id,
-                    range: window, playheadMs: playheadMs, onSeek: seek, onSelectCleanup: selectCleanup)
-                    .accessibilityIdentifier("focusedTimeline").guidedTourTarget("editor-focus")
-                trimHandle(cut, isStart: true, width: geometry.size.width, window: window)
-                trimHandle(cut, isStart: false, width: geometry.size.width, window: window)
-                if cut.origin == .inferred {
-                    paddingHandle(cut, isStart: true, width: geometry.size.width, window: window)
-                    paddingHandle(cut, isStart: false, width: geometry.size.width, window: window)
-                }
-            }.frame(height: isPhone ? 48 : 68).coordinateSpace(name: "trimTrack")
-            if !desktop { Text(cut.origin == .inferred ? "Orange outer handles adjust padding · green inner handles adjust rally length." : "Drag the green handles to adjust this rally's exact start and end.").font(isPhone ? .system(size: 10) : .caption2).foregroundStyle(EditorPalette.muted) }
-        }
-    }
-    private func trimHandle(_ cut: EditableCut, isStart: Bool, width: Double, window: TimeRange) -> some View {
-        let position = isStart ? cut.coreStartMs : cut.coreEndMs
-        let fraction = Double(position - window.startMs) / Double(max(1, window.endMs - window.startMs))
-        return RoundedRectangle(cornerRadius: 3).fill(EditorPalette.ink).frame(width: 16, height: isPhone ? 24 : 34)
-            .overlay { Text(isStart ? "‹" : "›").foregroundStyle(.white).font(.headline) }
-            .position(x: min(width - 8, max(8, fraction * width)), y: isPhone ? 18 : 24)
-            .gesture(DragGesture(coordinateSpace: .named("trimTrack")).onChanged { event in
-
-                let value = window.startMs + Int64(min(1, max(0, event.location.x / max(1, width))) * Double(window.endMs - window.startMs))
-                trim(cut, start: isStart ? value : cut.coreStartMs, end: isStart ? cut.coreEndMs : value)
-            }).accessibilityLabel(isStart ? "Rally core start" : "Rally core end").accessibilityIdentifier(isStart ? "trimStartHandle" : "trimEndHandle")
-            .accessibilityValue(String(format: "%.3f seconds", Double(position) / 1_000))
-    }
-    private func paddingHandle(_ cut: EditableCut, isStart: Bool, width: Double, window: TimeRange) -> some View {
-        let position = isStart ? cut.keepStartMs : cut.keepEndMs
-        let fraction = Double(position - window.startMs) / Double(max(1, window.endMs - window.startMs))
-        return RoundedRectangle(cornerRadius: 3).fill(EditorPalette.warning).frame(width: 18, height: isPhone ? 14 : 20)
-            .overlay { Text(isStart ? "‹" : "›").font(.headline).foregroundStyle(EditorPalette.ink) }
-            .position(x: min(width - 9, max(9, fraction * width)), y: isPhone ? 39 : 54)
-            .gesture(DragGesture(coordinateSpace: .named("trimTrack")).onChanged { event in
-
-                let value = window.startMs + Int64(min(1, max(0, event.location.x / max(1, width))) * Double(window.endMs - window.startMs))
-                setPaddingEdge(isStart: isStart, value: value)
-            }).accessibilityLabel(isStart ? "Extra time start" : "Extra time end").accessibilityIdentifier(isStart ? "paddingStartHandle" : "paddingEndHandle")
-            .accessibilityValue(String(format: "%.3f seconds", Double(position) / 1_000))
-            .accessibilityAdjustableAction { direction in
-                setPaddingEdge(isStart: isStart, value: position + (direction == .increment ? 100 : -100))
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Rally core").font(.system(size: 11, weight: .semibold)).foregroundStyle(EditorPalette.muted)
+            CoreTrimSurface(core: .init(startMs: cut.coreStartMs, endMs: cut.coreEndMs),
+                kept: .init(startMs: cut.keepStartMs, endMs: cut.keepEndMs), bounds: bounds, playhead: playheadMs,
+                startLabel: "Rally core start", endLabel: "Rally core end", startIdentifier: "trimStartHandle", endIdentifier: "trimEndHandle",
+                color: EditorPalette.ink, onTrim: { start, value in
+                    trim(cut, start: start ? value : cut.coreStartMs, end: start ? cut.coreEndMs : value)
+                }, track: { scale in focusedTrack(cut, window: scale.window) })
+                .id(currentGroup?.cutIds.sorted() ?? [cut.id])
+            if cut.origin == .inferred {
+                Text("Extra time").font(.system(size: 11, weight: .semibold)).foregroundStyle(EditorPalette.muted)
+                CoreTrimSurface(core: .init(startMs: cut.keepStartMs, endMs: cut.keepEndMs),
+                    kept: .init(startMs: cut.keepStartMs, endMs: cut.keepEndMs), bounds: bounds, playhead: playheadMs,
+                    startLabel: "Extra time start", endLabel: "Extra time end", startIdentifier: "paddingStartHandle", endIdentifier: "paddingEndHandle",
+                    color: EditorPalette.warning, onTrim: { start, value in setPaddingEdge(isStart: start, value: value) },
+                    track: { scale in focusedTrack(cut, window: scale.window) })
+                    .id(currentGroup?.cutIds.sorted() ?? [cut.id])
             }
+        }.accessibilityIdentifier("focusedTimeline").guidedTourTarget("editor-focus")
+    }
+    private func focusedTrack(_ cut: EditableCut, window: TimeRange) -> some View {
+        TimelineTrack(cuts: [cut], ignored: draft.ignoredIntervals, intervals: intervals,
+            reviewIds: Set(reviewCuts.map(\.id)), serves: score.enabled ? visibleScore.serveMarkers : [], switches: score.enabled ? visibleScore.sideSwitchMarkers : [],
+            suggestions: suggestions, appliedSuggestionIds: presentation.appliedSuggestionIds,
+            removedSuggestionIds: presentation.userRemovedSuggestionIds, removedCutIds: presentation.userRemovedCleanupCutIds,
+            keptIds: keptIds, selectedCutIds: currentGroup?.cutIds ?? [], selectedSuggestionId: selectedSuggestionId, selectedServeId: currentServe?.id,
+            range: window, playheadMs: playheadMs, onSeek: seek, onSelectCleanup: selectCleanup)
+            .padding(.horizontal, RallyTrimScale.handleWidth / 2)
     }
     private var rangeTools: some View {
         VStack(alignment: .leading, spacing: isPhone ? 6 : 10) {
@@ -1173,13 +1151,14 @@ struct EditorWorkspace: View {
     }
 
     private func edit(_ operation: (inout EditorDraft) -> Void) { var value = draft; operation(&value); replaceDraft(value) }
-    private func replaceDraft(_ value: EditorDraft) {
+    @discardableResult private func replaceDraft(_ value: EditorDraft) -> Bool {
         var value = value; value.updatedAtMs = Int64(Date().timeIntervalSince1970 * 1_000)
-        do { try value.validate(durationMs: project.durationMs); project.draft = value; onSave() }
-        catch { message = error.localizedDescription }
+        do { try value.validate(durationMs: project.durationMs); project.draft = value; onSave(); return true }
+        catch { message = error.localizedDescription; return false }
     }
-    private func refreshPresentation() {
-        var input = draft
+    private func refreshPresentation(from source: EditorDraft? = nil, reconciled: EditorPresentation? = nil) {
+        let source = source ?? draft
+        var input = source
         // Save timestamps, transport and export checkboxes cannot affect review
         // materialization. Do not rebuild its caches when those controls change.
         input.updatedAtMs = 0; input.pendingManualStartMs = nil; input.pendingIgnoreStartMs = nil
@@ -1187,9 +1166,9 @@ struct EditorWorkspace: View {
         input.renderScoreOverlay = false; input.renderScoreTimeline = false; input.fadeScoreOverlay = nil; input.chapterOptions = nil
         guard input != preparedInput else { return }
         preparedInput = input
-        let updated = EditorPresentation(draft: draft, suggestions: allSuggestions, bounds: bounds, durationMs: project.durationMs)
+        let updated = reconciled ?? EditorPresentation(draft: source, suggestions: allSuggestions, bounds: bounds, durationMs: project.durationMs)
         presentation = updated
-        deckQueue = RallyReview.queue(presentation: updated, ignored: draft.ignoredIntervals)
+        deckQueue = RallyReview.queue(presentation: updated, ignored: source.ignoredIntervals)
         deck.initialReviewKeys.formUnion(deckQueue.map(\.id))
         if let selected = deck.selectedId, !updated.groups.contains(where: { $0.id == selected }) {
             deck.selectedId = updated.groups.first { $0.cutIds.contains(selected) }?.id
@@ -1212,15 +1191,11 @@ struct EditorWorkspace: View {
         replaceDraft(EditorReview.decideCleanup(draft, suggestion: suggestion, keep: keep, reviewedCutIds: currentGroup?.cutIds ?? []))
     }
     private func trim(_ cut: EditableCut, start: Int64, end: Int64) {
-        let members = rallyGroups.first { $0.cutIds.contains(cut.id) }?.cuts ?? [cut]
-        var value = draft
-        if start != cut.coreStartMs, let first = members.min(by: { $0.coreStartMs < $1.coreStartMs }) {
-            value = EditorMath.setCoreStart(value, cutId: first.id, valueMs: start, minimumMs: bounds.startMs)
+        if start != cut.coreStartMs {
+            applyCoreTrim(selectedCutIds: [cut.id], isStart: true, valueMs: start, minimumMs: EditorMath.minimumMarkMs)
+        } else if end != cut.coreEndMs {
+            applyCoreTrim(selectedCutIds: [cut.id], isStart: false, valueMs: end, minimumMs: EditorMath.minimumMarkMs)
         }
-        if end != cut.coreEndMs, let last = members.max(by: { $0.coreEndMs < $1.coreEndMs }) {
-            value = EditorMath.setCoreEnd(value, cutId: last.id, valueMs: end, maximumMs: bounds.endMs)
-        }
-        replaceDraft(value)
     }
     private func setPaddingEdge(isStart: Bool, value: Int64) {
         guard let group = currentGroup else { return }
@@ -1261,15 +1236,13 @@ struct EditorWorkspace: View {
         else { next = reviewServes.first { $0.timestampMs >= playheadMs } ?? reviewServes[0] }
         exportTab = false; seek(next.timestampMs); serveReviewReveal += 1
     }
-    private func setTrimWindow() {
-        guard let cut = currentCut else { trimWindow = bounds; return }
-        trimWindow = .init(startMs: max(bounds.startMs, cut.keepStartMs - 5_000), endMs: min(bounds.endMs, cut.keepEndMs + 5_000))
-    }
     private func seek(_ value: Int64) {
         selectedSuggestionId = nil
         previewEndMs = nil
         let time = min(project.durationMs, max(0, value)); playheadMs = time
-        if let rally = RallyReview.at(time, in: rallyGroups) { deck.selectedId = rally.id }
+        if stage != .rallies {
+            deck.selectedId = (RallyReview.at(time, in: rallyGroups) ?? rallyGroups.last { $0.coreStartMs <= time } ?? rallyGroups.first)?.id
+        }
         seekGeneration += 1
         let generation = seekGeneration
         pendingSeekMs = time
@@ -1285,8 +1258,9 @@ struct EditorWorkspace: View {
             if stage == .rallies, !deck.browsing {
                 let start = currentGroup?.keepStartMs ?? deck.focus?.startMs ?? bounds.startMs
                 let end = min(bounds.endMs, currentGroup?.keepEndMs ?? deck.focus?.endMs ?? bounds.endMs)
-                if playheadMs < start || playheadMs >= end { seek(start) }
-                previewEndMs = end
+                let plan = RallyReview.focusedPlayback(frameMs: playheadMs, retained: .init(startMs: start, endMs: end))
+                if playheadMs != plan.positionMs { seek(plan.positionMs) }
+                previewEndMs = plan.endMs
             } else if playheadMs >= project.durationMs { seek(bounds.startMs) }
             player.playImmediately(atRate: draft.playbackRate); playing = true
         }
@@ -1321,7 +1295,7 @@ struct EditorWorkspace: View {
         var value = EditorMath.newDraft(ranges: cuts, durationMs: project.durationMs, gameWindow: bounds, sourceRevision: draft.sourceRevision)
         value.scoreTracking = draft.scoreTracking; value.renderScoreOverlay = draft.renderScoreOverlay; value.renderScoreTimeline = draft.renderScoreTimeline
         value.fadeScoreOverlay = draft.fadeScoreOverlay
-        replaceDraft(EditorMath.alignRallyServeMarkers(value)); setTrimWindow()
+        replaceDraft(EditorMath.alignRallyServeMarkers(value))
     }
     private func time(_ value: Int64, precise: Bool = false) -> String {
         let seconds = max(0, value) / 1_000

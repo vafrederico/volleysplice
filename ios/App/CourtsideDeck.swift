@@ -23,14 +23,17 @@ struct CourtsideWorkspaceBar<ProjectItems: View>: View {
             if wrapped {
                 HStack(spacing: 6) { projectControl; Spacer(minLength: 0); settings }
                 HStack { Spacer(minLength: 0); pills; Spacer(minLength: 0) }
-                metrics
+                if stage != .rallies { metrics }
             } else {
                 let pillWidth: CGFloat = 198
                 let side = max(0, (width - 16 - pillWidth) / 2)
                 HStack(spacing: 0) {
                     projectControl.frame(width: side, alignment: .leading).clipped()
                     pills.frame(width: pillWidth)
-                    HStack(spacing: 2) { metrics; settings }.frame(width: side, alignment: .trailing)
+                    HStack(spacing: 2) {
+                        if stage != .rallies { metrics }
+                        settings
+                    }.frame(width: side, alignment: .trailing)
                 }
             }
         }.padding(.horizontal, 8).padding(.vertical, 4)
@@ -118,7 +121,6 @@ struct CourtsideDeckWorkspace<Video: View>: View {
     let onSelect: (EditableRallyGroup) -> Void
     let onAdd: (TimeRange) -> Void
     @ViewBuilder var video: () -> Video
-    @State private var context: TimeRange?
     @State private var adding = false
     @State private var teamEditing = false
     @State private var firstTeam = true
@@ -152,8 +154,6 @@ struct CourtsideDeckWorkspace<Video: View>: View {
                 }
             }
         }.background(CourtsidePalette.ground).foregroundStyle(CourtsidePalette.ink)
-            .onAppear(perform: updateContext)
-            .onChange(of: navigation.selectedId) { _, _ in updateContext() }
             .alert(firstTeam ? "Team 1" : "Team 2", isPresented: $teamEditing) {
                 TextField("Team name", text: $teamName)
                 Button("Save") { onTeam(firstTeam, teamName) }
@@ -204,7 +204,7 @@ struct CourtsideDeckWorkspace<Video: View>: View {
                 Text(navigation.browsing ? "\(deckTime(bounds.endMs)) source" : String(format: "%.1f s", Double((rally?.coreEndMs ?? navigation.focus?.endMs ?? 0) - (rally?.coreStartMs ?? navigation.focus?.startMs ?? 0)) / 1_000))
                     .font(.system(size: 11)).foregroundStyle(.white.opacity(0.7)).lineLimit(1)
                 Menu {
-                    ForEach([Float(0.25), 0.5, 0.75, 1, 1.25, 1.5, 2], id: \.self) { rate in
+                    ForEach(EditorPlaybackPolicy.rates, id: \.self) { rate in
                         Button("\(rate.formatted())×") { onRate(rate) }
                     }
                 } label: { Text("\(draft.playbackRate.formatted())×").font(.system(size: 13, weight: .semibold)).frame(minWidth: 44, minHeight: 44) }
@@ -240,8 +240,7 @@ struct CourtsideDeckWorkspace<Video: View>: View {
                     nudgeControls(start: false, value: rally.coreEndMs)
                 }
                 CourtsideTimeline(rallies: rallies, effectiveIds: presentation.keptIds, ignored: draft.ignoredIntervals,
-                    window: context ?? bounds, playhead: playhead, selected: rally, onSeek: onSeek, onTrim: onTrim)
-                    .frame(height: 72)
+                    bounds: bounds, playhead: playhead, selected: rally, onSeek: onSeek, onTrim: onTrim)
                 HStack { Text("Start \(deckTime(rally.coreStartMs))"); Spacer(); Text("End \(deckTime(rally.coreEndMs))") }
                     .font(.system(size: 12)).monospacedDigit().foregroundStyle(CourtsidePalette.muted)
             }.guidedTourTarget("deck-trim")
@@ -325,7 +324,7 @@ struct CourtsideDeckWorkspace<Video: View>: View {
                 rallyList
             }.frame(maxHeight: .infinity)
             HStack(spacing: 8) {
-                Button(index >= 0 ? "Edit rally \(index + 1)" : "Edit selected rally") { navigation.browsing = false; updateContext() }
+                Button(index >= 0 ? "Edit rally \(index + 1)" : "Edit selected rally") { navigation.browsing = false }
                     .buttonStyle(CourtsideButtonStyle()).disabled(rally == nil).accessibilityIdentifier("deckEditSelected")
                 Button("+ Add missing rally") { adding = true }
                     .buttonStyle(CourtsideButtonStyle(selected: missing != nil))
@@ -375,9 +374,7 @@ struct CourtsideDeckWorkspace<Video: View>: View {
             }
         }
     }
-    private func updateContext() {
-        context = rally.map { RallyReview.context(for: $0, rallies: rallies, effectiveIds: presentation.keptIds, bounds: bounds) }
-    }
+
 }
 
 private struct RallyRowCenters: PreferenceKey {
@@ -389,59 +386,54 @@ struct CourtsideTimeline: View {
     let rallies: [EditableRallyGroup]
     let effectiveIds: Set<String>
     let ignored: [IgnoredSourceInterval]
-    let window: TimeRange
+    let bounds: TimeRange
     let playhead: Int64
     let selected: EditableRallyGroup
     let onSeek: (Int64) -> Void
     let onTrim: (Bool, Int64) -> Void
     var body: some View {
-        GeometryReader { geometry in
-            let usable = max(1, geometry.size.width - 36)
-            let duration = Double(max(1, window.endMs - window.startMs))
-            let x: (Int64) -> CGFloat = { 18 + CGFloat(Double($0 - window.startMs) / duration) * usable }
-            ZStack(alignment: .topLeading) {
-                RoundedRectangle(cornerRadius: 8).fill(EditorPalette.rail.opacity(0.45)).contentShape(Rectangle())
-                    .gesture(DragGesture(minimumDistance: 0).onChanged { gesture in
-                        onSeek(window.startMs + Int64(min(1, max(0, Double(gesture.location.x - 18) / Double(usable))) * duration))
-                    })
-                ForEach(rallies.filter { $0.keepStartMs < window.endMs && window.startMs < $0.keepEndMs }, id: \.id) { rally in
-                    let active = rally.id == selected.id
-                    let retained = RallyReview.retained(rally, effectiveIds: effectiveIds)
-                    RoundedRectangle(cornerRadius: 4).fill(active ? EditorPalette.orange : retained ? EditorPalette.green.opacity(0.5) : EditorPalette.danger.opacity(0.25))
-                        .frame(width: max(2, x(min(window.endMs, rally.coreEndMs)) - x(max(window.startMs, rally.coreStartMs))), height: active ? 36 : 24)
-                        .offset(x: x(max(window.startMs, rally.coreStartMs)), y: active ? 22 : 28).allowsHitTesting(false)
+        VStack(spacing: 3) {
+            CoreTrimSurface(core: .init(startMs: selected.coreStartMs, endMs: selected.coreEndMs),
+                kept: .init(startMs: selected.keepStartMs, endMs: selected.keepEndMs), bounds: bounds, playhead: playhead,
+                startLabel: "Trim rally start", endLabel: "Trim rally end", startIdentifier: "deckTrimStart", endIdentifier: "deckTrimEnd",
+                onTrim: onTrim) { scale in
+                    track(scale)
                 }
-                ForEach(ignored) { span in
-                    if span.startMs < window.endMs && window.startMs < span.endMs {
-                        Rectangle().fill(CourtsidePalette.control).frame(width: max(0, x(min(window.endMs, span.endMs)) - x(max(window.startMs, span.startMs))), height: 64)
-                            .offset(x: x(max(window.startMs, span.startMs)), y: 4).allowsHitTesting(false)
-                    }
+                .id(selected.cutIds.sorted())
+            HStack {
+                if let previous = RallyReview.neighbor(of: selected, direction: -1, rallies: rallies, effectiveIds: effectiveIds) {
+                    Button("Previous · \(deckTime(previous.coreStartMs))") { onSeek(previous.keepStartMs) }
+                        .accessibilityLabel("Previous retained rally at \(deckTime(previous.coreStartMs))")
                 }
-                Rectangle().fill(CourtsidePalette.accent).frame(width: 2, height: 72).offset(x: min(geometry.size.width - 2, max(0, x(playhead)))).allowsHitTesting(false)
-                ForEach([true, false], id: \.self) { start in
-                    let value = start ? selected.coreStartMs : selected.coreEndMs
-                    RoundedRectangle(cornerRadius: 4).fill(EditorPalette.green).frame(width: 10, height: 44)
-                        .overlay { RoundedRectangle(cornerRadius: 4).stroke(.white, lineWidth: 2) }
-                        .frame(width: 36, height: 64).contentShape(Rectangle())
-                        .offset(x: min(geometry.size.width - 36, max(0, x(value) - 18)), y: 8)
-                        .highPriorityGesture(DragGesture(minimumDistance: 0, coordinateSpace: .named("deck-trim-track"))
-                            .onChanged { gesture in onTrim(start, window.startMs + Int64(Double(gesture.location.x - 18) / Double(usable) * duration)) })
-                        .accessibilityElement().accessibilityLabel(start ? "Trim rally start" : "Trim rally end")
-                        .accessibilityValue(deckTime(value))
-                        .accessibilityAdjustableAction { direction in onTrim(start, value + (direction == .increment ? 1_000 : -1_000)) }
+                Spacer(minLength: 0)
+                if let next = RallyReview.neighbor(of: selected, direction: 1, rallies: rallies, effectiveIds: effectiveIds) {
+                    Button("Next · \(deckTime(next.coreStartMs))") { onSeek(next.keepStartMs) }
+                        .accessibilityLabel("Next retained rally at \(deckTime(next.coreStartMs))")
                 }
-                HStack {
-                    if let previous = RallyReview.neighbor(of: selected, direction: -1, rallies: rallies, effectiveIds: effectiveIds), previous.keepEndMs <= window.startMs {
-                        Button("‹ Previous · \(deckTime(previous.coreStartMs))") { onSeek(previous.keepStartMs) }
-                            .accessibilityLabel("Previous retained rally at \(deckTime(previous.coreStartMs))")
-                    }
-                    Spacer(minLength: 0)
-                    if let next = RallyReview.neighbor(of: selected, direction: 1, rallies: rallies, effectiveIds: effectiveIds), next.keepStartMs >= window.endMs {
-                        Button("Next · \(deckTime(next.coreStartMs)) ›") { onSeek(next.keepStartMs) }
-                            .accessibilityLabel("Next retained rally at \(deckTime(next.coreStartMs))")
-                    }
-                }.font(.system(size: 11)).buttonStyle(.plain).frame(width: geometry.size.width, height: 20)
-            }.coordinateSpace(name: "deck-trim-track")
+            }.font(.system(size: 11)).buttonStyle(.plain)
+        }
+    }
+    private func track(_ scale: RallyTrimScale) -> some View {
+        let window = scale.window
+        return ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: 8).fill(EditorPalette.rail.opacity(0.45)).contentShape(Rectangle())
+                .gesture(DragGesture(minimumDistance: 0).onChanged { gesture in onSeek(scale.time(atX: gesture.location.x)) })
+            ForEach(rallies.filter { $0.keepStartMs < window.endMs && window.startMs < $0.keepEndMs }, id: \.id) { rally in
+                let active = rally.id == selected.id
+                let retained = RallyReview.retained(rally, effectiveIds: effectiveIds)
+                RoundedRectangle(cornerRadius: 4).fill(active ? EditorPalette.orange : retained ? EditorPalette.green.opacity(0.5) : EditorPalette.danger.opacity(0.25))
+                    .frame(width: max(0, scale.x(min(window.endMs, rally.coreEndMs)) - scale.x(max(window.startMs, rally.coreStartMs))), height: active ? 36 : 24)
+                    .offset(x: scale.x(max(window.startMs, rally.coreStartMs)), y: active ? 18 : 24).allowsHitTesting(false)
+            }
+            ForEach(ignored) { span in
+                if span.startMs < window.endMs && window.startMs < span.endMs {
+                    Rectangle().fill(CourtsidePalette.control).frame(width: max(0, scale.x(min(window.endMs, span.endMs)) - scale.x(max(window.startMs, span.startMs))), height: 64)
+                        .offset(x: scale.x(max(window.startMs, span.startMs))).allowsHitTesting(false)
+                }
+            }
+            if playhead >= window.startMs && playhead <= window.endMs {
+                Rectangle().fill(CourtsidePalette.accent).frame(width: 2, height: 64).offset(x: scale.x(playhead)).allowsHitTesting(false)
+            }
         }
     }
 }

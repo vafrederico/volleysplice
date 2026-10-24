@@ -72,7 +72,7 @@ final class RallyReviewTests: XCTestCase {
         let effective: Set<String> = ["a", "selected", "z"]
         XCTAssertEqual(RallyReview.neighbor(of: groups[2], direction: -1, rallies: groups, effectiveIds: effective)?.id, "a")
         XCTAssertEqual(RallyReview.neighbor(of: groups[2], direction: 1, rallies: groups, effectiveIds: effective)?.id, "z")
-        XCTAssertEqual(RallyReview.context(for: groups[2], rallies: groups, effectiveIds: effective, bounds: bounds), .init(startMs: 12_000, endMs: 31_000))
+        XCTAssertEqual(RallyReview.context(for: groups[2], rallies: groups, effectiveIds: effective, bounds: bounds), .init(startMs: 18_500, endMs: 24_500))
     }
     func testMissingRangeClipsToUnoccupiedGapAndCannotCrossIgnoredTime() {
         let occupied: [TimeRange] = [.init(startMs: 10_000, endMs: 15_000), .init(startMs: 19_000, endMs: 21_000), .init(startMs: 24_000, endMs: 28_000)]
@@ -119,7 +119,7 @@ final class RallyReviewTests: XCTestCase {
     func testHourLongGapsDoNotCompressFiveSecondRally() {
         let groups = [cut("a", 1_000, 6_000), cut("b", 3_600_000, 3_605_000), cut("c", 7_200_000, 7_205_000)].map { EditableRallyGroup(cuts: [$0]) }
         let window = RallyReview.context(for: groups[1], rallies: groups, effectiveIds: ["a", "b", "c"], bounds: .init(startMs: 0, endMs: 8_000_000))
-        XCTAssertEqual(window, .init(startMs: 3_592_000, endMs: 3_613_000))
+        XCTAssertEqual(window, .init(startMs: 3_597_500, endMs: 3_607_500))
         XCTAssertGreaterThan(Double(5_000) / Double(window.endMs - window.startMs) * 240, 50)
         XCTAssertEqual(RallyReview.neighbor(of: groups[1], direction: -1, rallies: groups, effectiveIds: ["a", "b", "c"])?.id, "a")
         XCTAssertEqual(RallyReview.context(for: groups[1], rallies: groups, effectiveIds: ["b"], bounds: .init(startMs: 0, endMs: 8_000_000)), window)
