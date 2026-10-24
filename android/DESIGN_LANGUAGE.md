@@ -77,17 +77,23 @@ Setup and ready projects use the same compact shell:
 - review counters and export summary derived from the current draft;
 - thin outer rules and Paper surfaces rather than a decorative app bar.
 
-For ready projects on large screens, the header contains:
+Ready projects use one top bar in every layout. In landscape and wide windows,
+the logo, content-sized project selector and adjacent trash sit on the left;
+`Rallies`, `Editor` and `Export` stay centered. The Editor/Export review counters,
+included-clip count and total time sit on the right, followed by Settings.
+Review boxes use compact two-line Review cleanup/clips/serves labels and sit
+immediately before Settings, with clip count and total time to their left. This
+whole group hugs the trailing edge rather than starting beside the centered pills.
+The wide editing and export workspaces do not repeat a header inside their content.
 
-1. the current-project selector;
-2. compact `Review` and `Export` tabs;
-3. `Review cleanup`, `Review clips`, and `Review serves` counters on the right;
-4. clips included and planned duration;
-5. Settings and More.
-
-Keep the Review and Export tabs narrow. Review counters sit immediately to the left
-of the clips-included summary so unresolved work is visible without taking vertical
-space. Do not add subtitles beneath the primary header items.
+The bar applies system/cutout safe-drawing and waterfall insets, plus horizontal
+padding, so the logo and settings control clear both curved edges in either rotation.
+In tight wide windows the metric strip scrolls inside its allotted space while the
+tabs and settings stay fixed. Queue actions return to Editor review when needed.
+Very narrow portrait windows wrap project controls and navigation into two rows
+within the same bar so short project names remain readable. Landscape keeps one row.
+Responsive workspace classification uses the available window height before the
+bar, so moving controls into the bar does not collapse the landscape editor.
 
 ## Desktop and tablet review workspace
 
@@ -171,6 +177,107 @@ The saved-video label must come from persisted project export metadata, not a tr
 toast or process-local counter. It should survive app and device restarts.
 
 ## Rebuilt compact phone UI
+
+### Rally workspace: Courtside Deck
+
+The `Rallies` / `Editor` pill switches between the existing editor below and
+the approved [Courtside Deck prototype](../artifacts/design-experiments/courtside-deck/v4/index.html).
+The adjacent `Export` tab opens the shared export workspace.
+Rallies opens by default for each new project/app session. The selected tab survives
+activity recreation and rotation as navigation state, outside project exports. Both layouts edit the
+same persisted draft, score tracking and playback position. Switching never
+creates a separate editing session.
+
+The approved C1 framed-sheet direction (seed `18391`) is scoped to Rallies:
+cool ground `#eef3f4`, white decision sheet, ink `#131416`, secondary text
+`#5d5f60`, data accent `#1b6c80`, and Courtside Sans 400/500/600, an outline-preserving
+subset of the approved IBM Plex Sans, renamed under its font license.
+The existing Editor retains its established palette and layout.
+
+- Needs-review and checked counts sit above the large video, outside the card.
+- The top bar places the project picker beside the logo and Rallies/Editor/Export
+  tabs at the right in portrait, centered in landscape, with a settings cog that opens the existing settings
+  modal. Project changes flush the current draft first. Export uses the existing
+  MP4, chapters and project-save actions, with the existing wide export layout.
+- The portrait Editor uses this single top bar. It does not repeat the logo,
+  project picker, settings gear, version or More menu inside its scrolling content.
+  Each project-menu entry shows its current analysis/export status. A 44dp trash
+  button beside the selector opens the existing delete confirmation.
+  The selector wraps its project name plus padding and a fixed chevron, capped by
+  available space. The trash follows its trailing edge; spare header width stays
+  between this project-control group and the tabs. Status stays in the project menu
+  so it cannot push the chevron away from a short project name.
+- Export owns Add scores to the final video, Score visibility (Always visible or
+  Fade in and out), and Show the point history, all using the shared draft. The
+  portrait Editor keeps final-cut preview but has no duplicate save/chapter actions.
+  Settings contains Project options, the installed version, and Reset tutorial.
+  Reset tutorial returns to Rallies. The twelve-step tour opens the real review,
+  list, missing-rally, Editor and Export views as it explains tagging, seeking,
+  trimming, navigation and saving. It never confirms an edit or adds a rally.
+  Progress survives recreation; finished/dismissed tours stay closed, while an
+  unfinished older Editor tour restarts at rally review. Empty projects skip
+  focused-rally controls and still explain browsing and adding missing footage.
+- Playback speed sits after the duration in the transport row and shares Editor's
+  persisted 1x/2x/4x/8x setting. Play/pause uses centered vector geometry.
+- Both scoreboard team names are tappable. The team-name dialog saves into the
+  shared score-tracking draft, so Editor, Rallies and exports use the same names.
+- The decision sheet starts with Start −1s/+1s, the centered rally number,
+  and End −1s/+1s. Its start/end handles trim continuously; timestamps update
+  during the gesture. Nudges provide an accessible alternative to dragging.
+  The timeline uses Editor's track, padding/core bars and playhead; no video
+  thumbnail strip or preview placeholder is shown.
+  It includes the previous and next retained rallies, skipping removed or fully
+  excluded rallies. Neighbours use muted bars and rally numbers; only the selected
+  rally has trim handles. The visible time window stays fixed throughout a drag.
+  Trimming and boundary nudges retain the current viewed frame while it stays
+  inside the adjusted rally. A boundary that excludes it clamps the playhead to
+  the nearest remaining edge.
+  Timeline gestures enable ExoPlayer's scrubbing mode while dragging and finish
+  on the exact requested video frame. Playback remains paused for frame inspection.
+- Keep/Remove and Near/Far share the same editing callbacks as Editor.
+  Not a serve is a visible third serving choice for both unresolved and assigned
+  markers. Removing a serve leaves that choice selected and allows Near/Far to
+  restore a serving marker through the shared draft.
+  Separate clip, cleanup and serving flags must all resolve before Next.
+  Orphan cleanup/serve evidence remains reviewable.
+- Focused controls end with Previous rally, Next review and Next rally. Rally
+  navigation follows the retained neighbours shown in the timeline, disables at
+  either end, and leaves unresolved review decisions in the queue. The All rallies
+  action above the player returns to the list.
+  Navigation preserves playback intent, including while a seek is buffering:
+  playing continues at the new rally and stops at its end; paused remains paused.
+  Timeline scrubbing and trimming still pause for frame inspection.
+- Browse shows rally numbers, source times, computed scores and keep/review status
+  in rows without previews. Its list scrolls independently.
+  Short, wide windows combine the list heading and source status and compact the
+  list chrome, leaving room to drag the list. The narrow player pane keeps a
+  single transport row and places its current timestamp over the video.
+  The highlighted row is the selected rally. Seeking inside a rally selects it;
+  seeking a source gap retains the selection and highlights Add missing rally.
+  Edit rally stays below the list even while reviews remain; Review is a separate
+  header action. Editing opens the selected rally's controls in Rallies.
+- The collapsible source rail is proportional to source time. The filled dot is
+  playback; the outlined diamond is the midpoint of the rally nearest the visible
+  list center. Manual scrolling changes only the list marker and suspends follow.
+  Explicit source seeking resumes follow and centers the nearby rally during
+  scrubbing, before the gesture ends.
+- Seeking a gap stays in Browse and highlights Add missing rally. It never
+  switches workspaces. The Editor pill always opens the existing Editor.
+- Add missing rally is a separate source-scrubbing flow using Editor's source
+  timeline. Cancel changes nothing.
+  Confirmation creates a real manual cut limited to a source gap, excluding
+  ignored footage, then returns to Browse. Both workspaces see it immediately.
+- Workspace navigation, selection, playback position and list position survive
+  pill switches and activity recreation. Project edits persist through the
+  existing draft store, which also flushes on Stop. Native Back cancels adding or returns
+  from focused editing/browsing.
+- Narrow screens place the sheet/register below the video; wide windows place it
+  alongside. Controls remain scrollable for short windows and larger font scales.
+
+Export uses the existing final-interval and score-rendering pipeline. Native
+device screenshots and Compose gesture tests validate this implementation.
+
+### Full editor
 
 Compact mode is a deliberate vertical version of the same editor, not the old UI
 compressed around the new features.

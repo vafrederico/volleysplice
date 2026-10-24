@@ -1,0 +1,258 @@
+{
+  "scope": "Parent integration verification of the nine independent HTML prototypes and comparison wrapper.",
+  "browser": "T3 collaborative preview and html_preview",
+  "integrationAssertions": {
+    "passed": 53,
+    "failed": 0,
+    "checks": [
+      {
+        "name": "A1 browse cards",
+        "pass": true
+      },
+      {
+        "name": "A1 collapse source",
+        "pass": true
+      },
+      {
+        "name": "A2 browse cards",
+        "pass": true
+      },
+      {
+        "name": "A2 collapse source",
+        "pass": true
+      },
+      {
+        "name": "A3 browse cards",
+        "pass": true
+      },
+      {
+        "name": "A3 collapse source",
+        "pass": true
+      },
+      {
+        "name": "B1 browse cards",
+        "pass": true
+      },
+      {
+        "name": "B1 collapse source",
+        "pass": true
+      },
+      {
+        "name": "B2 browse cards",
+        "pass": true
+      },
+      {
+        "name": "B2 collapse source",
+        "pass": true
+      },
+      {
+        "name": "B3 browse cards",
+        "pass": true
+      },
+      {
+        "name": "B3 collapse source",
+        "pass": true
+      },
+      {
+        "name": "C1 browse cards",
+        "pass": true
+      },
+      {
+        "name": "C1 collapse source",
+        "pass": true
+      },
+      {
+        "name": "C2 browse cards",
+        "pass": true
+      },
+      {
+        "name": "C2 collapse source",
+        "pass": true
+      },
+      {
+        "name": "C3 browse cards",
+        "pass": true
+      },
+      {
+        "name": "C3 collapse source",
+        "pass": true
+      },
+      {
+        "name": "A1 bounds controls",
+        "pass": true
+      },
+      {
+        "name": "A2 bounds controls",
+        "pass": true
+      },
+      {
+        "name": "A3 bounds controls",
+        "pass": true
+      },
+      {
+        "name": "B1 bounds controls",
+        "pass": true
+      },
+      {
+        "name": "B2 bounds controls",
+        "pass": true
+      },
+      {
+        "name": "B3 bounds controls",
+        "pass": true
+      },
+      {
+        "name": "C1 bounds controls",
+        "pass": true
+      },
+      {
+        "name": "C2 bounds controls",
+        "pass": true
+      },
+      {
+        "name": "C3 bounds controls",
+        "pass": true
+      },
+      {
+        "name": "no-skills filter",
+        "pass": true
+      },
+      {
+        "name": "frontend-design filter",
+        "pass": true
+      },
+      {
+        "name": "taste filter",
+        "pass": true
+      },
+      {
+        "name": "Focus",
+        "pass": true
+      },
+      {
+        "name": "Compare enabled",
+        "pass": true
+      },
+      {
+        "name": "Two-design comparison",
+        "pass": true
+      },
+      {
+        "name": "Return all nine",
+        "pass": true
+      },
+      {
+        "name": "Storage isolated",
+        "pass": true
+      },
+      {
+        "name": "A1 reset to shared rally",
+        "pass": true
+      },
+      {
+        "name": "A1 font loaded",
+        "pass": true
+      },
+      {
+        "name": "A2 reset to shared rally",
+        "pass": true
+      },
+      {
+        "name": "A2 font loaded",
+        "pass": true
+      },
+      {
+        "name": "A3 reset to shared rally",
+        "pass": true
+      },
+      {
+        "name": "A3 font loaded",
+        "pass": true
+      },
+      {
+        "name": "B1 reset to shared rally",
+        "pass": true
+      },
+      {
+        "name": "B1 font loaded",
+        "pass": true
+      },
+      {
+        "name": "B2 reset to shared rally",
+        "pass": true
+      },
+      {
+        "name": "B2 font loaded",
+        "pass": true
+      },
+      {
+        "name": "B3 reset to shared rally",
+        "pass": true
+      },
+      {
+        "name": "B3 font loaded",
+        "pass": true
+      },
+      {
+        "name": "C1 reset to shared rally",
+        "pass": true
+      },
+      {
+        "name": "C1 font loaded",
+        "pass": true
+      },
+      {
+        "name": "C2 reset to shared rally",
+        "pass": true
+      },
+      {
+        "name": "C2 font loaded",
+        "pass": true
+      },
+      {
+        "name": "C3 reset to shared rally",
+        "pass": true
+      },
+      {
+        "name": "C3 font loaded",
+        "pass": true
+      }
+    ]
+  },
+  "visualChecks": [
+    {
+      "view": "All nine review screens",
+      "width": 728,
+      "contentHeight": 2245,
+      "consoleErrors": 0
+    },
+    {
+      "view": "B2 and C3 comparison in Browse",
+      "width": 728,
+      "contentHeight": 1120,
+      "consoleErrors": 0
+    },
+    {
+      "view": "A1 Focus in Review",
+      "width": 360,
+      "contentHeight": 1238,
+      "horizontalOverflow": false,
+      "consoleErrors": 0
+    }
+  ],
+  "staticChecks": {
+    "documents": 10,
+    "javascriptSyntax": "pass",
+    "externalRuntimeDependencies": 0,
+    "machinePaths": 0,
+    "viewportHeightUnits": 0,
+    "indexCharacters": 476728,
+    "inlineCharacterLimit": 512000,
+    "gitDiffCheck": "pass"
+  },
+  "limits": [
+    "Playback, edits, thumbnails and match data are synthetic simulations.",
+    "Agent-specific responsive and interaction results are recorded in each condition's manifest.json.",
+    "This verification covers comparison packaging; no native Android implementation or build was added for the nine-design experiment."
+  ]
+}

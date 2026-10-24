@@ -1,0 +1,152 @@
+{
+  "name": "Courtside Deck",
+  "variant": "C1",
+  "version": 4,
+  "status": "Interactive prototype for review",
+  "entry": "index.html",
+  "standalone": true,
+  "offline": true,
+  "direction": {
+    "name": "framed-sheet",
+    "seed": 18391,
+    "typeface": "IBM Plex Sans",
+    "weights": [
+      400,
+      500,
+      600
+    ],
+    "redraws": 0,
+    "basis": "Only approved C1 v3 iterated. Original repaired embedded font assets, fixture and synthetic frame retained."
+  },
+  "changes": [
+    "Editor pill opens a distinct, internally scrollable representation of the existing compact Android timeline Editor.",
+    "Add missing rally is a separate explicit source-scrubber route. Cancel creates nothing; Add creates one local synthetic rally containing the sought point, clipped to source/gap bounds with a 500 ms minimum.",
+    "Editor, Review, Browse and Bounds share rally selection, inclusion, serving side, core bounds and source clock. Editor also supports local per-rally padding, splitting, preview and honest export sequence previews.",
+    "Workspace return preserves prior Review/Browse/Bounds and Bounds return destination. Browse list scroll, center marker, collapse and manual-follow state survive workspace switches.",
+    "Existing v3 rally-first appearance, progress, exact four 1 s edge actions, draggable bounds, dual source/list markers, gap highlight, review completion and Reset preserved."
+  ],
+  "routes": {
+    "rallies": [
+      "review",
+      "browse",
+      "bounds"
+    ],
+    "editor": "Existing compact timeline workspace",
+    "add-missing": "Explicit missing-rally flow with source scrubber; returns to its origin"
+  },
+  "default": {
+    "selected": "R018",
+    "score": [
+      9,
+      8
+    ],
+    "sourcePositionMs": 770400,
+    "rallies": 36,
+    "pending": 4,
+    "sourceDurationMs": 1560000
+  },
+  "layout": {
+    "appWidth": 390,
+    "appHeight": 844,
+    "fluidMinimumTested": 360,
+    "testedPageWidths": [
+      360,
+      390,
+      768
+    ],
+    "editorScrolling": "Internal vertical workspace plus capped All rallies list",
+    "viewportHeightUnits": false,
+    "rootPercentHeights": false
+  },
+  "payload": {
+    "characters": 149785,
+    "bytes": 149835,
+    "maximumCharacters": 512000,
+    "externalRuntimeAssets": 0,
+    "sha256": "b56bfe9652cbd651fc4c9def9a13e7f5335f88d739a58609c028e752faa0f1c0"
+  },
+  "inventory": [
+    "Synthetic Practice match project and one 26 minute source.",
+    "36 chronological fixture rallies, including four overlapping clip/serve review items.",
+    "Cedar and Harbor synthetic team scores.",
+    "R018 starts selected at 9:8 and 770400 ms source time.",
+    "Shared included/removed, clip review and near/far/review serve fields.",
+    "Shared millisecond core bounds and optional Editor padding fields.",
+    "Browse source position and independent viewport-center rally midpoint.",
+    "Local additions and splits marked as synthetic added rallies.",
+    "Source gaps are explicit opportunities for Add missing.",
+    "All totals computed from the shared local data."
+  ],
+  "tasteReceipt": {
+    "face": "Preserved IBM Plex Sans and C1 framed sheet. Recognizable existing Editor palette and hierarchy only inside the Editor route.",
+    "signature": "Rally-first source-proportional rail with independent playback dot and list-center diamond; existing Editor has two half-source timeline rows.",
+    "questions": {
+      "rallies": "What decision or trim does this rally need?",
+      "editor": "Which source clip or edit needs adjustment?",
+      "add-missing": "Where is the missing rally in this source gap?"
+    },
+    "idea": "The scored rally becomes the unit of review on the Courtside Deck; the same rally is editable in the existing compact source timeline.",
+    "critique": {
+      "hierarchy": "Rallies retains the large synthetic video and immediate decisions. Existing Editor intentionally keeps the requested long-form hierarchy.",
+      "edges": "App is exactly 390 × 844, fluid to 360, centered at 768. No horizontal overflow across any route.",
+      "colour": "C1 teal retained in Rallies. Existing Editor uses authorized paper, ink, green and orange, with a darker orange heading for readable contrast.",
+      "numbers": "Source, scores, selected index, included counts and preview durations derive from shared data. Fonts render all original weights.",
+      "states": "Gap add highlights, disabled add inside an existing rally, minimum-length rejection, Cancel, completion and Reset verified.",
+      "legends": "Core, padding, review and serve legend swatches match their source-row marks.",
+      "phone": "Internal Editor scrolling reaches Game timeline, Selected rally, marking tools and All rallies at 360 and 390."
+    },
+    "remainingVisualLimitation": "Compact reference metadata uses small text; the inspector reports one defended tiny-text warning. No unresolved FAIL findings."
+  },
+  "isolationReceipt": {
+    "sharedBootstrap": "Read SHARED_AGENTS.md completely and INDEX.md. User Taste-only instruction overrides the shared default to load both design skills.",
+    "skill": "Taste SKILL.md and its full app-screens reference; own required lint, inspect and Browser/Page helper scripts.",
+    "authorizedInputs": [
+      "Supplied final C1 v3 baseline",
+      "Supplied font license",
+      "Supplied existing compact Editor source excerpts",
+      "Both supplied existing Editor screenshots, inspected with image viewer"
+    ],
+    "referenceException": "User explicitly authorized existing Editor references for this v4 route. Earlier no-existing-UI restriction was superseded only for these supplied references.",
+    "screenshotsEmbedded": false,
+    "otherDesignSkillsRead": false,
+    "otherVariantsRead": false,
+    "unrelatedAndroidSourceRead": false,
+    "delegation": false,
+    "writes": "Only this v4 artifact directory, its .gitignore and ignored .process evidence. Temporary isolated browser profiles used outside the repository.",
+    "applicationChanges": false,
+    "vaultWrites": false,
+    "commits": false,
+    "pushes": false,
+    "pullRequests": false,
+    "externalPublishing": false,
+    "nativeLaunchOrBuild": false
+  },
+  "validation": {
+    "checksFile": "checks.json",
+    "passed": 68,
+    "failed": 0,
+    "trustedInputs": [
+      "mouse",
+      "wheel",
+      "touch"
+    ],
+    "screenshotsInspected": true,
+    "htmlPreviewInspected": true
+  },
+  "limitations": [
+    "Synthetic local playback and sequence previews; no backend, native launch or real video export.",
+    "Project switching, source relink and extra-footage exclusion are honest preview dialogs."
+  ],
+  "assets": {
+    "frame": "Original synthetic code-drawn volleyball frame from approved baseline; no screenshot or real footage embedded.",
+    "font": "Original 400/500/600 IBM Plex Sans font assets, unchanged; SIL OFL 1.1 in FONT-LICENSES.txt.",
+    "foundImagesOrNewAssets": 0
+  },
+  "files": [
+    "index.html",
+    "manifest.json",
+    "checks.json",
+    "FONT-LICENSES.txt",
+    ".gitignore"
+  ]
+}

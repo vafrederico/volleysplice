@@ -1,0 +1,20 @@
+{
+  "name": "C1 Courtside Deck v2",
+  "entry": "index.html",
+  "format": "Standalone interactive HTML; all fonts, styles, scripts and synthetic media embedded",
+  "direction": {"style": "framed-sheet", "seed": 18391, "font": "IBM Plex Sans", "redraws": 0},
+  "phone": {"width": 390, "height": 844, "responsive_widths": [360, 390, 768]},
+  "changes": [
+    "Review counts and progress above the video; no progress inside the decision card",
+    "Local rally timeline with live duration, playhead and separate draggable start/end targets",
+    "Keep, Remove, Near and Far actions without redundant category labels",
+    "Exact source seeking stays in Browse; gaps highlight Add missing rally",
+    "Explicit missing action preserves source position on entry to Editor",
+    "Source seeking scrolls to the matching or nearest chronological rally"
+  ],
+  "fixture": {"rallies": 36, "selected_rally": 18, "score": "9:8", "position_ms": 770400, "review_flags": 4},
+  "isolation": "Read shared bootstrap and index, Taste skill with its app-screen reference/scripts, and the supplied C1 baseline only. No delegation, other design skills, application-source edits, comparison edits or other agents' artifacts.",
+  "assets": "Original embedded WOFF2 subsets and synthetic frame preserved byte-for-byte. Reuse the parent-provided IBM Plex Sans font license for distribution.",
+  "process": ".process/ contains ignored build, interaction-check and screenshot evidence",
+  "limitations": ["Media and session persistence are simulated locally", "Physical touch, native pointer capture and screen-reader behavior require manual verification"]
+}

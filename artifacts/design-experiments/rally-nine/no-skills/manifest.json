@@ -1,0 +1,183 @@
+{
+  "condition": "no-skills",
+  "assignedSkill": null,
+  "variants": [
+    {
+      "id": "variant-1",
+      "name": "Focus Deck",
+      "concept": "A dark, concentrated review workspace: large footage, paired explicit decisions, and a compact one-column rally roster with the source map at left.",
+      "file": "variant-1.html",
+      "interactions": [
+        "Simulated play/pause and time progression",
+        "Explicit retained keep/remove and near/far decisions",
+        "Flag-derived review count, progression and completion",
+        "Start/end range and 0.1-second nudge editing, save and cancel",
+        "All 36 original rally cards selectable immediately",
+        "Source-proportional vertical timeline, gap seeking and collapse/restore",
+        "Mock full Editor at source position, missed-rally addition and return",
+        "Independent Review, Browse and Bounds toolbar and query states",
+        "Local browser persistence and reset"
+      ],
+      "checks": {
+        "status": "passed",
+        "responsiveViewports": [
+          360,
+          390,
+          768
+        ],
+        "independentStates": [
+          "review",
+          "browse",
+          "bounds"
+        ],
+        "initialRally": 18,
+        "initialScore": "Cedar 9 : 8 Harbor",
+        "flagDerivedPendingCount": 4,
+        "allOriginalCardsNavigated": 36,
+        "additionalT3InteractionAssertions": 43,
+        "reviewCompletionAndEditorAddReturnFlow": "passed",
+        "decisionsPersistAcrossNavigation": "passed",
+        "embeddedFixtureAndFrameExactMatch": true,
+        "visibleAppButtonsMinimumCssPx": 44,
+        "screenshotsInspected": true
+      }
+    },
+    {
+      "id": "variant-2",
+      "name": "Court Dock",
+      "concept": "Edge-to-edge footage with a floating control dock. Spatial far/near court buttons oppose keep/remove actions; browsing switches to thumbnail tiles and a right-side source map.",
+      "file": "variant-2.html",
+      "interactions": [
+        "Simulated play/pause and time progression",
+        "Explicit retained keep/remove and near/far decisions",
+        "Flag-derived review count, progression and completion",
+        "Start/end range and 0.1-second nudge editing, save and cancel",
+        "All 36 original rally cards selectable immediately",
+        "Source-proportional vertical timeline, gap seeking and collapse/restore",
+        "Mock full Editor at source position, missed-rally addition and return",
+        "Independent Review, Browse and Bounds toolbar and query states",
+        "Local browser persistence and reset"
+      ],
+      "checks": {
+        "status": "passed",
+        "responsiveViewports": [
+          360,
+          390,
+          768
+        ],
+        "independentStates": [
+          "review",
+          "browse",
+          "bounds"
+        ],
+        "initialRally": 18,
+        "initialScore": "Cedar 9 : 8 Harbor",
+        "flagDerivedPendingCount": 4,
+        "allOriginalCardsNavigated": 36,
+        "additionalT3InteractionAssertions": 43,
+        "reviewCompletionAndEditorAddReturnFlow": "passed",
+        "decisionsPersistAcrossNavigation": "passed",
+        "embeddedFixtureAndFrameExactMatch": true,
+        "visibleAppButtonsMinimumCssPx": 44,
+        "screenshotsInspected": true
+      }
+    },
+    {
+      "id": "variant-3",
+      "name": "Match Ledger",
+      "concept": "A score-first match journal. A numbered review gutter and progressive one-question decisions replace the dashboard; browsing becomes a ledger with right-aligned preview frames.",
+      "file": "variant-3.html",
+      "interactions": [
+        "Simulated play/pause and time progression",
+        "Explicit retained keep/remove and near/far decisions",
+        "Flag-derived review count, progression and completion",
+        "Start/end range and 0.1-second nudge editing, save and cancel",
+        "All 36 original rally cards selectable immediately",
+        "Source-proportional vertical timeline, gap seeking and collapse/restore",
+        "Mock full Editor at source position, missed-rally addition and return",
+        "Independent Review, Browse and Bounds toolbar and query states",
+        "Local browser persistence and reset"
+      ],
+      "checks": {
+        "status": "passed",
+        "responsiveViewports": [
+          360,
+          390,
+          768
+        ],
+        "independentStates": [
+          "review",
+          "browse",
+          "bounds"
+        ],
+        "initialRally": 18,
+        "initialScore": "Cedar 9 : 8 Harbor",
+        "flagDerivedPendingCount": 4,
+        "allOriginalCardsNavigated": 36,
+        "additionalT3InteractionAssertions": 43,
+        "reviewCompletionAndEditorAddReturnFlow": "passed",
+        "decisionsPersistAcrossNavigation": "passed",
+        "embeddedFixtureAndFrameExactMatch": true,
+        "visibleAppButtonsMinimumCssPx": 44,
+        "screenshotsInspected": true
+      }
+    }
+  ],
+  "inputsUsed": [
+    {
+      "name": "fixture.json",
+      "role": "Identical synthetic match, all 36 rallies, scores, flags and starting position",
+      "embedded": true,
+      "sha256": "a3eeb3932d89506bea319b8f0b2f37fb0c323bc5c72499d2038b8ac38351b0e5"
+    },
+    {
+      "name": "frame.svg",
+      "role": "Identical video illustration and every rally-card start-frame preview",
+      "embedded": true,
+      "sha256": "e8ddf42ef36a60169302233efb75ca9b32038ab9365718c795bf6703cd0037b5"
+    },
+    {
+      "name": "Source Sans 3",
+      "role": "Embedded subset variable font; complete SIL OFL license embedded in each HTML"
+    }
+  ],
+  "skillFilesRead": [],
+  "isolationReceipt": {
+    "read": [
+      "SHARED_AGENTS.md (complete)",
+      "INDEX.md",
+      "AGENTS.md (repository safety/build/privacy rules)",
+      "Shared synthetic fixture.json and frame.svg"
+    ],
+    "designSkillsRead": [],
+    "designReferencesRead": [],
+    "priorAppLayoutsRead": false,
+    "androidDesignDocumentsRead": false,
+    "otherAgentsOrOutputsInspected": false,
+    "delegatedFurther": false,
+    "applicationSourceModified": false,
+    "vaultWrites": false
+  },
+  "limitations": [
+    "Synthetic local interaction prototypes, not video playback, real detection, exports, or Android implementation.",
+    "Original synthetic illustration repeats across rallies as required by the comparison.",
+    "Newly added mock rallies inherit nearby fixture scores; this does not model score inference.",
+    "Decisions persist in browser localStorage per variant; storage availability depends on the embedding browser.",
+    "T3 preview screenshot failed twice: Preview snapshot failed: Preview automation snapshot timed out after 15000ms. Cua fallback reported Browser is not available: iab. Visual inspection used isolated headless Edge screenshots instead.",
+    "The compact source map is a seek surface. Rally cards provide the larger touch targets for exact rally selection.",
+    "Automatic approval review rejected temporary tooling cleanup twice with reason blocked by policy. Temporary tooling remains ignored by the experiment-local .gitignore; it is not required by the self-contained prototypes."
+  ],
+  "validation": {
+    "status": "passed with screenshot-tool fallback",
+    "responsiveCases": 27,
+    "runtimeErrors": 0,
+    "screenshotsCaptured": 15,
+    "t3Preview": "Thread-owned isolated tab used for interaction tests. Snapshot attempted twice and timed out.",
+    "visualFallback": "Isolated headless Microsoft Edge, awaiting embedded fonts and images. No installed design skills or design references used.",
+    "evidence": [
+      "artifacts/design-experiments/rally-nine/no-skills/qa/interaction-checks.json",
+      "artifacts/design-experiments/rally-nine/no-skills/qa/responsive-checks.json",
+      "artifacts/design-experiments/rally-nine/no-skills/qa/static-checks.json"
+    ]
+  }
+}

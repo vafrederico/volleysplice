@@ -1,0 +1,416 @@
+{
+  "condition": "taste",
+  "assignedSkill": "Taste",
+  "syntheticPrototype": true,
+  "date": "2026-10-23",
+  "entries": [
+    {
+      "id": "taste-variant-1",
+      "name": "Courtside Deck",
+      "file": "variant-1.html",
+      "concept": "An evidence-first review deck with simultaneous decisions. A cool frame holds a white decision sheet beneath the match. Browsing places the source map to the left of a compact rally list.",
+      "interactions": [
+        "Keep/remove and serve remain visible together; bounds and Next are separate lower actions.",
+        "Editor / Rallies pill switches experience with a visible return path.",
+        "Play / pause advances a local simulated source clock.",
+        "Keep / remove and near / far decisions remain selected through navigation.",
+        "Next review visits the remaining flag-derived queue, then shows completion.",
+        "Browse exposes every fixture rally as a start-frame card; selecting one seeks immediately.",
+        "Source-proportional vertical rail collapses and restores; clicking a gap enters the mock full Editor.",
+        "Bounds supports start/end steppers in 0.1 s increments and continuous range dragging.",
+        "Find missed rally enters the full Editor in a gap; add creates a local rally and Return to Rallies keeps it.",
+        "Outside-phone Review / Browse / Bounds controls and matching screen query parameters preview states; Reset restores the fixture."
+      ],
+      "direction": {
+        "style": "framed-sheet",
+        "seed": 18391,
+        "redraws": 0,
+        "font": "IBM Plex Sans",
+        "sheet": "artifacts/design-experiments/rally-nine/taste/_process/variant-1/direction.json",
+        "question": "Should this rally be kept, and which court side serves?",
+        "face": "A low-chroma cool frame takes its temperature from the court illustration; the volleyball mark identifies the product.",
+        "signatureElement": "The two unresolved review flags become two explicit decision rows, beside a computed queue-progress strip."
+      },
+      "checks": {
+        "t3InteractionAssertions": 56,
+        "t3InteractionFailures": 0,
+        "widthsPx": [
+          360,
+          390,
+          768
+        ],
+        "statesChecked": [
+          "review",
+          "browse",
+          "bounds",
+          "editor"
+        ],
+        "horizontalOverflow": false,
+        "clippedControls": 0,
+        "appControlMinimumHeightPx": 44,
+        "fixtureRalliesNavigated": 36,
+        "reviewOrder": [
+          18,
+          19,
+          23,
+          27
+        ],
+        "reviewCompletion": "4/4",
+        "startingRally": 18,
+        "startingScore": {
+          "Cedar": 9,
+          "Harbor": 8
+        },
+        "embeddedFontLoaded": true,
+        "runtimeExternalAssets": 0,
+        "directFileOpening": "pass",
+        "javascriptSyntax": "pass",
+        "embeddedInputConsistency": "pass",
+        "viewportHeightUnits": 0,
+        "tasteLintFailures": 0,
+        "tasteInspectorFailures": 0,
+        "tasteInspectorWidthsPx": [
+          1440,
+          768,
+          390
+        ],
+        "acceptedWarnings": [
+          "Lint numbering is zero-padding for timestamps only.",
+          "Inspector hero-void at 1440px is the deliberate surrounding space around the brief-required max-width 430px app canvas."
+        ],
+        "responsiveEvidence": "artifacts/design-experiments/rally-nine/taste/_process/responsive-checks.json",
+        "interactionEvidence": "artifacts/design-experiments/rally-nine/taste/_process/t3-interactions.json",
+        "staticEvidence": "artifacts/design-experiments/rally-nine/taste/_process/static-checks.json",
+        "inspectorEvidence": "artifacts/design-experiments/rally-nine/taste/_process/variant-1/inspect/report.json",
+        "screenshotContactSheets": [
+          "artifacts/design-experiments/rally-nine/taste/_process/screens/v1-sheet-360.jpg",
+          "artifacts/design-experiments/rally-nine/taste/_process/screens/v1-sheet-390.jpg",
+          "artifacts/design-experiments/rally-nine/taste/_process/screens/v1-sheet-768.jpg"
+        ]
+      },
+      "appScreenCritique": [
+        "The court leads the reading order; the white lower sheet makes the review choices and next action easy to locate.",
+        "Review rows, bounds and next action share sheet edges. Browse rail plus list closes the full width with no orphan column.",
+        "Teal is confined to the source/time data and progress, with monochrome decision controls.",
+        "The selected score, card score, duration and source position are rendered from the same rally object; totals come from flags and rows.",
+        "The initial 0/4 progress is empty, with four pending items; missing serving side says unconfirmed.",
+        "Rail segments use start and duration divided by full source duration. Gaps remain source time and can open the Editor.",
+        "All requested states fit at 360 and 390 pixels; the canvas centers at 430 pixels on wider pages."
+      ],
+      "sha256": "f1c27b09e1aa0eec604f970aeab15d3d4ecd21257b4fe90df41996508984a585"
+    },
+    {
+      "id": "taste-variant-2",
+      "name": "Sideout Sheet",
+      "file": "variant-2.html",
+      "concept": "A guided decision sheet separates clip and serve into one question at a time. The scoreboard sits outside the match image, and browsing pairs compact flat rows with a source map on the right.",
+      "interactions": [
+        "Clip / Serve decision tabs; choosing Keep or Remove opens Serve when that flag still needs review.",
+        "Editor / Rallies pill switches experience with a visible return path.",
+        "Play / pause advances a local simulated source clock.",
+        "Keep / remove and near / far decisions remain selected through navigation.",
+        "Next review visits the remaining flag-derived queue, then shows completion.",
+        "Browse exposes every fixture rally as a start-frame card; selecting one seeks immediately.",
+        "Source-proportional vertical rail collapses and restores; clicking a gap enters the mock full Editor.",
+        "Bounds supports start/end steppers in 0.1 s increments and continuous range dragging.",
+        "Find missed rally enters the full Editor in a gap; add creates a local rally and Return to Rallies keeps it.",
+        "Outside-phone Review / Browse / Bounds controls and matching screen query parameters preview states; Reset restores the fixture."
+      ],
+      "direction": {
+        "style": "achromatic-ledger",
+        "seed": 27503,
+        "redraws": 0,
+        "font": "Geist",
+        "sheet": "artifacts/design-experiments/rally-nine/taste/_process/variant-2/direction.json",
+        "question": "What decision does this rally still need?",
+        "face": "An ink-only score and an open worksheet establish the face; blue appears only on time/source data.",
+        "signatureElement": "Clip and Serve tabs encode the two independent review flags, and the next unresolved question opens after a clip choice."
+      },
+      "checks": {
+        "t3InteractionAssertions": 56,
+        "t3InteractionFailures": 0,
+        "widthsPx": [
+          360,
+          390,
+          768
+        ],
+        "statesChecked": [
+          "review",
+          "browse",
+          "bounds",
+          "editor"
+        ],
+        "horizontalOverflow": false,
+        "clippedControls": 0,
+        "appControlMinimumHeightPx": 44,
+        "fixtureRalliesNavigated": 36,
+        "reviewOrder": [
+          18,
+          19,
+          23,
+          27
+        ],
+        "reviewCompletion": "4/4",
+        "startingRally": 18,
+        "startingScore": {
+          "Cedar": 9,
+          "Harbor": 8
+        },
+        "embeddedFontLoaded": true,
+        "runtimeExternalAssets": 0,
+        "directFileOpening": "pass",
+        "javascriptSyntax": "pass",
+        "embeddedInputConsistency": "pass",
+        "viewportHeightUnits": 0,
+        "tasteLintFailures": 0,
+        "tasteInspectorFailures": 0,
+        "tasteInspectorWidthsPx": [
+          1440,
+          768,
+          390
+        ],
+        "acceptedWarnings": [
+          "Lint numbering is zero-padding for timestamps only.",
+          "Inspector hero-void at 1440px is the deliberate surrounding space around the brief-required max-width 430px app canvas."
+        ],
+        "responsiveEvidence": "artifacts/design-experiments/rally-nine/taste/_process/responsive-checks.json",
+        "interactionEvidence": "artifacts/design-experiments/rally-nine/taste/_process/t3-interactions.json",
+        "staticEvidence": "artifacts/design-experiments/rally-nine/taste/_process/static-checks.json",
+        "inspectorEvidence": "artifacts/design-experiments/rally-nine/taste/_process/variant-2/inspect/report.json",
+        "screenshotContactSheets": [
+          "artifacts/design-experiments/rally-nine/taste/_process/screens/v2-sheet-360.jpg",
+          "artifacts/design-experiments/rally-nine/taste/_process/screens/v2-sheet-390.jpg",
+          "artifacts/design-experiments/rally-nine/taste/_process/screens/v2-sheet-768.jpg"
+        ]
+      },
+      "appScreenCritique": [
+        "The image carries the evidence, while one large question at the bottom limits competing decisions.",
+        "The two decision targets and two footer actions use paired equal widths, and browse rows align their scores on a common right edge.",
+        "The chrome stays achromatic; blue marks source and trim data, and the primary action stays near-black.",
+        "Scores, review flags and times use the shared fixture. A completed decision does not silently resolve the other flag.",
+        "Unchecked decision circles and unconfirmed labels distinguish missing judgments from an explicit Keep.",
+        "The right source rail retains proportional durations and a single current-position mark; the score is outside the film for legibility.",
+        "Both questions, the browse list, bounds and Editor fit the three requested widths with touch targets at least 44 pixels tall."
+      ],
+      "sha256": "e1910899ae9aa1d71508efbade968b842a077fbb39dcf3391dae0f7729aaa30f"
+    },
+    {
+      "id": "taste-variant-3",
+      "name": "Matchlight",
+      "file": "variant-3.html",
+      "concept": "A larger true-black film surface leads into a compact bottom dock. Serving side and bounds sit above the keep/remove/advance row; larger thumbnail rows and a right source map serve browsing.",
+      "interactions": [
+        "Compact lower dock with Keep / Remove and an advance arrow; controls invert to show explicit choices.",
+        "Editor / Rallies pill switches experience with a visible return path.",
+        "Play / pause advances a local simulated source clock.",
+        "Keep / remove and near / far decisions remain selected through navigation.",
+        "Next review visits the remaining flag-derived queue, then shows completion.",
+        "Browse exposes every fixture rally as a start-frame card; selecting one seeks immediately.",
+        "Source-proportional vertical rail collapses and restores; clicking a gap enters the mock full Editor.",
+        "Bounds supports start/end steppers in 0.1 s increments and continuous range dragging.",
+        "Find missed rally enters the full Editor in a gap; add creates a local rally and Return to Rallies keeps it.",
+        "Outside-phone Review / Browse / Bounds controls and matching screen query parameters preview states; Reset restores the fixture."
+      ],
+      "direction": {
+        "style": "true-black-flat",
+        "seed": 36109,
+        "redraws": 0,
+        "font": "Inter",
+        "sheet": "artifacts/design-experiments/rally-nine/taste/_process/variant-3/direction.json",
+        "question": "Can this point be checked while keeping the match in view?",
+        "face": "True black carries the media, a drawn volleyball mark names the product, and sport lime marks source/time data.",
+        "signatureElement": "The film-first surface and compact decision dock organize the review around the selected point, while lightness alone separates the lower work sheet."
+      },
+      "checks": {
+        "t3InteractionAssertions": 56,
+        "t3InteractionFailures": 0,
+        "widthsPx": [
+          360,
+          390,
+          768
+        ],
+        "statesChecked": [
+          "review",
+          "browse",
+          "bounds",
+          "editor"
+        ],
+        "horizontalOverflow": false,
+        "clippedControls": 0,
+        "appControlMinimumHeightPx": 44,
+        "fixtureRalliesNavigated": 36,
+        "reviewOrder": [
+          18,
+          19,
+          23,
+          27
+        ],
+        "reviewCompletion": "4/4",
+        "startingRally": 18,
+        "startingScore": {
+          "Cedar": 9,
+          "Harbor": 8
+        },
+        "embeddedFontLoaded": true,
+        "runtimeExternalAssets": 0,
+        "directFileOpening": "pass",
+        "javascriptSyntax": "pass",
+        "embeddedInputConsistency": "pass",
+        "viewportHeightUnits": 0,
+        "tasteLintFailures": 0,
+        "tasteInspectorFailures": 0,
+        "tasteInspectorWidthsPx": [
+          1440,
+          768,
+          390
+        ],
+        "acceptedWarnings": [
+          "Lint numbering is zero-padding for timestamps only.",
+          "Inspector hero-void at 1440px is the deliberate surrounding space around the brief-required max-width 430px app canvas."
+        ],
+        "responsiveEvidence": "artifacts/design-experiments/rally-nine/taste/_process/responsive-checks.json",
+        "interactionEvidence": "artifacts/design-experiments/rally-nine/taste/_process/t3-interactions.json",
+        "staticEvidence": "artifacts/design-experiments/rally-nine/taste/_process/static-checks.json",
+        "inspectorEvidence": "artifacts/design-experiments/rally-nine/taste/_process/variant-3/inspect/report.json",
+        "screenshotContactSheets": [
+          "artifacts/design-experiments/rally-nine/taste/_process/screens/v3-sheet-360.jpg",
+          "artifacts/design-experiments/rally-nine/taste/_process/screens/v3-sheet-390.jpg",
+          "artifacts/design-experiments/rally-nine/taste/_process/screens/v3-sheet-768.jpg"
+        ]
+      },
+      "appScreenCritique": [
+        "The film has the greatest emphasis and the lower dock keeps the next action within the same thumb area.",
+        "Rounded lower surfaces group decisions without shadows or borders; thumbnail rows share one media slot and one score edge.",
+        "Black, #111 and #2a2a2a provide depth; lime appears on source/time data while selected decisions invert to white.",
+        "All counts and scores come from the fixture or current local state; selection changes the film clock and active card together.",
+        "Initial progress has no stub at zero; pending side choices stay unselected and become explicit white selections.",
+        "The vertical rail uses the same time scale and marks as the other alternatives; full-source gaps remain navigable.",
+        "The bounds spacing was tightened after screenshot review to keep 44 pixel slider targets and all actions visible at 360 pixels."
+      ],
+      "sha256": "fad9957acca3863a15e931a2844b165488a9320364c68ce9e29c441ae875bc14"
+    }
+  ],
+  "inputsUsed": [
+    {
+      "name": "fixture.json",
+      "type": "provided synthetic comparison fixture",
+      "embedded": true,
+      "fieldsUsed": [
+        "product",
+        "project",
+        "team1Name",
+        "team2Name",
+        "durationMs",
+        "positionMs",
+        "selectedRallyId",
+        "rallies"
+      ],
+      "countsDerivedFrom": "needsClipReview OR servingSide == review; no reliance on pendingRallies"
+    },
+    {
+      "name": "frame.svg",
+      "type": "provided synthetic neutral court illustration",
+      "embedded": true,
+      "uses": [
+        "match image",
+        "every rally start-frame card",
+        "mock Editor filmstrip"
+      ],
+      "sha256": "e8ddf42ef36a60169302233efb75ca9b32038ab9365718c795bf6703cd0037b5"
+    },
+    {
+      "name": "IBM Plex Sans / Geist / Inter",
+      "type": "font bytes obtained from Google Fonts CSS API",
+      "embedded": true,
+      "runtimeNetworkRequired": false
+    }
+  ],
+  "sharedBootstrapFilesRead": [
+    "SHARED_AGENTS.md",
+    "INDEX.md"
+  ],
+  "skillFilesRead": [
+    {
+      "skill": "Taste",
+      "file": "SKILL.md",
+      "read": "complete"
+    },
+    {
+      "skill": "Taste",
+      "file": "references/app-screens.md",
+      "read": "complete"
+    },
+    {
+      "skill": "Taste",
+      "file": "scripts/draw.mjs",
+      "read": "argument and seed excerpts"
+    },
+    {
+      "skill": "Taste",
+      "file": "scripts/inspect.mjs",
+      "read": "argument, runner and output excerpts"
+    },
+    {
+      "skill": "Taste",
+      "file": "scripts/lib/cdp.mjs",
+      "read": "complete"
+    }
+  ],
+  "skillToolsExecuted": [
+    "Taste app direction draw",
+    "Taste lint --app",
+    "Taste inspect --app"
+  ],
+  "isolationReceipt": {
+    "designGuidance": "Only assigned Taste skill and its own app workflow, dealt sheets and supporting scripts.",
+    "unassignedSkillsRead": [],
+    "frontendDesignSkillRead": false,
+    "designPreferencesRead": false,
+    "applicationSourceRead": false,
+    "priorRallyLayoutRead": false,
+    "androidDesignDocumentsRead": false,
+    "otherAgentOutputsRead": false,
+    "otherWorktreesRead": false,
+    "delegatedFurther": false,
+    "vaultWrites": false,
+    "applicationSourceModified": false,
+    "existingProjectFilesModified": false,
+    "newOutputScope": "artifacts/design-experiments/rally-nine/taste/",
+    "committed": false,
+    "pushed": false,
+    "pullRequestCreated": false,
+    "productionAppStarted": false,
+    "instructionOverrideApplied": "The explicit Taste-only condition overrides the shared default to load both design skills."
+  },
+  "dataInventory": [
+    "VolleySplice is a portrait volleyball highlight editor.",
+    "Practice match is the shared synthetic project scope.",
+    "Cedar and Harbor are the two shared team names.",
+    "The source lasts 1,560,000 ms, shown as 26:00.",
+    "The initial position is 770,400 ms within rally 18.",
+    "Rally 18 starts at 766,200 ms and ends at 782,800 ms.",
+    "The selected score is Cedar 9 : 8 Harbor.",
+    "The 36 rallies retain their fixture numbers, bounds and scores.",
+    "Rallies 18, 19, 23 and 27 need clip and/or serving-side review.",
+    "The main job is resolving those independent flags, then navigating and correcting the full source."
+  ],
+  "validationSummary": {
+    "t3AssertionsPassed": 168,
+    "responsiveStateViews": 36,
+    "responsiveFailures": 0,
+    "directFileOpeningPasses": 3,
+    "consoleErrors": 0,
+    "screenshotsInspected": "Review, Browse, Bounds and Editor contact sheets at 360, 390 and 768 pixels, plus Taste inspector renders.",
+    "t3Screenshots": "Unavailable after two attempts; T3 navigation and evaluate-based interaction checks succeeded.",
+    "screenshotFallback": "Assigned Taste skill local headless Chrome CDP inspector and explicit viewport captures."
+  },
+  "limitations": [
+    "Synthetic local prototypes; no video decoding, analysis, audio, export, upload, message or backend action.",
+    "The provided court illustration is intentionally repeated for every start-frame preview; simulated time changes a clock rather than the illustration.",
+    "Choices and added rallies persist within a page session and reset on reload or the outside Reset button.",
+    "A rally added in a gap uses the preceding rally score and serving side as sample values; no actual score or serve inference is performed.",
+    "T3 raw screenshot limitation, repeated twice: Preview snapshot failed: Preview automation snapshot timed out after 15000ms.",
+    "The mock full Editor supports source scrubbing and local rally addition only; it is not the production Editor.",
+    "Native Android builds and real-media usability were not tested because application source was outside this experiment scope."
+  ]
+}

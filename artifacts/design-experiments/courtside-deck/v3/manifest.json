@@ -1,0 +1,150 @@
+{
+  "id": "C1",
+  "name": "Courtside Deck",
+  "version": 3,
+  "kind": "standalone interactive HTML prototype",
+  "entry": "index.html",
+  "files": [
+    "index.html",
+    "manifest.json",
+    "checks.json",
+    "FONT-LICENSES.txt",
+    ".gitignore"
+  ],
+  "appearance": {
+    "skill": "Taste only",
+    "style": "framed-sheet",
+    "seed": 18391,
+    "direction": "Preserved approved C1 v2 direction; no redraw.",
+    "typeface": "IBM Plex Sans",
+    "signature": "Synthetic court video above rally-edge editing and review decisions.",
+    "question": "Are this rally's bounds, inclusion and serving side correct?"
+  },
+  "defaultState": {
+    "screen": "review",
+    "selectedRallyId": "R018",
+    "score": [
+      9,
+      8
+    ],
+    "positionMs": 770400,
+    "pending": 4,
+    "rallies": 36
+  },
+  "behavior": {
+    "header": "Start earlier/later by exactly 1000 ms, centered rally number, End earlier/later by exactly 1000 ms. Four 44 by 44 pixel targets. Clamp to source limits and minimum 500 ms rally duration.",
+    "bounds": "Direct continuous pointer dragging and 100 ms arrow-key edits, or 1000 ms with Shift, remain available. Bounds screen retains its 100 ms steppers.",
+    "browsing": "Independently scroll all 36 chronological cards by wheel, touch or keyboard. Scrolling updates the list center marker without changing selection, source position or screen.",
+    "listMarker": "Outlined diamond on the right of the source rail; filled playback dot on the left. List identity stays visible above the list. The closest card center to the actual list client viewport center determines the rally; its exact midpoint determines source position.",
+    "following": "Manual input suspends playback following until an explicit source seek or card selection. Scroll events only update list state and marker; they never seek. Source seeking stays in Browse and centers the nearest rally. Collapse/reopen preserves list position and following state.",
+    "missing": "A source gap is highlighted without selecting a card. Explicit Add missing rally opens Editor at the exact source position. Adding and returning preserve that position.",
+    "progress": "Screen-top needs-review/checked progress, decision completion and Reset retained."
+  },
+  "packaging": {
+    "offline": true,
+    "externalRuntimeAssets": false,
+    "characters": 120469,
+    "bytesUtf8": 120486,
+    "characterLimit": 512000,
+    "sha256": "da576274678e675fe7491d5877eda6da73f21868b5f340a6cfb132ca50ad6f60",
+    "appSizePx": [
+      390,
+      844
+    ],
+    "fluidMinimumWidthPx": 360,
+    "fixtureAndFrame": "Approved v2 synthetic fixture and embedded SVG frame retained. The 36 rally records are unchanged.",
+    "fontLicense": "FONT-LICENSES.txt, copied unchanged from approved input.",
+    "receivedAgentSha256": "ecad020030d53d41d0456d040c67f54c83ab4419592a8ebc40a51b6ff6ea543c",
+    "fontRepair": "Parent restored the original approved C1 regular, medium and semibold fonts as unhinted WOFF2 subsets. All three decode successfully in the T3 browser; original glyph outlines, family and copyright/license metadata are retained. Prototype JavaScript is byte-identical to the received agent artifact."
+  },
+  "validation": {
+    "checks": "checks.json",
+    "passed": 64,
+    "failed": 0,
+    "trustedInputs": [
+      "mouse clicks",
+      "continuous pointer-captured mouse dragging",
+      "wheel scrolling",
+      "keyboard edits",
+      "emulated native touch scrolling"
+    ],
+    "responsiveWidthsPx": [
+      360,
+      390,
+      768
+    ],
+    "responsiveModes": [
+      "review",
+      "browse",
+      "bounds",
+      "source gap",
+      "editor"
+    ],
+    "functionalCoverage": [
+      "all four 1000 ms actions and all four constraints",
+      "continuous edge dragging",
+      "unchanged playhead during wheel and touch browsing",
+      "first and last cards reachable",
+      "actual viewport-center geometry",
+      "variable source gaps and card heights",
+      "coincident marker separation",
+      "source seek and following",
+      "no seek-scroll loop",
+      "collapse and reopen",
+      "exact missing-rally position",
+      "review completion and Reset"
+    ],
+    "syntax": "pass",
+    "offlineFileOpen": "pass",
+    "t3HtmlPreview": "360, 390 and 768 px; zero console messages.",
+    "tasteLint": {
+      "failures": 0,
+      "warnings": 1,
+      "reason": "Zero-padding is used for clocks, not decorative index labels."
+    },
+    "tasteInspect": {
+      "widthsPx": [
+        1440,
+        768,
+        390
+      ],
+      "failures": 0,
+      "warnings": 1,
+      "reason": "The wide desktop margin is intentional for the requested 390 px portrait prototype."
+    },
+    "visualReview": "All final inspector captures and five-mode contact sheets at each requested width inspected. Controls fit without overflow or clipping.",
+    "parentChecks": {
+      "file": "parent-checks.json",
+      "passed": 12,
+      "failed": 0,
+      "scope": "Final standalone font loading, header layouts and exact 1s actions, trusted independent wheel scrolling and viewport-center marker geometry."
+    },
+    "agentChecksArtifactStage": "Received agent prototype before parent font repair; JavaScript remained byte-identical."
+  },
+  "isolationReceipt": {
+    "requiredReads": [
+      "SHARED_AGENTS.md",
+      "INDEX.md",
+      "Taste SKILL.md",
+      "Taste app-screens reference",
+      "applicable Taste scripts",
+      "approved C1 v2 baseline and font license"
+    ],
+    "designSkillsUsed": [
+      "Taste"
+    ],
+    "additionalDelegation": false,
+    "otherDesignSkillsOrVariantsRead": false,
+    "writes": "Only this v3 directory; evidence and scripts are ignored under .process/.",
+    "applicationAndNativeChanges": false,
+    "baselineAndComparisonChanges": false,
+    "vaultWrites": false,
+    "dependencyInstalls": false,
+    "productionServer": false,
+    "commitPushPullRequestOrExternalPublication": false
+  },
+  "limitations": [
+    "Playback, video frame, scores and decisions remain a local synthetic simulation, as in v2.",
+    "Touch validation uses Chromium's trusted emulated touch input, not physical hardware. Actual gestures used the assigned Taste CDP helper after the supplied repeated T3 drag timeouts."
+  ]
+}
