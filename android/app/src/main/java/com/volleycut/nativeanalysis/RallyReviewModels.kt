@@ -108,62 +108,24 @@ internal fun rallyTimelineContext(
             rally.cuts.any { it.included && it.id in effectiveIds }
     val previous = ordered.take(index).lastOrNull(::retained)
     val next = ordered.drop(index + 1).firstOrNull(::retained)
-    // Reserve enough local detail for short cores even with both neighbours visible.
-    val margin = minOf(8_000L, (selected.coreEndMs - selected.coreStartMs).coerceAtLeast(1) / 2)
+    // Preserve real temporal context, including the gaps to retained neighbours.
+    // Extremely short cores can use the explicit boundary nudge controls.
     return RallyTimelineContext(previous, next, DetailWindow(
-        maxOf(sourceStartMs, selected.coreStartMs - margin),
-        minOf(sourceEndMs, selected.coreEndMs + margin),
+        maxOf(sourceStartMs, minOf(selected.coreStartMs - 8_000, selected.keepStartMs,
+            previous?.let { it.keepStartMs - 2_000 } ?: Long.MAX_VALUE)),
+        minOf(sourceEndMs, maxOf(selected.coreEndMs + 8_000, selected.keepEndMs,
+            next?.let { it.keepEndMs + 2_000 } ?: Long.MIN_VALUE)),
     ))
 }
 
-internal data class RallyTimelineSegment(
-    val startMs: Long, val endMs: Long,
-    val startFraction: Float, val endFraction: Float,
-    val compressedGap: Boolean = false,
-)
-
-/** One continuous source-time axis: readable neighbours, precise local trimming,
- * and visibly compressed breaks between them. Drawing and gestures share it. */
-internal data class RallyTimelineScale(val segments: List<RallyTimelineSegment>) {
-    val startMs get() = segments.first().startMs
-    val endMs get() = segments.last().endMs
-    fun fraction(timeMs: Long): Float {
-        val time = timeMs.coerceIn(startMs, endMs)
-        val segment = segments.firstOrNull { time <= it.endMs } ?: segments.last()
-        return segment.startFraction + (time - segment.startMs).toFloat() /
-            (segment.endMs - segment.startMs).coerceAtLeast(1) * (segment.endFraction - segment.startFraction)
-    }
-    fun time(fraction: Float): Long {
-        val value = fraction.coerceIn(0f, 1f)
-        val segment = segments.firstOrNull { value <= it.endFraction } ?: segments.last()
-        return segment.startMs + ((value - segment.startFraction).toDouble() /
-            (segment.endFraction - segment.startFraction) * (segment.endMs - segment.startMs)).toLong()
-    }
-}
-
-internal fun rallyTimelineScale(context: RallyTimelineContext, sourceStartMs: Long, sourceEndMs: Long): RallyTimelineScale {
-    data class Part(val start: Long, val end: Long, val weight: Float, val gap: Boolean = false)
-    val local = context.window
-    val before = mutableListOf<Part>()
-    val after = mutableListOf<Part>()
-    context.previous?.let { rally ->
-        val start = rally.keepStartMs.coerceIn(sourceStartMs, local.startMs)
-        val end = rally.keepEndMs.coerceIn(start, local.startMs)
-        if (end > start) before += Part(start, end, .20f)
-        if (end < local.startMs) before += Part(end, local.startMs, .04f, true)
-    }
-    context.next?.let { rally ->
-        val start = rally.keepStartMs.coerceIn(local.endMs, sourceEndMs)
-        val end = rally.keepEndMs.coerceIn(start, sourceEndMs)
-        if (start > local.endMs) after += Part(local.endMs, start, .04f, true)
-        if (end > start) after += Part(start, end, .20f)
-    }
-    val parts = before + Part(local.startMs, local.endMs, 1f - (before + after).sumOf { it.weight.toDouble() }.toFloat()) + after
-    var fraction = 0f
-    return RallyTimelineScale(parts.mapIndexed { index, part ->
-        val end = if (index == parts.lastIndex) 1f else fraction + part.weight
-        RallyTimelineSegment(part.start, part.end, fraction, end, part.gap).also { fraction = end }
-    })
+/** Every pixel represents the same source duration, for drawing, seeking and trimming. */
+internal data class RallyTimelineScale(val window: DetailWindow) {
+    val startMs get() = window.startMs
+    val endMs get() = window.endMs
+    fun fraction(timeMs: Long): Float =
+        ((timeMs - startMs).toDouble() / (endMs - startMs).coerceAtLeast(1)).coerceIn(0.0, 1.0).toFloat()
+    fun time(fraction: Float): Long = startMs + kotlin.math.round(
+        fraction.coerceIn(0f, 1f).toDouble() * (endMs - startMs).coerceAtLeast(1)).toLong()
 }
 
 internal fun rallyBoundaryValue(

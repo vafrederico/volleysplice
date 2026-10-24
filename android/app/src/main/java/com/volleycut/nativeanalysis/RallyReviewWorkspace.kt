@@ -589,7 +589,7 @@ private fun RallyBoundsTimeline(
 ) {
     val identity = rally.id
     val context = rallyTimelineContext(rallies, rally, effectiveIds, sourceStart, sourceEnd)
-    var scale by remember(identity) { mutableStateOf(rallyTimelineScale(context, sourceStart, sourceEnd)) }
+    var scale by remember(identity) { mutableStateOf(RallyTimelineScale(context.window)) }
     val windowStart = scale.startMs
     val windowEnd = scale.endMs
     var dragging by remember(identity) { mutableStateOf(false) }
@@ -604,7 +604,7 @@ private fun RallyBoundsTimeline(
     val paddingAfterView = rally.keepEndMs > windowEnd
     LaunchedEffect(context, dragging) {
         if (!dragging) {
-            scale = rallyTimelineScale(context, sourceStart, sourceEnd)
+            scale = RallyTimelineScale(context.window)
         }
     }
     fun change(side: String, value: Long) {
@@ -717,15 +717,6 @@ private fun RallyBoundsTimeline(
                     Size((x(cut.keepEndMs) - x(cut.keepStartMs)).coerceAtLeast(1f), 36.dp.toPx()), CornerRadius(4.dp.toPx()))
                 drawRoundRect(coreColor, Offset(x(cut.coreStartMs), 30.dp.toPx()),
                     Size((x(cut.coreEndMs) - x(cut.coreStartMs)).coerceAtLeast(1f), 20.dp.toPx()), CornerRadius(3.dp.toPx()))
-            }
-            scale.segments.filter { it.compressedGap }.forEach { segment ->
-                val middle = inset + (segment.startFraction + segment.endFraction) / 2 * width
-                // A scale break makes the compressed source gap explicit.
-                drawRect(TimelineTrackColor, Offset(middle - 4.dp.toPx(), 20.dp.toPx()), Size(8.dp.toPx(), 40.dp.toPx()))
-                listOf(-2f, 2f).forEach { shift ->
-                    drawLine(CourtsideMuted, Offset(middle + (shift - 2) * density, 43.dp.toPx()),
-                        Offset(middle + (shift + 2) * density, 34.dp.toPx()), 1.dp.toPx())
-                }
             }
             listOf(a, b).forEach { at ->
                 drawRoundRect(Color.White, Offset(at - 5.dp.toPx(), 18.dp.toPx()), Size(10.dp.toPx(), 44.dp.toPx()), CornerRadius(3.dp.toPx()))

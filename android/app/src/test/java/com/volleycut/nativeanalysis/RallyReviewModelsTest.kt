@@ -105,7 +105,7 @@ class RallyReviewModelsTest {
             setOf("R1", "R2", "R3", "R5"), 0, 90_000)
         assertEquals("R1", context.previous?.id)
         assertEquals("R5", context.next?.id)
-        assertEquals(DetailWindow(22_500, 32_500), context.window)
+        assertEquals(DetailWindow(1_000, 60_000), context.window)
     }
 
     @Test
@@ -115,11 +115,11 @@ class RallyReviewModelsTest {
             selected, setOf("R1", "R2", "R3"), 11_000, 55_000)
         assertNull(context.previous)
         assertEquals("R3", context.next?.id)
-        assertEquals(DetailWindow(22_500, 32_500), context.window)
+        assertEquals(DetailWindow(17_000, 55_000), context.window)
     }
 
     @Test
-    fun longBreaksAndRemovedNeighboursDoNotCollapseTheTrimWindow() {
+    fun longBreaksKeepTheirActualDurationAndRemovedNeighboursAreSkipped() {
         val previous = rally("R1", 5_000, 8_000)
         val removed = rally("R2", 1_790_000, 1_795_000).let { r ->
             r.copy(cuts = r.cuts.map { it.copy(included = false) })
@@ -130,58 +130,52 @@ class RallyReviewModelsTest {
             setOf("R1", "R2", "R3", "R4"), 0, 3_700_000)
         assertEquals(previous, context.previous)
         assertEquals(next, context.next)
-        assertEquals(DetailWindow(1_797_500, 1_807_500), context.window)
-        val scale = rallyTimelineScale(context, 0, 3_700_000)
-        assertTrue("Previous rally must have a visible bar", scale.fraction(previous.coreEndMs) - scale.fraction(previous.coreStartMs) >= .08f)
-        assertTrue("Next rally must have a visible bar", scale.fraction(next.coreEndMs) - scale.fraction(next.coreStartMs) >= .10f)
-        assertEquals(2, scale.segments.count { it.compressedGap })
-        val handleSeparationDp = (306f - 44f) * (selected.coreEndMs - selected.coreStartMs) /
-            (context.window.endMs - context.window.startMs)
-        assertTrue("Both handles need distinct touch regions", handleSeparationDp >= 48f)
-        assertEquals(context.window, rallyTimelineContext(listOf(selected), selected,
-            setOf("R3"), 0, 3_700_000).window)
+        assertEquals(DetailWindow(1_000, 3_609_000), context.window)
+        val scale = RallyTimelineScale(context.window)
+        val duration = context.window.endMs - context.window.startMs
+        assertEquals(5_000f / duration, scale.fraction(selected.coreEndMs) - scale.fraction(selected.coreStartMs), .000001f)
+        assertEquals(1_795_000f / duration, scale.fraction(next.coreStartMs) - scale.fraction(selected.coreEndMs), .000001f)
     }
 
     @Test
-    fun shortRalliesKeepAProportionalLocalWindow() {
+    fun shortRalliesKeepTheirSurroundingSourceContext() {
         val selected = rally("R2", 25_000, 25_500)
         val context = rallyTimelineContext(listOf(rally("R1", 1_000, 4_000), selected,
             rally("R3", 60_000, 65_000)), selected, setOf("R1", "R2", "R3"), 0, 70_000)
-        assertEquals(DetailWindow(24_750, 25_750), context.window)
+        assertEquals(DetailWindow(0, 69_000), context.window)
     }
 
     @Test
-    fun paddingNeverOverlapsShortCoreHandles() {
+    fun shortCorePaddingIsShownInFullWithoutZoomingAwayItsContext() {
         listOf(500L to 10_000L, 100L to 2_000L).forEach { (duration, padding) ->
             val selected = rally("R1", 25_000, 25_000 + duration).let { r ->
                 r.copy(cuts = r.cuts.map { it.copy(keepStartMs = 25_000 - padding, keepEndMs = 25_000 + duration + padding) })
             }
             val context = rallyTimelineContext(listOf(selected), selected, setOf("R1"), 0, 60_000)
-            val separationDp = (306f - 44f) * duration / (context.window.endMs - context.window.startMs)
-            assertTrue("$duration ms core must have separate 24dp touch regions", separationDp >= 48f)
-            assertTrue(selected.keepStartMs < context.window.startMs)
-            assertTrue(selected.keepEndMs > context.window.endMs)
+            assertTrue(context.window.startMs <= selected.keepStartMs)
+            assertTrue(context.window.endMs >= selected.keepEndMs)
+            assertTrue(context.window.startMs <= selected.coreStartMs - 8_000)
+            assertTrue(context.window.endMs >= selected.coreEndMs + 8_000)
         }
     }
 
     @Test
-    fun visibleNeighboursNeverCollapseShortCoreHandlesAndEverySegmentSeeksExactly() {
+    fun equalDistancesAlwaysMeanEqualTimeInRalliesAndGaps() {
         listOf(100L, 500L, 5_000L).forEach { duration ->
             val selected = rally("R2", 25_000, 25_000 + duration)
             val rallies = listOf(rally("R1", 1_000, 4_000), selected, rally("R3", 60_000, 65_000))
-            val scale = rallyTimelineScale(rallyTimelineContext(rallies, selected, setOf("R1", "R2", "R3"), 0, 70_000), 0, 70_000)
-            val separationDp = (306f - 44f) * (scale.fraction(selected.coreEndMs) - scale.fraction(selected.coreStartMs))
-            assertTrue("$duration ms core must retain precise, distinct handles with both neighbours", separationDp >= 48f)
-            var previousTime = scale.startMs
-            (0..1_000).forEach { step ->
-                val time = scale.time(step / 1_000f)
-                assertTrue(time >= previousTime)
-                previousTime = time
+            val scale = RallyTimelineScale(rallyTimelineContext(rallies, selected, setOf("R1", "R2", "R3"), 0, 70_000).window)
+            (0..100).forEach { step ->
+                val fraction = step / 100f
+                val expectedTime = scale.startMs + step * (scale.endMs - scale.startMs) / 100
+                assertTrue("Uniform spacing at $fraction", kotlin.math.abs(expectedTime - scale.time(fraction)) <= 1)
+                val time = scale.time(fraction)
+                assertTrue("Source-time round trip at $time", kotlin.math.abs(scale.time(scale.fraction(time)) - time) <= 2)
             }
-            scale.segments.forEach { segment ->
-                listOf(segment.startMs, (segment.startMs + segment.endMs) / 2, segment.endMs).forEach { time ->
-                    assertTrue("Source-time round trip at $time", kotlin.math.abs(scale.time(scale.fraction(time)) - time) <= 2)
-                }
+            val second = 1_000f / (scale.endMs - scale.startMs)
+            listOf(2_000L, 12_000L, 25_000L, 60_000L).forEach { time ->
+                assertEquals("One second has the same width in every part of the timeline", second,
+                    scale.fraction(time + 1_000) - scale.fraction(time), .000001f)
             }
             assertEquals(scale.startMs, scale.time(-1f))
             assertEquals(scale.endMs, scale.time(2f))
@@ -227,6 +221,6 @@ class RallyReviewModelsTest {
         val context = rallyTimelineContext(listOf(selected), selected, emptySet(), 20_000, 35_000)
         assertNull(context.previous)
         assertNull(context.next)
-        assertEquals(DetailWindow(22_500, 32_500), context.window)
+        assertEquals(DetailWindow(20_000, 35_000), context.window)
     }
 }

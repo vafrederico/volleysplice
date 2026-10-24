@@ -1,0 +1,26 @@
+{
+  "versionName": "0.10.31-debug",
+  "versionCode": 45,
+  "apkSha256": "d453567c9a3bafd3a0c316dad4da06cf2c4fe60cde9416633b95d2767c7630bc",
+  "signatureVerified": true,
+  "installedOnPhysicalPixel": true,
+  "installedApkMatchesBuild": true,
+  "change": "Restore one uniform source-time scale throughout the focused rally timeline. Include the selected retained footage, at least eight seconds around its core where available, and the full nearest retained neighbors with two seconds beyond them, clipped to the game window. Show actual gap durations. Remove piecewise compression, scale breaks, and automatic short-core zoom. Very short rallies use the existing boundary nudge buttons.",
+  "preserved": "Neighbor filtering, shared drawing/seek/drag coordinates, frozen scale during a held gesture, real video following seeks, reconciled post-trim membership, and retained-frame clamping remain active.",
+  "jvm": { "tests": 250, "failures": 0 },
+  "physicalUi": { "tests": 21, "failures": 0, "singleFullClassRun": true },
+  "emulatorUi": { "tests": 3, "failures": 0 },
+  "coverage": [
+    "Equal source durations occupy equal distances inside cores, padding and gaps, for ordinary, 500ms and 100ms cores.",
+    "Long source gaps retain their true proportions and removed or excluded neighbors are skipped.",
+    "Short cores retain surrounding footage and full padding; start/end nudge buttons edit them independently.",
+    "Native neighbor bars remain visible and seeking into both neighboring rallies renders the expected physical-device source frames without retargeting the rally being edited.",
+    "Both portrait and landscape, held trim gestures, frame-preserving padded edits, both merge directions, layout switches, navigation, and repeated source scrubbing pass."
+  ],
+  "build": "Fresh debug assembly, Android test APK assembly, unit tests, and lint passed.",
+  "diffWhitespace": "passed",
+  "privacy": "Generic changed-text detectors passed; no private-ledger configuration is available, so no ledger-aware audit is claimed.",
+  "screenshot": "linear-context-portrait.png",
+  "screenshotSource": "Native emulator capture, visually inspected, with a synthetic 600ms selected rally and removed intermediate neighbors. The black video is the documented emulator decoder limitation. Real rendered video was checked on the physical Pixel.",
+  "deviceState": "Tests restore the prior selected project and preferences; no physical live screen stream, uninstall, data reset, or private screenshot publication."
+}

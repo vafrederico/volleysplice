@@ -110,7 +110,7 @@ class RallyReviewUiInstrumentedTest {
         val rallies = rallyGroupsForDraft(draft)
         val selected = rallies.first { cutId in it.cutIds }
         val effectiveIds = EditorMath.finalIntervals(draft).flatMapTo(mutableSetOf()) { it.cutIds }
-        return rallyTimelineScale(rallyTimelineContext(rallies, selected, effectiveIds, 0, 20_000), 0, 20_000)
+        return RallyTimelineScale(rallyTimelineContext(rallies, selected, effectiveIds, 0, 20_000).window)
     }
     private fun capture(f: Fixture, name: String) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -531,42 +531,30 @@ class RallyReviewUiInstrumentedTest {
         }
     }
 
-    private fun checkShortCoreHandles(duration: Long, padding: Long) = withProject(configureDraft = { draft ->
+    private fun checkShortCoreNudges(duration: Long, padding: Long) = withProject(configureDraft = { draft ->
         draft.copy(cuts = draft.cuts.take(1).map { it.copy(coreStartMs = 10_000, coreEndMs = 10_000 + duration,
             keepStartMs = (10_000 - padding).coerceAtLeast(0), keepEndMs = (10_000 + duration + padding).coerceAtMost(20_000)) },
             scoreTracking = draft.scoreTracking.copy(enabled = false, serveMarkers = emptyList()))
     }) { f ->
         val timeline = compose.onNodeWithTag("rally-bounds-timeline")
         val node = timeline.fetchSemanticsNode()
-        val density = node.layoutInfo.density.density
         val range = node.config[SemanticsProperties.ProgressBarRangeInfo].range
-        val separationDp = (node.boundsInRoot.width / density - 44f) * duration / (range.endInclusive - range.start)
-        assertTrue("Short-core handles need independent touch regions", separationDp >= 48f)
-        compose.onNodeWithTag("rally-padding-outside-view").assertIsDisplayed()
-        capture(f, "courtside-short-core-$duration.png")
+        assertTrue("Short rallies retain their surrounding footage", range.endInclusive - range.start >= 16_000f)
         timeline.performSemanticsAction(SemanticsActions.SetProgress) { it(10_000f + duration / 2f) }
-        fun drag(from: Float, to: Float) {
-            val scale = detailScale(f)
-            val inset = 22f * density
-            timeline.performTouchInput {
-                fun x(value: Float) = inset + (width - inset * 2) * scale.fraction(value.toLong())
-                down(Offset(x(from), center.y)); moveTo(Offset(x(to), center.y)); up()
-            }
-        }
-        drag(10_000f + duration, 10_000f + duration * 1.5f)
-        awaitDraft(f) { it.cuts.first().coreEndMs >= 10_000 + maxOf(RALLY_MIN_DURATION_MS, duration + duration / 2 - 10) }
+        compose.onNodeWithContentDescription("End later by 1 second").performClick()
+        awaitDraft(f) { it.cuts.first().coreEndMs == 11_000 + duration }
         assertEquals(10_000L, requireNotNull(f.store.load()).cuts.first().coreStartMs)
         val end = requireNotNull(f.store.load()).cuts.first().coreEndMs
-        drag(10_000f, 9_900f)
-        awaitDraft(f) { it.cuts.first().coreStartMs in 9_880..9_920 }
+        compose.onNodeWithContentDescription("Start earlier by 1 second").performClick()
+        awaitDraft(f) { it.cuts.first().coreStartMs == 9_000L }
         assertEquals(end, requireNotNull(f.store.load()).cuts.first().coreEndMs)
     }
 
     @Test
-    fun halfSecondCoreKeepsSeparateHandlesWithMaximumPadding() = checkShortCoreHandles(500, 10_000)
+    fun halfSecondCoreUsesNudgesWithMaximumPaddingAndFullContext() = checkShortCoreNudges(500, 10_000)
 
     @Test
-    fun importedTenthSecondCoreKeepsSeparateHandlesWithDefaultPadding() = checkShortCoreHandles(100, 2_000)
+    fun importedTenthSecondCoreUsesNudgesWithDefaultPaddingAndFullContext() = checkShortCoreNudges(100, 2_000)
 
     @Test
     fun paddedTrimmingRetainsTheViewedFrameForNudgesAndDragging() = withProject(paddingMs = 2_000) { f ->
@@ -854,11 +842,11 @@ class RallyReviewUiInstrumentedTest {
                 val color = pixels[x, row]
                 color.green - color.red > .07f && color.green - color.blue > .02f
             }
-            assertTrue("Previous rally needs a rendered bar, not only an edge arrow or label", barWidth(0f, .30f) / density >= 20f)
-            assertTrue("Next rally needs a rendered bar, not only an edge arrow or label", barWidth(.70f, 1f) / density >= 20f)
+            assertTrue("Previous rally retains its actual duration", barWidth(0f, .30f) / density >= 10f)
+            assertTrue("Next rally retains its actual duration", barWidth(.70f, 1f) / density >= 10f)
         }
         assertVisibleBars()
-        capture(f, "courtside-neighbour-context-portrait.png")
+        capture(f, "courtside-linear-context-portrait.png")
         val original = requireNotNull(f.store.load()).cuts
         fun seek(time: Long) {
             val scale = detailScale(f, "R002")
@@ -872,21 +860,16 @@ class RallyReviewUiInstrumentedTest {
         seek(18_500); awaitVideoFrame(Color.Yellow)
         compose.onNodeWithTag("rally-start-readout").assertTextEquals("Start 0:10.0")
         assertEquals("Seeking context must not edit it or retarget the trimmed rally", original, requireNotNull(f.store.load()).cuts)
-        seek(10_250)
-        val scale = detailScale(f, "R002")
-        val inset = 22f * timeline.fetchSemanticsNode().layoutInfo.density.density
-        timeline.performTouchInput {
-            fun x(time: Long) = inset + (width - inset * 2) * scale.fraction(time)
-            down(Offset(x(10_500), center.y)); moveTo(Offset(x(10_700), center.y)); up()
-        }
-        awaitDraft(f) { it.cuts[1].coreEndMs in 10_680..10_720 }
+        timeline.performSemanticsAction(SemanticsActions.SetProgress) { it(10_250f) }
+        compose.onNodeWithContentDescription("End later by 1 second").performClick()
+        awaitDraft(f) { it.cuts[1].coreEndMs == 11_500L }
         assertEquals(10_000L, requireNotNull(f.store.load()).cuts[1].coreStartMs)
         assertVisibleBars()
         try {
             f.scenario.onActivity { it.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
             compose.waitUntil(10_000) { f.context.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE }
             assertVisibleBars()
-            capture(f, "courtside-neighbour-context-landscape.png")
+            capture(f, "courtside-linear-context-landscape.png")
         } finally {
             f.scenario.onActivity { it.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
         }

@@ -1,5 +1,5 @@
 {
-  "currentIteration": "neighbour-context-verification.json (0.10.30-debug). Build and validation fields below describe the preceding 0.10.29 trim-audit baseline.",
+  "currentIteration": "linear-context-verification.json (0.10.31-debug). Build and validation fields below describe the preceding 0.10.29 trim-audit baseline. The 0.10.30 compressed-scale experiment is superseded.",
   "design": "Courtside Deck C1 v4, implemented with native Compose controls and real project/video data.",
   "navigation": "Project picker beside the logo with an adjacent trash action; Rallies/Editor/Export pills and Settings share one top bar. Landscape centers the pills and places review controls, included clips and total time at the right. Very narrow portrait windows wrap the same bar into two rows.",
   "state": "Both layouts use one EditorDraft, score tracking and ExoPlayer. Navigation state is saveable; draft writes flush on Stop.",
