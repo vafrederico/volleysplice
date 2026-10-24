@@ -131,7 +131,7 @@ class RallyReviewModelsTest {
         assertEquals(previous, context.previous)
         assertEquals(next, context.next)
         assertEquals(DetailWindow(1_792_000, 1_813_000), context.window)
-        val handleSeparationDp = 306f * (selected.coreEndMs - selected.coreStartMs) /
+        val handleSeparationDp = (306f - 44f) * (selected.coreEndMs - selected.coreStartMs) /
             (context.window.endMs - context.window.startMs)
         assertTrue("Both handles need distinct touch regions", handleSeparationDp >= 48f)
         assertEquals(context.window, rallyTimelineContext(listOf(selected), selected,
@@ -139,11 +139,58 @@ class RallyReviewModelsTest {
     }
 
     @Test
-    fun shortRalliesKeepAProportionalLocalWindowAndTheirPadding() {
+    fun shortRalliesKeepAProportionalLocalWindow() {
         val selected = rally("R2", 25_000, 25_500)
         val context = rallyTimelineContext(listOf(rally("R1", 1_000, 4_000), selected,
             rally("R3", 60_000, 65_000)), selected, setOf("R1", "R2", "R3"), 0, 70_000)
-        assertEquals(DetailWindow(23_000, 27_500), context.window)
+        assertEquals(DetailWindow(24_000, 26_500), context.window)
+    }
+
+    @Test
+    fun paddingNeverOverlapsShortCoreHandles() {
+        listOf(500L to 10_000L, 100L to 2_000L).forEach { (duration, padding) ->
+            val selected = rally("R1", 25_000, 25_000 + duration).let { r ->
+                r.copy(cuts = r.cuts.map { it.copy(keepStartMs = 25_000 - padding, keepEndMs = 25_000 + duration + padding) })
+            }
+            val context = rallyTimelineContext(listOf(selected), selected, setOf("R1"), 0, 60_000)
+            val separationDp = (306f - 44f) * duration / (context.window.endMs - context.window.startMs)
+            assertTrue("$duration ms core must have separate 24dp touch regions", separationDp >= 48f)
+            assertTrue(selected.keepStartMs < context.window.startMs)
+            assertTrue(selected.keepEndMs > context.window.endMs)
+        }
+    }
+
+    private fun mergeFixture(): EditorDraft = EditorDraft(sourceRevision = "synthetic", updatedAtMs = 0,
+        cuts = rally("A", 10_000, 15_000).cuts + rally("B", 22_000, 25_000).cuts,
+        reviewedCutIds = setOf("A", "B"), joinGapMs = 3_000)
+
+    @Test
+    fun endingTrimResolvesTheNewMergedGroupBeforeClamping() {
+        val initial = mergeFixture()
+        assertEquals(2, rallyGroupsForDraft(initial).size)
+        val updated = EditorMath.setCoreEnd(initial, "A", 16_000, 60_000)
+        val selected = rallyGroupsForDraft(updated).single { "A" in it.cutIds }
+        assertEquals(setOf("A", "B"), selected.cutIds)
+        assertEquals(23_000L, 23_000L.coerceIn(selected.keepStartMs, selected.keepEndMs))
+    }
+
+    @Test
+    fun startingTrimResolvesTheNewMergedGroupBeforeClamping() {
+        val updated = EditorMath.setCoreStart(mergeFixture(), "B", 21_000, 0)
+        val selected = rallyGroupsForDraft(updated).single { "B" in it.cutIds }
+        assertEquals(setOf("A", "B"), selected.cutIds)
+        assertEquals(12_000L, 12_000L.coerceIn(selected.keepStartMs, selected.keepEndMs))
+    }
+
+    @Test
+    fun serveAndPendingReviewBoundariesStillSeparateTrimGroups() {
+        val joined = EditorMath.setCoreEnd(mergeFixture(), "A", 16_000, 60_000)
+        assertEquals(2, rallyGroupsForDraft(joined.copy(reviewedCutIds = emptySet())).size)
+        val separated = joined.copy(scoreTracking = ScoreTracking(enabled = true, serveMarkers = listOf(
+            ServeMarker("serve", 22_000, ServingSide.NEAR, ServeMarkerOrigin.MANUAL, rallyId = "B"))))
+        val selected = rallyGroupsForDraft(separated).single { "A" in it.cutIds }
+        assertEquals(setOf("A"), selected.cutIds)
+        assertEquals(18_000L, 23_000L.coerceIn(selected.keepStartMs, selected.keepEndMs))
     }
 
     @Test

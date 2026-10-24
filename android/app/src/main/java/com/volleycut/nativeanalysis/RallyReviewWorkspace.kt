@@ -599,6 +599,8 @@ private fun RallyBoundsTimeline(
     val trim by rememberUpdatedState(onTrim)
     val seek by rememberUpdatedState(onSeek)
     val scrub by rememberUpdatedState(onScrubbingChange)
+    val paddingBeforeView = rally.keepStartMs < windowStart
+    val paddingAfterView = rally.keepEndMs > windowEnd
     LaunchedEffect(context.window, dragging) {
         if (!dragging) {
             windowStart = context.window.startMs
@@ -642,7 +644,12 @@ private fun RallyBoundsTimeline(
             .semantics {
                 contentDescription = "Rally timeline. Start " + preciseTime(startMs) + "; end " + preciseTime(endMs)
                 stateDescription = "Previous rally " + (context.previous?.let { rallies.indexOf(it) + 1 } ?: "none") +
-                    "; next rally " + (context.next?.let { rallies.indexOf(it) + 1 } ?: "none")
+                    "; next rally " + (context.next?.let { rallies.indexOf(it) + 1 } ?: "none") +
+                    when {
+                        positionMs < windowStart -> "; video at ${preciseTime(positionMs)} before this view"
+                        positionMs > windowEnd -> "; video at ${preciseTime(positionMs)} after this view"
+                        else -> ""
+                    }
                 progressBarRangeInfo = ProgressBarRangeInfo(positionMs.coerceIn(windowStart, windowEnd).toFloat(),
                     windowStart.toFloat()..windowEnd.toFloat())
                 setProgress { value -> onSeek(value.toLong().coerceIn(windowStart, windowEnd)); true }
@@ -723,15 +730,27 @@ private fun RallyBoundsTimeline(
                 drawRoundRect(Color.White, Offset(at - 5.dp.toPx(), 18.dp.toPx()), Size(10.dp.toPx(), 44.dp.toPx()), CornerRadius(3.dp.toPx()))
                 drawRoundRect(Green, Offset(at - 3.dp.toPx(), 19.dp.toPx()), Size(6.dp.toPx(), 42.dp.toPx()), CornerRadius(2.dp.toPx()))
             }
-            if (positionMs in windowStart..windowEnd) {
-                val p = x(positionMs)
-                drawLine(Orange, Offset(p, 0f), Offset(p, size.height), 2.dp.toPx())
+            val p = x(positionMs)
+            drawLine(Orange, Offset(p, 0f), Offset(p, size.height), 2.dp.toPx())
+            if (positionMs !in windowStart..windowEnd) {
+                val direction = if (positionMs < windowStart) -1 else 1
+                drawPath(Path().apply {
+                    moveTo(p + direction * 8.dp.toPx(), 8.dp.toPx())
+                    lineTo(p, 2.dp.toPx()); lineTo(p, 14.dp.toPx()); close()
+                }, Orange)
             }
         }
     }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         Text("Start " + preciseTime(startMs), fontSize = 12.sp, color = CourtsideMuted, modifier = Modifier.testTag("rally-start-readout"))
         Text("End " + preciseTime(endMs), fontSize = 12.sp, color = CourtsideMuted, modifier = Modifier.testTag("rally-end-readout"))
+    }
+    if (paddingBeforeView || paddingAfterView) {
+        Text(when {
+            paddingBeforeView && paddingAfterView -> "Padding continues before and after this view."
+            paddingBeforeView -> "Start padding continues before this view."
+            else -> "End padding continues after this view."
+        }, Modifier.testTag("rally-padding-outside-view"), fontSize = 11.sp, color = CourtsideMuted)
     }
 }
 

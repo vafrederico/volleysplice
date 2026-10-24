@@ -75,6 +75,20 @@ internal fun rallyServeMarkers(rally: EditableRallyGroup, markers: List<ServeMar
 
 internal const val RALLY_MIN_DURATION_MS = 500L
 
+/** The UI and trim callbacks must resolve membership from the same current draft. */
+internal fun rallyGroupsForDraft(
+    draft: EditorDraft,
+    suppression: AnalysisTypes.SuppressionAnalysis? = null,
+    intervals: List<FinalCutInterval> = EditorMath.finalIntervals(draft, suppression),
+): List<EditableRallyGroup> {
+    val pending = draft.cuts.filter { cut ->
+        cut.origin == CutOrigin.INFERRED && cut.included && cut.id !in draft.reviewedCutIds &&
+            (ProductionEnsemble.isDisagreement(cut.agreement) || cut.confidence < draft.confidenceReviewThreshold)
+    }.mapTo(mutableSetOf()) { it.id }
+    return EditorMath.editableRallyGroups(draft.cuts, intervals,
+        draft.scoreTracking.serveMarkers.takeIf { draft.scoreTracking.enabled }.orEmpty(), pending)
+}
+
 internal data class RallyTimelineContext(
     val previous: EditableRallyGroup?,
     val next: EditableRallyGroup?,
@@ -97,8 +111,8 @@ internal fun rallyTimelineContext(
     // Distant neighbours are edge markers; they must not shrink the trim target.
     val margin = minOf(8_000L, (selected.coreEndMs - selected.coreStartMs).coerceAtLeast(1) * 2)
     return RallyTimelineContext(previous, next, DetailWindow(
-        maxOf(sourceStartMs, minOf(selected.coreStartMs - margin, selected.keepStartMs)),
-        minOf(sourceEndMs, maxOf(selected.coreEndMs + margin, selected.keepEndMs)),
+        maxOf(sourceStartMs, selected.coreStartMs - margin),
+        minOf(sourceEndMs, selected.coreEndMs + margin),
     ))
 }
 

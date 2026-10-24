@@ -32,7 +32,7 @@ class RallyReviewUiInstrumentedTest {
 
     private fun withProject(many: Boolean = false, removedRallyIds: Set<String> = emptySet(),
         sourceName: String = "Courtside test", legacyEditorPreference: Boolean = false,
-        paddingMs: Long = 0, block: (Fixture) -> Unit) {
+        paddingMs: Long = 0, configureDraft: (EditorDraft) -> EditorDraft = { it }, block: (Fixture) -> Unit) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val preferences = context.getSharedPreferences("desktop_editor_layout", Context.MODE_PRIVATE)
@@ -59,9 +59,9 @@ class RallyReviewUiInstrumentedTest {
             ServeMarker("S1", 2_000, ServingSide.NEAR, ServeMarkerOrigin.MANUAL, rallyId = "R001"),
             ServeMarker("S2", 12_000, ServingSide.REVIEW, ServeMarkerOrigin.MANUAL, rallyId = "R002"))
         val initialDraft = EditorMath.applyPadding(EditorMath.newDraft(seed), paddingMs, paddingMs, seed.durationMs)
-        store.save(initialDraft.copy(
+        store.save(configureDraft(initialDraft.copy(
             cuts = initialDraft.cuts.map { it.copy(included = it.id !in removedRallyIds) },
-            joinGapMs = 0, scoreTracking = ScoreTracking(team1Name = "Cedar", team2Name = "Harbor", serveMarkers = serves)))
+            joinGapMs = 0, scoreTracking = ScoreTracking(team1Name = "Cedar", team2Name = "Harbor", serveMarkers = serves))))
         NativeProjectStore.save(context, project)
         NativeProjectStore.setSelectedId(context, project.id)
         GuidedTourStore.write(context, "dismissed")
@@ -117,7 +117,9 @@ class RallyReviewUiInstrumentedTest {
         }
         assertTrue(drawn.await(2, java.util.concurrent.TimeUnit.SECONDS))
         instrumentation.waitForIdleSync()
-        UiDevice.getInstance(instrumentation).takeScreenshot(f.context.getExternalFilesDir(null)!!.resolve(name))
+        val device = UiDevice.getInstance(instrumentation)
+        device.waitForIdle()
+        device.takeScreenshot(f.context.getExternalFilesDir(null)!!.resolve(name))
     }
 
     /** Check the actual TextureView pixels, not the UI playhead or a mocked Player. */
@@ -499,11 +501,74 @@ class RallyReviewUiInstrumentedTest {
     }
 
     @Test
+    fun mergingEitherNeighbourRetainsTheViewedFrame() {
+        listOf(false, true).forEach { previous ->
+            withProject(paddingMs = 2_000, configureDraft = { draft ->
+                draft.copy(joinGapMs = 3_000, reviewedCutIds = draft.cuts.mapTo(mutableSetOf()) { it.id },
+                    scoreTracking = draft.scoreTracking.copy(serveMarkers = emptyList()))
+            }) { f ->
+                compose.onNodeWithText("Browse rallies").performClick()
+                compose.onNodeWithTag(if (previous) "rally-card-R002" else "rally-card-R001").performScrollTo().performClick()
+                compose.onNodeWithTag("edit-selected-rally").performClick()
+                val timeline = compose.onNodeWithTag("rally-bounds-timeline")
+                val position = if (previous) 6_000f else 11_000f
+                timeline.performSemanticsAction(SemanticsActions.SetProgress) { it(position) }
+                compose.onNodeWithContentDescription(if (previous) "Start earlier by 1 second" else "End later by 1 second").performClick()
+                awaitDraft(f) { rallyGroupsForDraft(it).size == 1 }
+                compose.waitUntil(5_000) {
+                    timeline.fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].current == position
+                }
+                assertEquals(setOf("R001", "R002"), rallyGroupsForDraft(requireNotNull(f.store.load())).single().cutIds)
+            }
+        }
+    }
+
+    private fun checkShortCoreHandles(duration: Long, padding: Long) = withProject(configureDraft = { draft ->
+        draft.copy(cuts = draft.cuts.take(1).map { it.copy(coreStartMs = 10_000, coreEndMs = 10_000 + duration,
+            keepStartMs = (10_000 - padding).coerceAtLeast(0), keepEndMs = (10_000 + duration + padding).coerceAtMost(20_000)) },
+            scoreTracking = draft.scoreTracking.copy(enabled = false, serveMarkers = emptyList()))
+    }) { f ->
+        val timeline = compose.onNodeWithTag("rally-bounds-timeline")
+        val node = timeline.fetchSemanticsNode()
+        val density = node.layoutInfo.density.density
+        val range = node.config[SemanticsProperties.ProgressBarRangeInfo].range
+        val separationDp = (node.boundsInRoot.width / density - 44f) * duration / (range.endInclusive - range.start)
+        assertTrue("Short-core handles need independent touch regions", separationDp >= 48f)
+        compose.onNodeWithTag("rally-padding-outside-view").assertIsDisplayed()
+        capture(f, "courtside-short-core-$duration.png")
+        timeline.performSemanticsAction(SemanticsActions.SetProgress) { it(10_000f + duration / 2f) }
+        fun drag(from: Float, to: Float) {
+            val liveRange = timeline.fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].range
+            val inset = 22f * density
+            timeline.performTouchInput {
+                fun x(value: Float) = inset + (width - inset * 2) * (value - liveRange.start) / (liveRange.endInclusive - liveRange.start)
+                down(Offset(x(from), center.y)); moveTo(Offset(x(to), center.y)); up()
+            }
+        }
+        drag(10_000f + duration, 10_000f + duration * 1.5f)
+        awaitDraft(f) { it.cuts.first().coreEndMs >= 10_000 + maxOf(RALLY_MIN_DURATION_MS, duration + duration / 2 - 10) }
+        assertEquals(10_000L, requireNotNull(f.store.load()).cuts.first().coreStartMs)
+        val end = requireNotNull(f.store.load()).cuts.first().coreEndMs
+        drag(10_000f, 9_900f)
+        awaitDraft(f) { it.cuts.first().coreStartMs in 9_880..9_920 }
+        assertEquals(end, requireNotNull(f.store.load()).cuts.first().coreEndMs)
+    }
+
+    @Test
+    fun halfSecondCoreKeepsSeparateHandlesWithMaximumPadding() = checkShortCoreHandles(500, 10_000)
+
+    @Test
+    fun importedTenthSecondCoreKeepsSeparateHandlesWithDefaultPadding() = checkShortCoreHandles(100, 2_000)
+
+    @Test
     fun paddedTrimmingRetainsTheViewedFrameForNudgesAndDragging() = withProject(paddingMs = 2_000) { f ->
         val timeline = compose.onNodeWithTag("rally-bounds-timeline")
         fun position(value: Float) {
             compose.waitUntil(5_000) {
-                timeline.fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].current == value
+                val config = timeline.fetchSemanticsNode().config
+                val progress = config[SemanticsProperties.ProgressBarRangeInfo]
+                if (value in progress.range) progress.current == value else
+                    config[SemanticsProperties.StateDescription].contains("video at ${preciseTime(value.toLong())}")
             }
         }
         fun seek(value: Float) {

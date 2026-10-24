@@ -232,10 +232,16 @@ The existing Editor retains its established palette and layout.
   distant neighbours use labeled edge chevrons so long breaks cannot squeeze its
   handles together. Short rallies use a proportional context margin. The visible
   time window stays fixed throughout a drag.
+  The local scale follows the core duration, even with large padding. Any padding
+  outside that view is named explicitly; an edge arrow marks an off-view video
+  position. Very short cores still have distinct visual and touch targets.
   Trimming and boundary nudges retain the current viewed frame while it stays
   inside the adjusted retained range, including padding. A boundary that excludes
   it clamps the playhead to the nearest remaining retained edge. This uses the
   persisted draft's actual updated bounds for both dragging and nudges.
+  Resolve the selected group again after a trim: joining another retained clip
+  must not clamp against the old group's cut membership. Serve and unresolved
+  review boundaries still prevent joining.
   Timeline gestures enable ExoPlayer's scrubbing mode while dragging and finish
   on the exact requested video frame. Playback remains paused for frame inspection.
 - Keep/Remove and Near/Far share the same editing callbacks as Editor.

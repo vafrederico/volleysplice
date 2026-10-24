@@ -3002,20 +3002,7 @@ private fun EditorScreen(
     val sortedCuts = draft.cuts.sortedWith(compareBy<EditableCut> { it.keepStartMs }.thenBy { it.keepEndMs })
     val finalMaterialization = EditorMath.materialize(draft, seed.suppression)
     val finalIntervals = finalMaterialization.intervals
-    val pendingConfidenceReviewCutIds = sortedCuts.asSequence()
-        .filter { cut ->
-            cut.origin == CutOrigin.INFERRED && cut.included &&
-                cut.id !in draft.reviewedCutIds &&
-                (cut.isModelDisagreement() || cut.confidence < draft.confidenceReviewThreshold)
-        }
-        .map { it.id }
-        .toSet()
-    val editableRallies = EditorMath.editableRallyGroups(
-        sortedCuts,
-        finalIntervals,
-        draft.scoreTracking.serveMarkers.takeIf { draft.scoreTracking.enabled }.orEmpty(),
-        pendingConfidenceReviewCutIds,
-    )
+    val editableRallies = rallyGroupsForDraft(draft, seed.suppression, finalIntervals)
     val selectedRally = editableRallies.firstOrNull { selectedId in it.cutIds }
         ?: editableRallies.firstOrNull()
     val selected = selectedRally?.asEditableCut()
@@ -3235,6 +3222,7 @@ private fun EditorScreen(
 
     fun setCoreBoundary(side: String, valueMs: Long): EditableRallyGroup? {
         val rally = selectedRally ?: return null
+        val anchorId = selectedId?.takeIf { it in rally.cutIds } ?: rally.id
         val cut = if (side == "start") rally.cuts.minBy { it.coreStartMs }
             else rally.cuts.maxBy { it.coreEndMs }
         updateDraft { current ->
@@ -3244,7 +3232,7 @@ private fun EditorScreen(
                 EditorMath.setCoreEnd(current, cut.id, valueMs, seed.gameEndMs)
             }
         }
-        return draft.cuts.filter { it.id in rally.cutIds }.takeIf { it.isNotEmpty() }?.let(::EditableRallyGroup)
+        return rallyGroupsForDraft(draft, seed.suppression).firstOrNull { anchorId in it.cutIds }
     }
 
     fun splitSelectedAtPlayhead() {

@@ -25,8 +25,8 @@
   },
   "build": {
     "variant": "debug",
-    "versionName": "0.10.28-debug",
-    "versionCode": 42,
+    "versionName": "0.10.29-debug",
+    "versionCode": 43,
     "compileSdk": 37,
     "minSdk": 34,
     "abis": [
@@ -34,23 +34,23 @@
       "x86_64"
     ],
     "apk": "android/app/build/outputs/apk/debug/app-debug.apk",
-    "sha256": "82a2e6b7b0a432a3c58e2ce4fa8b49b5e8a76fb41e9821070bed681f30ac0758",
+    "sha256": "8be13a0d3fb16b929779cb57363b15e2cd6bf7441dcb3f063b5ab490bdf3d5d4",
     "signatureVerified": true
   },
   "validation": {
-    "jvmTests": 245,
+    "jvmTests": 249,
     "jvmFailures": 0,
-    "androidUiTests": 17,
+    "androidUiTests": 20,
     "androidUiFailures": 0,
-    "androidUiEmulatorTests": 4,
-    "androidUiPhysicalTests": 17,
+    "androidUiEmulatorTests": 3,
+    "androidUiPhysicalTests": 20,
     "portraitResponsiveChecks": 2,
     "portraitResponsiveWidthsDp": [
       360,
       768
     ],
     "portraitResponsiveFailures": 0,
-    "validationNotes": "All seventeen unique UI cases pass on the physical Pixel: fifteen in the full class run and both trim cases in focused reruns after harness corrections. These corrections wait for the persisted draft, respect the 500ms minimum when an injected drag rounds by a millisecond, and calculate pointer positions using the actual Compose node density instead of system density, so the existing user UI-scale preference is respected. The held-gesture case asserts that its window stays fixed. Four unique focused cases pass on the emulator, covering padded/zero-padding trimming, retained-neighbour context and accessible Add seeking. All 245 JVM tests and lint pass. No production source changes followed the successful assembly; later rebuilds changed only the instrumentation APK.",
+    "validationNotes": "The complete twenty-case class passes in one physical Pixel run on the final APK. All 249 JVM tests and lint pass. Three focused emulator cases cover both merge directions, independently draggable short-core handles with maximum/default padding, and explicit off-view padding context. Earlier interrupted runs were checked for liveness before restarting. Initial emulator capture was obscured by its lock layer; the final emulator capture was repeated after dismissing its nonsecure keyguard and visually inspected. Physical fixture captures are not included in these public artifacts. Screenshot capture now waits for native accessibility idle after the frame commit.",
     "shortWideUiChecks": 2,
     "shortWideUiFailures": 0,
     "shortWideBaselineVersion": "0.10.23-debug",
@@ -89,8 +89,8 @@
   "installation": {
     "device": "Google Pixel 10 Pro",
     "transport": "wireless ADB",
-    "result": "Final 0.10.28-debug payload installed in place on the Pixel. Its installed APK digest matches the verified local APK; no uninstall or app-data reset.",
-    "validationScope": "Current iteration: debug assembly/signature verification, lint, 245 JVM tests, all seventeen unique physical UI cases and four focused emulator cases. Physical frame rendering, repeated seeking, shared edits, navigation and both landscape rotations are included. The prior narrow/tablet screenshot checks retain their explicit baseline versions.",
+    "result": "0.10.29-debug installed in place on Pixel. Installed SHA-256 matches the signed local debug APK; app data retained. Only synthetic fixture state is changed by tests and prior app state is restored.",
+    "validationScope": "Current final build: debug assembly, signature/digest verification, lint,249 JVM cases,all20 physical UI cases in one run,and3 focused emulator cases. The full class includes frame rendering, stress seeks, recreation, playback-preserving navigation, shared editing, tutorial, accessibility seeking,and both landscape rotations. Prior narrow/tablet checks remain explicitly versioned baselines.",
     "dataPreservation": "Physical checks use a temporary synthetic project and restore the prior selected project, layout preference, guided-tour state and global fade preference before deleting their own fixture. Delete confirmation is cancelled during the test. No app uninstall or data reset."
   },
   "deviceChecks": [
@@ -142,7 +142,7 @@
   "fonts": "Courtside Sans: renamed, outline-preserving IBM Plex Sans subsets with the original SIL OFL notices included.",
   "limitations": [
     "UI checks use a synthetic four-color H.264 video, not private recordings.",
-    "The emulator's hardware H.264 decoder fails during playback; emulator screenshots verify native layout only. Rendered-frame checks pass on the physical Pixel with 0.10.28.",
+    "The emulator's hardware H.264 decoder fails during playback; emulator screenshots verify native layout only. Rendered-frame checks pass on the physical Pixel with0.10.29.",
     "The live physical screen stream was left closed to avoid recreating the observed external encoder leak.",
     "Visual review used native screenshots and Compose interaction checks; the HTML/browser Taste inspector does not inspect native Compose screens. Long selected project names ellipsize when constrained; project-menu entries show their status separately."
   ],
@@ -198,5 +198,27 @@
   "auditFollowupScreenshotVersion": "0.10.28-debug",
   "auditFollowupScreenshots": [
     "local-context-audit-fix.png"
+  ],
+  "auditRoundTwoFollowup": {
+    "reviewedCommit": "5bbf754f5fc116b742f66af126d6bbb03910362a",
+    "findings": [
+      {
+        "severity": "P2",
+        "issue": "Clamping still used old cut membership when trimming joined the selected rally to a neighbour.",
+        "repair": "Use one current-draft grouping helper for rendering and the post-trim callback, including final materialization, pending review boundaries and active serves. Resolve the new group with the selected cut anchor.",
+        "coverage": "Both previous/start and next/end merge directions preserve a frame inside the newly joined retained range; serving and pending-review separators still prevent joins."
+      },
+      {
+        "severity": "P2",
+        "issue": "Short cores still had overlapping handles when their selected retained padding widened the local scale.",
+        "repair": "Zoom only around the core, with margin min(8s,twice core duration),clipped to source. Label off-view padding and indicate off-view playback explicitly.",
+        "coverage": "500ms core with10s padding and100ms imported core with2s padding retain separate24dp hit regions; both end and start handles are dragged independently through native UI. Core geometry also uses a306dp canvas including44dp insets in JVM checks."
+      }
+    ]
+  },
+  "auditRoundTwoScreenshotVersion": "0.10.29-debug",
+  "auditRoundTwoScreenshots": [
+    "short-core-maximum-padding.png",
+    "short-core-default-padding.png"
   ]
 }
