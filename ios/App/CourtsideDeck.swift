@@ -216,23 +216,38 @@ struct CourtsideDeckWorkspace<Video: View>: View {
             ZStack(alignment: .top) {
                 video().frame(maxWidth: .infinity, maxHeight: .infinity)
             }.background(.black).guidedTourTarget("deck-video")
-            HStack(spacing: 10) {
-                CourtsideActionButton(title: playing ? "Pause video" : "Play video",
-                    imageName: playing ? "pause.fill" : "play.fill", identifier: "deckPlay",
-                    enabled: sourceAvailable, selected: false, bordered: false, action: onPlay)
-                    .frame(width: 44, height: 44)
-                Text(deckTime(playhead)).monospacedDigit().font(.system(size: 13))
-                Spacer(minLength: 0)
-                Text(navigation.browsing ? "\(deckTime(bounds.endMs)) source" : String(format: "%.1f s", Double((rally?.coreEndMs ?? navigation.focus?.endMs ?? 0) - (rally?.coreStartMs ?? navigation.focus?.startMs ?? 0)) / 1_000))
-                    .font(.system(size: 11)).foregroundStyle(.white.opacity(0.7)).lineLimit(1)
-                Menu {
-                    ForEach(EditorPlaybackPolicy.options(for: draft.playbackRate), id: \.self) { rate in
-                        Button("\(rate.formatted())×") { onRate(rate) }
-                    }
-                } label: { Text("\(draft.playbackRate.formatted())×").font(.system(size: 13, weight: .semibold)).frame(minWidth: 44, minHeight: 44) }
-                    .accessibilityLabel("Playback speed, \(draft.playbackRate.formatted()) times").accessibilityIdentifier("deckSpeed")
-            }.padding(.horizontal, 10).foregroundStyle(.white).background(Color(white: 0.09))
+            playbackControls
         }
+    }
+    private var playbackControls: some View {
+        HStack(spacing: 10) {
+            CourtsideActionButton(title: playing ? "Pause video" : "Play video",
+                imageName: playing ? "pause.fill" : "play.fill", identifier: "deckPlay",
+                enabled: sourceAvailable, selected: false, bordered: false, action: onPlay)
+                .frame(width: 44, height: 44)
+            Text(deckTime(playhead)).monospacedDigit().font(.system(size: 13))
+            Spacer(minLength: 0)
+            Text(playbackDuration).font(.system(size: 11)).foregroundStyle(.white.opacity(0.7)).lineLimit(1)
+            playbackSpeed
+        }.padding(.horizontal, 10).foregroundStyle(.white).background(Color(white: 0.09))
+    }
+    private var playbackDuration: String {
+        if navigation.browsing { return "\(deckTime(bounds.endMs)) source" }
+        let start = rally?.coreStartMs ?? navigation.focus?.startMs ?? 0
+        let end = rally?.coreEndMs ?? navigation.focus?.endMs ?? 0
+        let seconds = Double(end - start) / 1_000
+        return String(format: "%.1f s", seconds)
+    }
+    private var playbackSpeed: some View {
+        Menu {
+            ForEach(EditorPlaybackPolicy.options(for: draft.playbackRate), id: \.self) { rate in
+                Button("\(rate.formatted())×") { onRate(rate) }
+            }
+        } label: {
+            Text("\(draft.playbackRate.formatted())×").font(.system(size: 13, weight: .semibold))
+                .frame(minWidth: 44, minHeight: 44)
+        }
+        .accessibilityLabel("Playback speed, \(draft.playbackRate.formatted()) times").accessibilityIdentifier("deckSpeed")
     }
     @ViewBuilder private var detailPane: some View {
         if navigation.browsing { browser.guidedTourTarget("deck-list") }
