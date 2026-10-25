@@ -85,6 +85,7 @@ struct CourtsideReviewNavigation: View {
     private func navigationButton(_ title: String, enabled: Bool, selected: Bool = false, action: @escaping () -> Void) -> some View {
         #if canImport(UIKit)
         CourtsideActionButton(title: title, enabled: enabled, selected: selected, action: action)
+            .disabled(!enabled)
             .frame(maxWidth: .infinity).frame(height: 44)
         #else
         Button(action: action) {

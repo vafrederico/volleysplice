@@ -11,6 +11,56 @@ final class RallyReviewTests: XCTestCase {
     private func presentation(_ draft: EditorDraft, cleanup: [SuppressionRegion] = []) -> EditorPresentation {
         .init(draft: draft, suggestions: cleanup, bounds: bounds, durationMs: bounds.endMs)
     }
+    func testNextReviewWaitsForClipCleanupAndEveryServingDecision() throws {
+        var draft = EditorDraft(sourceRevision: "synthetic", cuts: [cut("a", 10_000, 15_000), cut("b", 30_000, 35_000)])
+        draft.scoreTracking = try ScoreTracking(serveMarkers: [
+            .init(id: "first", timestampMs: 10_000, side: .review, rallyId: "a"),
+            .init(id: "second", timestampMs: 13_000, side: .review, rallyId: "a")
+        ]).jsonValue()
+        let cleanup = SuppressionRegion(id: "cleanup", logicalId: "cleanup", startMs: 11_000, endMs: 12_000, eligiblePolicyIds: ["aggressive"])
+        draft.suppressionScopeOverrides[cleanup.logicalId] = "veto-region"
+        let initial = presentation(draft, cleanup: [cleanup])
+        let focus = try XCTUnwrap(RallyReview.queue(presentation: initial, ignored: []).first)
+        func canAdvance(_ draft: EditorDraft) -> Bool {
+            let p = presentation(draft, cleanup: [cleanup])
+            return RallyReview.canAdvance(focus: focus, selected: p.groups.first { $0.cutIds.contains("a") },
+                queue: RallyReview.queue(presentation: p, ignored: []))
+        }
+        XCTAssertTrue(focus.clipReview); XCTAssertEqual(focus.cleanupIds, ["cleanup"])
+        XCTAssertEqual(focus.serveIds, ["first", "second"])
+        XCTAssertFalse(canAdvance(draft))
+        draft = RallyReview.decide(draft, rally: initial.groups.first { $0.cutIds.contains("a") }, cleanup: [cleanup], keep: true)
+        XCTAssertFalse(canAdvance(draft), "Keep resolves clip/cleanup, while both serves still need decisions")
+        var score = try ScoreTracking.fromJSON(draft.scoreTracking, durationMs: bounds.endMs)
+        score.serveMarkers[0].side = .near; draft.scoreTracking = try score.jsonValue()
+        XCTAssertFalse(canAdvance(draft), "Every unresolved serve must be decided")
+        draft.scoreTracking = try ScoreReducer.removeServe(score, markerId: "second").jsonValue()
+        XCTAssertTrue(canAdvance(draft), "Not a serve resolves the last serving decision")
+        XCTAssertEqual(presentation(draft, cleanup: [cleanup]).pendingConfidenceIds, ["b"])
+    }
+    func testNextReviewGatesSelectedRalliesOpenedWithoutAReviewFocus() {
+        var draft = EditorDraft(sourceRevision: "synthetic", cuts: [cut("a", 10_000, 15_000), cut("b", 30_000, 35_000)])
+        let p = presentation(draft), queue = RallyReview.queue(presentation: p, ignored: [])
+        XCTAssertFalse(RallyReview.canAdvance(focus: nil, selected: p.groups[0], queue: queue))
+        // A regrouped selection must also wait for pending work on another member.
+        XCTAssertFalse(RallyReview.canAdvance(focus: nil, selected: .init(cuts: draft.cuts), queue: [queue[1]]))
+        draft.reviewedCutIds = ["a"]
+        let updated = presentation(draft)
+        XCTAssertTrue(RallyReview.canAdvance(focus: nil, selected: updated.groups[0],
+            queue: RallyReview.queue(presentation: updated, ignored: [])))
+        XCTAssertFalse(RallyReview.canAdvance(focus: nil, selected: updated.groups[0], queue: []))
+    }
+    func testNextReviewWaitsForOrphanCleanupDecisions() throws {
+        let draft = EditorDraft(sourceRevision: "synthetic", cuts: [cut("b", 30_000, 35_000)])
+        let cleanup = SuppressionRegion(id: "gap", logicalId: "gap", startMs: 10_000, endMs: 12_000, eligiblePolicyIds: ["aggressive"])
+        let queue = RallyReview.queue(presentation: presentation(draft, cleanup: [cleanup]), ignored: [])
+        let focus = try XCTUnwrap(queue.first)
+        XCTAssertNil(focus.rallyId)
+        XCTAssertFalse(RallyReview.canAdvance(focus: focus, selected: nil, queue: queue))
+        let resolved = RallyReview.decide(draft, rally: nil, cleanup: [cleanup], keep: false)
+        XCTAssertTrue(RallyReview.canAdvance(focus: focus, selected: nil,
+            queue: RallyReview.queue(presentation: presentation(resolved, cleanup: [cleanup]), ignored: [])))
+    }
     func testQueueCoalescesRelatedWorkAndRetainsOrphanEvidence() throws {
         var draft = EditorDraft(sourceRevision: "synthetic", cuts: [cut("a", 10_000, 15_000)])
         draft.scoreTracking = try ScoreTracking(serveMarkers: [

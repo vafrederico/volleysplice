@@ -312,7 +312,8 @@ struct CourtsideDeckWorkspace<Video: View>: View {
             }
     }
     private var navigationButtons: some View {
-        CourtsideReviewNavigation(previous: neighbor(-1) != nil, pending: !queue.isEmpty, next: neighbor(1) != nil,
+        CourtsideReviewNavigation(previous: neighbor(-1) != nil,
+            pending: RallyReview.canAdvance(focus: navigation.focus, selected: rally, queue: queue), next: neighbor(1) != nil,
             onNeighbor: onNeighbor, onReview: onReview)
     }
     private func neighbor(_ direction: Int) -> EditableRallyGroup? {

@@ -19,6 +19,15 @@ public struct RallyReviewStop: Equatable, Identifiable, Sendable {
 public enum RallyReview {
     public static let minimumDurationMs: Int64 = 500
 
+    /// A review remains pending until its clip, cleanup and serve decisions are
+    /// resolved. Match the selected group's current membership as well as the
+    /// visited stop, so opening a rally from the browser cannot bypass the gate.
+    public static func canAdvance(focus: RallyReviewStop?, selected: EditableRallyGroup?, queue: [RallyReviewStop]) -> Bool {
+        !queue.isEmpty && !queue.contains { stop in
+            stop.id == focus?.id || stop.rallyId.map { selected?.cutIds.contains($0) == true } == true
+        }
+    }
+
     public static func queue(presentation p: EditorPresentation, ignored: [IgnoredSourceInterval]) -> [RallyReviewStop] {
         var stops: [String: RallyReviewStop] = [:]
         func add(_ rally: EditableRallyGroup?, _ stop: RallyReviewStop) {

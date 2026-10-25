@@ -22,7 +22,8 @@ native system sans typography. The full Editor retains its established palette.
   carry the work; metadata stays quiet.
 - `RallyReview` coalesces clip, cleanup and serve review work by rally. Orphan
   cleanup/serve stops remain reachable. Fully ignored evidence is skipped.
-  Next review navigates without resolving decisions.
+  Next review stays disabled until the current clip, cleanup and serving-side
+  decisions are resolved. Advancing never resolves other pending decisions.
 - Keep/Remove writes through existing draft validation and saving. Logical
   cleanup fragments resolve together; serve decisions remain independent.
   Near/Far edits existing markers or explicitly creates a manual marker;
@@ -89,8 +90,10 @@ native system sans typography. The full Editor retains its established palette.
   and project saving. Settings contains project options, processing/storage,
   version, model reanalysis and tutorial replay. The full Editor still exposes its
   score, cleanup, padding, ignored-time, clip and iPad resize tools.
-- Phone portrait Editor keeps Play only final video inside Now reviewing. Its
-  Current rally heading contains previous/number/next navigation. Preview rally,
+- Phone portrait Editor keeps Play only final video inside Now reviewing. The
+  top review counters seek and select review items without moving the outer
+  Editor scroll position; marker and clip lists continue following selection.
+  The Current rally heading contains previous/number/next navigation. Preview rally,
   Reset extra time, tenth-second nudge buttons and redundant confidence/timestamps
   are absent from that compact section. Manual deletion and exact handle editing
   remain available. Android portrait also omits Preview rally and Reset extra time.

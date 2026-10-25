@@ -323,6 +323,7 @@ struct EditorWorkspace: View {
         navigateDeck(to: time, end: deckPlaybackRange.endMs)
     }
     private func deckNextReview() {
+        guard RallyReview.canAdvance(focus: deck.focus, selected: currentGroup, queue: deckQueue) else { return }
         guard let next = deckQueue.first(where: { $0.id != deck.focus?.id && $0.startMs >= playheadMs }) ??
                 deckQueue.first(where: { $0.id != deck.focus?.id }) ?? deckQueue.first else { return }
         stage = .rallies; visitReview(next)
@@ -460,7 +461,9 @@ struct EditorWorkspace: View {
                     VolleySpliceLegalFooter()
                 }.padding(.horizontal, 16).padding(.vertical, 12)
             }
-                .onChange(of: selectedSuggestionId) { _, id in if id != nil { proxy.scrollTo("compact-current-rally", anchor: .top) } }
+                .onChange(of: selectedSuggestionId) { _, id in
+                    if !isPhone, id != nil { proxy.scrollTo("compact-current-rally", anchor: .top) }
+                }
                 .onChange(of: compactReviewReveal) { _, _ in proxy.scrollTo(compactReviewTarget, anchor: .top) }
                 .onChange(of: tourState) { _, _ in revealTutorial(using: proxy) }
                 .onAppear { revealTutorial(using: proxy) }
@@ -496,6 +499,7 @@ struct EditorWorkspace: View {
         }
     }
     private func revealCompactReview(_ target: String) {
+        guard !isPhone else { return }
         compactReviewTarget = target; compactReviewReveal += 1
     }
     private func resizeDivider(label: String, identifier: String, action: @escaping (Double, Bool) -> Void) -> some View {
