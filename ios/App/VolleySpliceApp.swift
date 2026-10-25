@@ -1,5 +1,6 @@
 import SwiftUI
 import AVKit
+import AVFAudio
 import UniformTypeIdentifiers
 
 @main
@@ -105,6 +106,13 @@ struct VolleySpliceApp: App {
             return try await self.processJob(job)
         }
         queue.onChange = { [weak self] in self?.objectWillChange.send() }
+        do {
+            // Video audio should play even in Silent mode. Let AVPlayer activate
+            // the session when playback starts so opening the app doesn't interrupt other audio.
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+        } catch {
+            self.error = "Could not enable video audio: \(error.localizedDescription)"
+        }
         refreshFiles()
     }
     func clearFeatureCache() {

@@ -1,8 +1,26 @@
 import SwiftUI
+import AVFAudio
 import XCTest
 @testable import VolleySplice
 
 @MainActor final class EditorProjectBindingTests: XCTestCase {
+    func testWorkspaceEnablesVideoAudioInSilentMode() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let session = AVAudioSession.sharedInstance()
+        let category = session.category, mode = session.mode, options = session.categoryOptions
+        defer { try? session.setCategory(category, mode: mode, options: options) }
+        try session.setCategory(.ambient)
+
+        let model = WorkspaceModel(documents: root, support: root.appendingPathComponent("support"))
+
+        XCTAssertNil(model.error)
+        XCTAssertEqual(session.category, .playback, "Video playback must remain audible in Silent mode")
+        XCTAssertEqual(session.mode, .moviePlayback)
+    }
+
     func testNewAnalysisUsesFullFrameAndSavedProjectRetainsItsRegion() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
