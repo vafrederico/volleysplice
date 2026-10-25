@@ -40,6 +40,9 @@ native system sans typography. The full Editor retains its established palette.
   available there. Rate changes update the persisted
   draft and the running player. Previous rally, Next review and Next rally retain
   paused/playing/waiting-to-play intent and replace the preview stop boundary.
+  In both Review and All rallies, playback stops at the selected rally's retained
+  end through AVPlayer's media boundary. Play after a context seek or at the end
+  restarts that rally when needed. Editor and Export release this boundary.
   Navigation stays below the scrolling review controls. Native buttons provide
   full touch targets even when the landscape interface is scaled down. Queue opens
   from Settings; there is no persistent bottom queue strip.
@@ -56,7 +59,9 @@ native system sans typography. The full Editor retains its established palette.
   excluded frame. Rally-bound serve timestamps follow existing editor math.
 - The deck uses one linear source-time scale containing the selected rally, its
   padding and both nearest retained neighbors. Real gaps keep their proportional
-  width. It never compresses gaps or zooms automatically to enlarge short cores;
+  width. Context expands symmetrically around the selected core's midpoint,
+  limited only by the available source bounds. It never compresses gaps or zooms
+  automatically to enlarge short cores;
   the one-second buttons remain available for those. The full Editor retains its
   core detail scale on wide layouts. Phone portrait Editor uses one track with
   core handles below the padding handles on a shared linear scale. Drag translation uses the original boundary and a

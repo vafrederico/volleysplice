@@ -74,8 +74,14 @@ public enum RallyReview {
     public static func context(for rally: EditableRallyGroup, rallies: [EditableRallyGroup], effectiveIds: Set<String>, bounds: TimeRange) -> TimeRange {
         let previous = neighbor(of: rally, direction: -1, rallies: rallies, effectiveIds: effectiveIds)
         let next = neighbor(of: rally, direction: 1, rallies: rallies, effectiveIds: effectiveIds)
-        return .init(startMs: max(bounds.startMs, min(rally.coreStartMs - 8_000, rally.keepStartMs, previous.map { $0.keepStartMs - 2_000 } ?? Int64.max)),
-                     endMs: min(bounds.endMs, max(rally.coreEndMs + 8_000, rally.keepEndMs, next.map { $0.keepEndMs + 2_000 } ?? Int64.min)))
+        let start = max(bounds.startMs, min(rally.coreStartMs - 8_000, rally.keepStartMs, previous.map { $0.keepStartMs - 2_000 } ?? Int64.max))
+        let end = min(bounds.endMs, max(rally.coreEndMs + 8_000, rally.keepEndMs, next.map { $0.keepEndMs + 2_000 } ?? Int64.min))
+        // Balance real source-time context around the selected core. Expand the
+        // shorter side instead of compressing gaps or hiding either neighbor.
+        // At a source boundary, show all available context without inventing time.
+        let center = rally.coreStartMs + (rally.coreEndMs - rally.coreStartMs) / 2
+        let radius = max(center - start, end - center)
+        return .init(startMs: max(bounds.startMs, center - radius), endMs: min(bounds.endMs, center + radius))
     }
     public static func coreWindow(_ core: TimeRange, bounds: TimeRange) -> TimeRange {
         let margin = min(8_000, max(0, core.endMs - core.startMs) / 2)
@@ -124,6 +130,11 @@ public enum RallyReview {
     }
     public static func focusedPlayback(frameMs: Int64, retained: TimeRange) -> (positionMs: Int64, endMs: Int64) {
         (frameMs < retained.startMs || frameMs >= retained.endMs ? retained.startMs : frameMs, retained.endMs)
+    }
+    public static func playbackRange(rally: EditableRallyGroup?, review: RallyReviewStop?, bounds: TimeRange) -> TimeRange {
+        let start = max(bounds.startMs, rally?.keepStartMs ?? review?.startMs ?? bounds.startMs)
+        let end = min(bounds.endMs, rally?.keepEndMs ?? review?.endMs ?? bounds.endMs)
+        return .init(startMs: start, endMs: end)
     }
 
     /// Explicit Keep/Remove resolves clip and cleanup work, never serve work.

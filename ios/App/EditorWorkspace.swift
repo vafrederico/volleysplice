@@ -90,7 +90,6 @@ struct EditorWorkspace: View {
     @State private var preparedInput: EditorDraft?
     @State private var message: String?
     @State private var lastPreviewSeek: Int64 = -1
-    @State private var previewEndMs: Int64?
     @State private var leftDragStart: Double?
     @State private var rightDragStart: Double?
     @State private var videoDragStart: Double?
@@ -155,6 +154,9 @@ struct EditorWorkspace: View {
         rallyGroups.last { $0.coreStartMs <= playheadMs } ?? rallyGroups.first
     }
     private var currentCut: EditableCut? { currentGroup?.asEditableCut() }
+    private var deckPlaybackRange: TimeRange {
+        RallyReview.playbackRange(rally: currentGroup, review: deck.focus, bounds: bounds)
+    }
     private var currentGroupIndex: Int { rallyGroups.firstIndex { $0.id == currentGroup?.id } ?? -1 }
     private var keptRallyCount: Int { rallyGroups.filter { !$0.cutIds.isDisjoint(with: keptIds) }.count }
     private var reviewCuts: [EditableCut] { presentation.reviewCuts }
@@ -229,17 +231,21 @@ struct EditorWorkspace: View {
         }
         .onChange(of: project.draft) { _, _ in refreshPresentation() }
         .onChange(of: stage) { _, value in
-            if value != .rallies { previewEndMs = nil }
             if value == .rallies {
                 if deck.focus?.rallyId != deck.selectedId { deck.focus = deckQueue.first { $0.rallyId == deck.selectedId } }
             }
+            if playing { preparePlayback() }
+            else { setPlaybackEnd(nil) }
+        }
+        .onChange(of: deckPlaybackRange) { _, _ in
+            if stage == .rallies, playing { preparePlayback() }
         }
         .onChange(of: tourState) { _, _ in revealDeckTutorial() }
         .onReceive(clock) { _ in pollPlayback() }
         .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in
             deviceOrientation = UIDevice.current.orientation
         }
-        .onDisappear { player.pause(); onSave() }
+        .onDisappear { player.pause(); setPlaybackEnd(nil); onSave() }
         .sheet(isPresented: $settings, onDismiss: {
             let action = settingsAction; settingsAction = nil
             switch action {
@@ -307,14 +313,14 @@ struct EditorWorkspace: View {
     }
     private func navigateDeck(to time: Int64, end: Int64) {
         let resume = playing || player.rate > 0 || player.timeControlStatus == .waitingToPlayAtSpecifiedRate
-        seek(time); previewEndMs = deck.browsing ? nil : end
+        seek(time); setPlaybackEnd(min(bounds.endMs, end))
         if resume, player.currentItem != nil { player.playImmediately(atRate: draft.playbackRate); playing = true }
     }
     private func visitReview(_ stop: RallyReviewStop) {
         let time = EditorReview.firstReviewableTime(startMs: stop.startMs, endMs: stop.endMs, ignored: draft.ignoredIntervals) ?? stop.startMs
         deck.browsing = false
-        navigateDeck(to: time, end: min(bounds.endMs, stop.endMs))
         deck.visit(stop)
+        navigateDeck(to: time, end: deckPlaybackRange.endMs)
     }
     private func deckNextReview() {
         guard let next = deckQueue.first(where: { $0.id != deck.focus?.id && $0.startMs >= playheadMs }) ??
@@ -332,7 +338,7 @@ struct EditorWorkspace: View {
         applyCoreTrim(selectedCutIds: group.cutIds, isStart: start, valueMs: time, minimumMs: RallyReview.minimumDurationMs)
     }
     private func applyCoreTrim(selectedCutIds: Set<String>, isStart: Bool, valueMs: Int64, minimumMs: Int64) {
-        player.pause(); playing = false; previewEndMs = nil
+        player.pause(); playing = false; setPlaybackEnd(nil)
         do {
             guard let result = try RallyReview.trimBoundary(draft, selectedCutIds: selectedCutIds, isStart: isStart, valueMs: valueMs,
                 minimumDurationMs: minimumMs, frameMs: playheadMs, suggestions: allSuggestions, bounds: bounds, durationMs: project.durationMs),
@@ -1236,7 +1242,9 @@ struct EditorWorkspace: View {
     }
     private func seek(_ value: Int64) {
         selectedSuggestionId = nil
-        previewEndMs = nil
+        // Context footage remains seekable for inspection. Play always restores
+        // the selected rally's current retained boundary, including in All rallies.
+        setPlaybackEnd(nil)
         let time = min(project.durationMs, max(0, value)); playheadMs = time
         if stage != .rallies {
             deck.selectedId = (RallyReview.at(time, in: rallyGroups) ?? rallyGroups.last { $0.coreStartMs <= time } ?? rallyGroups.first)?.id
@@ -1250,17 +1258,25 @@ struct EditorWorkspace: View {
     }
     private func togglePlay() {
         guard player.currentItem != nil else { return }
-        if stage != .rallies || deck.browsing { previewEndMs = nil }
         if playing || player.timeControlStatus != .paused { player.pause(); playing = false }
         else {
-            if stage == .rallies, !deck.browsing {
-                let start = currentGroup?.keepStartMs ?? deck.focus?.startMs ?? bounds.startMs
-                let end = min(bounds.endMs, currentGroup?.keepEndMs ?? deck.focus?.endMs ?? bounds.endMs)
-                let plan = RallyReview.focusedPlayback(frameMs: playheadMs, retained: .init(startMs: start, endMs: end))
-                if playheadMs != plan.positionMs { seek(plan.positionMs) }
-                previewEndMs = plan.endMs
-            } else if playheadMs >= project.durationMs { seek(bounds.startMs) }
+            preparePlayback()
             player.playImmediately(atRate: draft.playbackRate); playing = true
+        }
+    }
+    private func setPlaybackEnd(_ endMs: Int64?) {
+        // AVPlayer stops at the media boundary even at 8x; the UI timer is only
+        // a fallback and must not let a rally run into the next one.
+        player.currentItem?.forwardPlaybackEndTime = endMs.map { CMTime(value: $0, timescale: 1_000) } ?? .invalid
+    }
+    private func preparePlayback() {
+        if stage == .rallies {
+            let plan = RallyReview.focusedPlayback(frameMs: playheadMs, retained: deckPlaybackRange)
+            if playheadMs != plan.positionMs { seek(plan.positionMs) }
+            setPlaybackEnd(plan.endMs)
+        } else {
+            setPlaybackEnd(nil)
+            if playheadMs >= project.durationMs { seek(bounds.startMs) }
         }
     }
     private func pollPlayback() {
@@ -1271,12 +1287,13 @@ struct EditorWorkspace: View {
         }
         let isPlaying = player.timeControlStatus != .paused
         if playing != isPlaying { playing = isPlaying }
-        if playing, stage != .rallies || deck.browsing,
+        if playing, stage != .rallies,
            let rally = RallyReview.at(playheadMs, in: rallyGroups), deck.selectedId != rally.id { deck.selectedId = rally.id }
         if playing, let selected = suggestions.first(where: { $0.id == selectedSuggestionId }),
            playheadMs < max(bounds.startMs, selected.startMs - 2_000) || playheadMs > selected.endMs { selectedSuggestionId = nil }
-        if playing, let end = previewEndMs, playheadMs >= end {
-            player.pause(); playing = false; previewEndMs = nil; seek(end); return
+        if playing, stage == .rallies, playheadMs >= deckPlaybackRange.endMs {
+            let end = deckPlaybackRange.endMs
+            player.pause(); playing = false; seek(end); return
         }
         guard playing, stage != .rallies, draft.finalPreviewEnabled else { lastPreviewSeek = -1; return }
         if intervals.contains(where: { $0.startMs <= playheadMs && playheadMs < $0.endMs }) { lastPreviewSeek = -1; return }

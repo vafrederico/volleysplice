@@ -72,7 +72,7 @@ final class RallyReviewTests: XCTestCase {
         let effective: Set<String> = ["a", "selected", "z"]
         XCTAssertEqual(RallyReview.neighbor(of: groups[2], direction: -1, rallies: groups, effectiveIds: effective)?.id, "a")
         XCTAssertEqual(RallyReview.neighbor(of: groups[2], direction: 1, rallies: groups, effectiveIds: effective)?.id, "z")
-        XCTAssertEqual(RallyReview.context(for: groups[2], rallies: groups, effectiveIds: effective, bounds: bounds), .init(startMs: 1_000, endMs: 47_000))
+        XCTAssertEqual(RallyReview.context(for: groups[2], rallies: groups, effectiveIds: effective, bounds: bounds), .init(startMs: 0, endMs: 47_000))
     }
     func testMissingRangeClipsToUnoccupiedGapAndCannotCrossIgnoredTime() {
         let occupied: [TimeRange] = [.init(startMs: 10_000, endMs: 15_000), .init(startMs: 19_000, endMs: 21_000), .init(startMs: 24_000, endMs: 28_000)]
@@ -126,6 +126,27 @@ final class RallyReviewTests: XCTestCase {
         XCTAssertFalse(scale.handles(for: .init(startMs: 3_600_000, endMs: 3_605_000), spreadForTouch: false).spreadForTouch)
         XCTAssertEqual(RallyReview.neighbor(of: groups[1], direction: -1, rallies: groups, effectiveIds: ["a", "b", "c"])?.id, "a")
         XCTAssertEqual(RallyReview.context(for: groups[1], rallies: groups, effectiveIds: ["b"], bounds: .init(startMs: 0, endMs: 8_000_000)), .init(startMs: 3_592_000, endMs: 3_613_000))
+    }
+    func testSelectedCoreIsCenteredWithUnequalNeighborGapsAndPadding() {
+        var selected = cut("selected", 50_000, 55_000)
+        selected.keepStartMs = 43_000; selected.keepEndMs = 56_000
+        var previous = cut("previous", 20_000, 25_000)
+        previous.keepStartMs = 18_000; previous.keepEndMs = 27_000
+        var next = cut("next", 62_000, 67_000)
+        next.keepStartMs = 60_000; next.keepEndMs = 69_000
+        let groups = [previous, selected, next].map { EditableRallyGroup(cuts: [$0]) }
+        let bounds = TimeRange(startMs: 0, endMs: 120_000)
+        let context = RallyReview.context(for: groups[1], rallies: groups, effectiveIds: ["previous", "selected", "next"], bounds: bounds)
+        XCTAssertEqual(context, .init(startMs: 16_000, endMs: 89_000))
+        let scale = RallyTrimScale(core: .init(startMs: 50_000, endMs: 55_000), bounds: bounds, width: 306, context: context)
+        XCTAssertEqual(scale.x(52_500), scale.width / 2, accuracy: 0.000001)
+        XCTAssertLessThanOrEqual(context.startMs, previous.keepStartMs)
+        XCTAssertGreaterThanOrEqual(context.endMs, next.keepEndMs)
+        XCTAssertEqual(scale.x(51_000) - scale.x(50_000), scale.x(31_000) - scale.x(30_000), accuracy: 0.000001)
+        for rallies in [Array(groups.prefix(2)), Array(groups.suffix(2))] {
+            let window = RallyReview.context(for: groups[1], rallies: rallies, effectiveIds: ["previous", "selected", "next"], bounds: bounds)
+            XCTAssertEqual(window.startMs + window.endMs, selected.coreStartMs + selected.coreEndMs)
+        }
     }
     func testAccessibleAddSourceSeekingCanLeaveExistingFootageWithoutCreatingARally() {
         let draft = EditorDraft(sourceRevision: "synthetic", cuts: [cut("a", 10_000, 15_000)])

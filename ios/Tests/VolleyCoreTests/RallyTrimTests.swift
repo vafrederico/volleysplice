@@ -121,6 +121,20 @@ final class RallyTrimTests: XCTestCase {
         XCTAssertEqual(RallyReview.focusedPlayback(frameMs: 27_000, retained: retained).positionMs, 8_000)
         XCTAssertEqual(RallyReview.focusedPlayback(frameMs: 7_000, retained: retained).positionMs, 8_000)
     }
+    func testDeckPlaybackUsesSelectedRetainedBoundsRatherThanReviewContext() {
+        let rally = EditableRallyGroup(cuts: fixture().cuts.prefix(1).map { $0 })
+        let review = RallyReviewStop(id: "review", rallyId: rally.id, startMs: 5_000, endMs: 35_000)
+        let range = RallyReview.playbackRange(rally: rally, review: review, bounds: bounds)
+        XCTAssertEqual(range, .init(startMs: 8_000, endMs: 17_000))
+        // A context seek or replay at the end must restart this rally, including
+        // when its card is selected in the all-rallies browser.
+        for frame: Int64 in [5_000, 17_000, 23_000] {
+            let plan = RallyReview.focusedPlayback(frameMs: frame, retained: range)
+            XCTAssertEqual(plan.positionMs, 8_000); XCTAssertEqual(plan.endMs, 17_000)
+        }
+        let orphan = RallyReview.playbackRange(rally: nil, review: review, bounds: .init(startMs: 6_000, endMs: 30_000))
+        XCTAssertEqual(orphan, .init(startMs: 6_000, endMs: 30_000))
+    }
     func testSharedPlaybackRatesIncludeFastAndFractionalValues() throws {
         XCTAssertTrue(Set([Float(0.25), 0.5, 1, 2, 4, 8]).isSubset(of: Set(EditorPlaybackPolicy.rates)))
         XCTAssertEqual(Set(EditorPlaybackPolicy.rates).count, EditorPlaybackPolicy.rates.count)

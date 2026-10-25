@@ -110,11 +110,16 @@ internal fun rallyTimelineContext(
     val next = ordered.drop(index + 1).firstOrNull(::retained)
     // Preserve real temporal context, including the gaps to retained neighbours.
     // Extremely short cores can use the explicit boundary nudge controls.
+    val start = maxOf(sourceStartMs, minOf(selected.coreStartMs - 8_000, selected.keepStartMs,
+        previous?.let { it.keepStartMs - 2_000 } ?: Long.MAX_VALUE))
+    val end = minOf(sourceEndMs, maxOf(selected.coreEndMs + 8_000, selected.keepEndMs,
+        next?.let { it.keepEndMs + 2_000 } ?: Long.MIN_VALUE))
+    // Center the core by expanding the shorter side, preserving the same linear
+    // time scale and both neighbors. Only the source boundaries limit context.
+    val center = selected.coreStartMs + (selected.coreEndMs - selected.coreStartMs) / 2
+    val radius = maxOf(center - start, end - center)
     return RallyTimelineContext(previous, next, DetailWindow(
-        maxOf(sourceStartMs, minOf(selected.coreStartMs - 8_000, selected.keepStartMs,
-            previous?.let { it.keepStartMs - 2_000 } ?: Long.MAX_VALUE)),
-        minOf(sourceEndMs, maxOf(selected.coreEndMs + 8_000, selected.keepEndMs,
-            next?.let { it.keepEndMs + 2_000 } ?: Long.MIN_VALUE)),
+        maxOf(sourceStartMs, center - radius), minOf(sourceEndMs, center + radius),
     ))
 }
 

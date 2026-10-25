@@ -105,7 +105,7 @@ class RallyReviewModelsTest {
             setOf("R1", "R2", "R3", "R5"), 0, 90_000)
         assertEquals("R1", context.previous?.id)
         assertEquals("R5", context.next?.id)
-        assertEquals(DetailWindow(1_000, 60_000), context.window)
+        assertEquals(DetailWindow(0, 60_000), context.window)
     }
 
     @Test
@@ -115,7 +115,7 @@ class RallyReviewModelsTest {
             selected, setOf("R1", "R2", "R3"), 11_000, 55_000)
         assertNull(context.previous)
         assertEquals("R3", context.next?.id)
-        assertEquals(DetailWindow(17_000, 55_000), context.window)
+        assertEquals(DetailWindow(11_000, 55_000), context.window)
     }
 
     @Test
@@ -130,7 +130,7 @@ class RallyReviewModelsTest {
             setOf("R1", "R2", "R3", "R4"), 0, 3_700_000)
         assertEquals(previous, context.previous)
         assertEquals(next, context.next)
-        assertEquals(DetailWindow(1_000, 3_609_000), context.window)
+        assertEquals(DetailWindow(0, 3_609_000), context.window)
         val scale = RallyTimelineScale(context.window)
         val duration = context.window.endMs - context.window.startMs
         assertEquals(5_000f / duration, scale.fraction(selected.coreEndMs) - scale.fraction(selected.coreStartMs), .000001f)
@@ -179,6 +179,35 @@ class RallyReviewModelsTest {
             }
             assertEquals(scale.startMs, scale.time(-1f))
             assertEquals(scale.endMs, scale.time(2f))
+        }
+    }
+
+    @Test
+    fun selectedCoreIsCenteredWithUnequalNeighbourGapsAndPadding() {
+        val previous = rally("R1", 20_000, 25_000)
+        val selected = rally("R2", 50_000, 55_000).let { r ->
+            r.copy(cuts = r.cuts.map { it.copy(keepStartMs = 43_000, keepEndMs = 56_000) })
+        }
+        val next = rally("R3", 62_000, 67_000)
+        val context = rallyTimelineContext(listOf(previous, selected, next), selected,
+            setOf("R1", "R2", "R3"), 0, 120_000)
+        assertEquals(DetailWindow(16_000, 89_000), context.window)
+        val scale = RallyTimelineScale(context.window)
+        assertEquals(.5f, scale.fraction((selected.coreStartMs + selected.coreEndMs) / 2), .000001f)
+        assertTrue(context.window.startMs <= previous.keepStartMs)
+        assertTrue(context.window.endMs >= next.keepEndMs)
+        assertEquals(scale.fraction(51_000) - scale.fraction(50_000),
+            scale.fraction(31_000) - scale.fraction(30_000), .000001f)
+    }
+
+    @Test
+    fun centeringWorksWithOnlyOneNeighbourOnEitherSide() {
+        val previous = rally("R1", 20_000, 25_000)
+        val selected = rally("R2", 50_000, 55_000)
+        val next = rally("R3", 80_000, 85_000)
+        listOf(listOf(previous, selected), listOf(selected, next)).forEach { rallies ->
+            val window = rallyTimelineContext(rallies, selected, rallies.map { it.id }.toSet(), 0, 120_000).window
+            assertEquals(.5f, RallyTimelineScale(window).fraction(52_500), .000001f)
         }
     }
 
