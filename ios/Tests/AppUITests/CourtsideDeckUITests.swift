@@ -16,16 +16,18 @@ final class CourtsideDeckUITests: XCTestCase {
     @MainActor func testRalliesIsDefaultAndTeamEditsAreSharedWithFullEditor() {
         let app = launch(); defer { app.terminate() }
         XCTAssertTrue(app.buttons["workspace-rallies-tab"].isSelected)
-        let team = app.buttons["Edit Synthetic A"]
-        XCTAssertTrue(team.waitForExistence(timeout: 10)); team.tap()
-        let input = app.alerts.textFields.firstMatch
+        XCTAssertFalse(app.buttons["Edit Synthetic A"].exists)
+        app.buttons["editorSettings"].tap()
+        let input = app.textFields["settingsTeam1Name"]
+        XCTAssertTrue(input.waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["projectOptions"].exists)
         input.tap(); input.press(forDuration: 1)
         // Replace through the text field's selection rather than relying on
         // keyboard deletion counts or the current team name's length.
         if app.menuItems["Select All"].exists { app.menuItems["Select All"].tap() }
         else { input.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: (input.value as? String ?? "").count)) }
         input.typeText("Practice A")
-        app.alerts.buttons["Save"].tap()
+        app.buttons["settingsDone"].tap()
         app.buttons["workspace-editor-tab"].tap()
         let name = app.textFields["team1Name"]
         XCTAssertTrue(name.waitForExistence(timeout: 10))
@@ -33,7 +35,9 @@ final class CourtsideDeckUITests: XCTestCase {
         app.buttons["workspace-export-tab"].tap()
         XCTAssertTrue(app.buttons["exportVideo"].waitForExistence(timeout: 10))
         app.buttons["workspace-rallies-tab"].tap()
-        XCTAssertTrue(app.buttons["Edit Practice A"].exists)
+        XCTAssertFalse(app.buttons["Edit Practice A"].exists)
+        app.buttons["editorSettings"].tap()
+        XCTAssertEqual(app.textFields["settingsTeam1Name"].value as? String, "Practice A")
     }
     @MainActor func testAddSourceSliderCanSeekOutOfExistingFootageWithoutAdding() {
         let app = launch(); defer { app.terminate() }

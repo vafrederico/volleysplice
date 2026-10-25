@@ -34,7 +34,10 @@ native system sans typography. The full Editor retains its established palette.
   row and three equal review buttons, with no duplicate row above Game timeline.
   The project name can use two lines. Saved
   projects show ready/queue/processing/attention status.
-- Both team names edit shared score state. Rate changes update the persisted
+- Both team names edit shared score state in the first **Project settings** section
+  of the Settings modal. The fields are inline; Project settings has no nested
+  navigation button. Save project and the existing project actions are directly
+  available there. Rate changes update the persisted
   draft and the running player. Previous rally, Next review and Next rally retain
   paused/playing/waiting-to-play intent and replace the preview stop boundary.
   Navigation stays below the scrolling review controls. Native buttons provide
@@ -42,8 +45,9 @@ native system sans typography. The full Editor retains its established palette.
   from Settings; there is no persistent bottom queue strip.
   Tablet portrait gives the player most of the available height while reserving
   space for review controls. Tablet landscape has a draggable video/detail divider,
-  shared by focus and browser, with an adjustable accessibility action. The phone
-  portrait team strip is 30 points high and sits above the video.
+  shared by focus and browser, with an adjustable accessibility action. The duplicate
+  team/score strip above the video has been removed on iOS and Android; the video
+  retains the configured score overlay.
 - Both Rallies and Editor preview the same configured score overlay, point history
   and fade behavior inside the video's fitted bounds. Selection uses an outline;
   the rally fill retains the Editor's pending, kept or removed state colors.
@@ -92,6 +96,19 @@ the editor's identity and state while switching. Universal iPad builds support
 portrait and landscape with the toggle off.
 
 ## Available validation
+
+Build **1.0.0 (4)** passed 207 portable core XCTest cases and ten targeted native checks on the physical iPad in
+phone portrait and normal iPad landscape: the duplicate bar is absent, the score
+overlay remains, and both names are editable inline at the top of Settings and
+shared with the Editor. Android **0.10.34-debug** passed 250 JVM tests and the
+targeted physical Pixel checks for team-name sharing/recreation, direct project
+settings and video seeking. See the [team settings receipt](Previews/CourtsideDeck/team-settings-verification.json).
+The fresh data comparison found no changes to unowned documents or preferences;
+only the owned synthetic fixture and its checkpoint changed. Release packaging
+was not repeated for this UI-only update. The tutorial now directs team-name edits
+to the top Project settings section in the cogwheel modal on both platforms.
+
+### Previous refinement checks
 
 Build **1.0.0 (3)** passed **207 portable core XCTest cases** and **32 targeted
 native checks** on the physical iPad. The [refinement receipt](Previews/CourtsideDeck/refinement-verification.json)

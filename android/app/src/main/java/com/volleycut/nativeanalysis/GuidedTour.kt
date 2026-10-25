@@ -101,7 +101,7 @@ internal enum class GuidedTourStep(
     ),
     RALLIES_TAG(
         GuidedTourStage.EDITOR, "rally-tour-controls", "Tag the rally",
-        "Choose Keep or Remove. For a serve, choose Near or Far for the serving side, or Not a serve. Resolve every highlighted decision before using Next review. Team names can be edited on the scoreboard.", "Next",
+        "Choose Keep or Remove. For a serve, choose Near or Far for the serving side, or Not a serve. Resolve every highlighted decision before using Next review. Open the Settings cogwheel to edit team names in the top Project settings section.", "Next",
     ),
     RALLIES_TIMELINE(
         GuidedTourStage.EDITOR, "rally-tour-controls", "Seek and trim a rally",

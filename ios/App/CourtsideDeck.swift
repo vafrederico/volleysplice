@@ -128,7 +128,6 @@ struct CourtsideDeckWorkspace<Video: View>: View {
     let onSeek: (Int64) -> Void
     let onPlay: () -> Void
     let onRate: (Float) -> Void
-    let onTeam: (Bool, String) -> Void
     let onDecision: (Bool) -> Void
     let onServe: (ServeMarker?, ServingSide?) -> Void
     let onTrim: (Bool, Int64) -> Void
@@ -138,9 +137,6 @@ struct CourtsideDeckWorkspace<Video: View>: View {
     let onAdd: (TimeRange) -> Void
     @ViewBuilder var video: () -> Video
     @State private var adding = false
-    @State private var teamEditing = false
-    @State private var firstTeam = true
-    @State private var teamName = ""
     @State private var listCenters: [String: CGFloat] = [:]
     @State private var splitDragStart: Double?
     @AppStorage("courtside.videoFraction") private var videoFraction = 0.56
@@ -168,7 +164,7 @@ struct CourtsideDeckWorkspace<Video: View>: View {
                     let available = max(1, geometry.size.width - (phone ? 8 : 24))
                     let playerWidth = max(240, min(available - 300, available * videoFraction))
                     HStack(spacing: 0) {
-                        playerPane(compactScores: false).frame(width: phone ? max(240, geometry.size.width * 0.56) : playerWidth).contentShape(Rectangle()).clipped()
+                        playerPane.frame(width: phone ? max(240, geometry.size.width * 0.56) : playerWidth).contentShape(Rectangle()).clipped()
                         if !phone { videoDivider(available: available, current: playerWidth) }
                         else { Color.clear.frame(width: 8) }
                         detailPane.frame(maxWidth: .infinity).contentShape(Rectangle()).clipped()
@@ -177,16 +173,11 @@ struct CourtsideDeckWorkspace<Video: View>: View {
                     let playerHeight = phone || geometry.size.width < 600
                         ? min(360, max(170, geometry.size.height * 0.40))
                         : max(170, min(geometry.size.height * 0.62, geometry.size.height - 280))
-                    playerPane(compactScores: phone).frame(height: playerHeight).contentShape(Rectangle()).clipped()
+                    playerPane.frame(height: playerHeight).contentShape(Rectangle()).clipped()
                     detailPane.frame(maxHeight: .infinity)
                 }
             }
         }.background(CourtsidePalette.ground).foregroundStyle(CourtsidePalette.ink)
-            .alert(firstTeam ? "Team 1" : "Team 2", isPresented: $teamEditing) {
-                TextField("Team name", text: $teamName)
-                Button("Save") { onTeam(firstTeam, teamName) }
-                Button("Cancel", role: .cancel) {}
-            }
             .sheet(isPresented: $adding) {
                 MissingRallySheet(selection: .init(positionMs: playhead, bounds: bounds, occupied: occupied), bounds: bounds,
                     occupied: occupied, onSeek: onSeek, onCancel: { adding = false }, onAdd: { onAdd($0); adding = false })
@@ -220,9 +211,8 @@ struct CourtsideDeckWorkspace<Video: View>: View {
                 videoFraction = min((available - 300) / available, max(240 / available, videoFraction + (direction == .increment ? 0.05 : -0.05)))
             }
     }
-    private func playerPane(compactScores: Bool) -> some View {
+    private var playerPane: some View {
         VStack(spacing: 0) {
-            if score.enabled { scoreBar(compact: compactScores) }
             ZStack(alignment: .top) {
                 video().frame(maxWidth: .infinity, maxHeight: .infinity)
             }.background(.black).guidedTourTarget("deck-video")
@@ -243,19 +233,6 @@ struct CourtsideDeckWorkspace<Video: View>: View {
                     .accessibilityLabel("Playback speed, \(draft.playbackRate.formatted()) times").accessibilityIdentifier("deckSpeed")
             }.padding(.horizontal, 10).foregroundStyle(.white).background(Color(white: 0.09))
         }
-    }
-    private func scoreBar(compact: Bool) -> some View {
-        let snapshot = overlay.snapshot(at: playhead).score
-        return HStack(spacing: 6) {
-            teamButton(score.team1Name, first: true, compact: compact).frame(maxWidth: .infinity, alignment: .leading)
-            Text("\(snapshot.team1Score) : \(snapshot.team2Score)").font(.system(size: compact ? 14 : 20, weight: .semibold)).monospacedDigit()
-            teamButton(score.team2Name, first: false, compact: compact).frame(maxWidth: .infinity, alignment: .trailing)
-        }.padding(.horizontal, 10).padding(.vertical, compact ? 0 : 10).foregroundStyle(.white)
-            .background(Color(white: 0.08)).accessibilityIdentifier("deckScoreBar")
-    }
-    private func teamButton(_ name: String, first: Bool, compact: Bool) -> some View {
-        Button { firstTeam = first; teamName = name; teamEditing = true } label: { Text(name).font(.system(size: compact ? 12 : 13)).lineLimit(compact ? 1 : 2).frame(minHeight: compact ? 30 : 44).contentShape(Rectangle()) }
-            .buttonStyle(.plain).accessibilityLabel("Edit \(name)")
     }
     @ViewBuilder private var detailPane: some View {
         if navigation.browsing { browser.guidedTourTarget("deck-list") }

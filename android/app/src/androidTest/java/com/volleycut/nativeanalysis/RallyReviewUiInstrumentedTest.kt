@@ -13,6 +13,7 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.test.core.app.ActivityScenario
+import androidx.test.espresso.Espresso.closeSoftKeyboard
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
 import org.junit.Assert.*
@@ -129,6 +130,13 @@ class RallyReviewUiInstrumentedTest {
         capture(f, "courtside-portrait-current-rally.png")
     }
     private fun pill(text: String) = compose.onNode(hasText(text) and hasClickAction())
+    private fun projectSettings() {
+        closeSoftKeyboard()
+        compose.onNodeWithTag("editor-settings-button").performClick()
+        compose.waitUntil(8_000) {
+            compose.onAllNodesWithTag("settings-team-1-input").fetchSemanticsNodes().isNotEmpty()
+        }
+    }
     private fun detailScale(f: Fixture, cutId: String = "R001"): RallyTimelineScale {
         val draft = requireNotNull(f.store.load())
         val rallies = rallyGroupsForDraft(draft)
@@ -257,10 +265,14 @@ class RallyReviewUiInstrumentedTest {
         compose.onNodeWithTag("rally-playback-speed").performClick()
         compose.onNodeWithText("2x").performClick()
         awaitDraft(f) { it.playbackRate == 2f }
-        compose.onNodeWithContentDescription("Edit Team 1 name").performClick()
-        compose.onNodeWithTag("rally-team-1-input").performTextReplacement("Larch")
-        compose.onNodeWithTag("rally-team-2-input").performTextReplacement("Bay")
-        compose.onNodeWithTag("rally-team-names-save").performClick()
+        compose.onNodeWithContentDescription("Edit Team 1 name").assertDoesNotExist()
+        projectSettings()
+        compose.onNodeWithTag("settings-project-options").assertDoesNotExist()
+        capture(f, "courtside-team-settings.png")
+        compose.onNodeWithTag("settings-team-1-input").assertIsDisplayed().performTextReplacement("Larch")
+        compose.onNodeWithTag("settings-team-2-input").assertIsDisplayed().performTextReplacement("Bay")
+        closeSoftKeyboard()
+        compose.onNodeWithText("Done").performClick()
         awaitDraft(f) { it.scoreTracking.team1Name == "Larch" && it.scoreTracking.team2Name == "Bay" }
         compose.onNodeWithContentDescription("Play").assertIsDisplayed()
         pill("Editor").performClick()
@@ -268,19 +280,25 @@ class RallyReviewUiInstrumentedTest {
         compose.onNodeWithText("4x").performClick()
         compose.onNode(hasSetTextAction() and hasText("Larch")).performScrollTo().performTextReplacement("Alder")
         awaitDraft(f) { it.playbackRate == 4f && it.scoreTracking.team1Name == "Alder" }
+        closeSoftKeyboard()
         pill("Rallies").performClick()
-        compose.onNodeWithText("Alder").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Edit Team 2 name").performClick()
-        compose.onNodeWithTag("rally-team-2-input").performTextReplacement("Harbor Lights")
-        compose.onNodeWithTag("rally-team-names-save").performClick()
+        projectSettings()
+        compose.onNodeWithTag("settings-team-1-input").assertTextContains("Alder")
+        compose.onNodeWithTag("settings-team-2-input").performTextReplacement("Harbor Lights")
+        closeSoftKeyboard()
+        compose.onNodeWithText("Done").performClick()
         awaitDraft(f) { it.scoreTracking.team2Name == "Harbor Lights" }
         f.scenario.recreate()
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("rally-playback-speed").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("rally-playback-speed").assert(
             SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "4x"))
-        compose.onNodeWithText("Alder").assertIsDisplayed()
-        compose.onNodeWithText("Harbor Lights").assertIsDisplayed()
         capture(f, "courtside-shared-controls.png")
+        projectSettings()
+        compose.onNodeWithTag("settings-team-1-input").assertTextContains("Alder")
+        compose.onNodeWithTag("settings-team-2-input").assertTextContains("Harbor Lights")
+        compose.onNodeWithTag("settings-save-project").assertIsDisplayed()
+        compose.onNodeWithTag("settings-reset-project").assertIsDisplayed()
+        compose.onNodeWithText("Done").performClick()
     }
 
     @Test
@@ -327,10 +345,8 @@ class RallyReviewUiInstrumentedTest {
         compose.onNodeWithText("Delete Courtside test?").assertIsDisplayed()
         compose.onNodeWithText("Cancel").performClick()
         compose.onNodeWithTag("editor-settings-button").performClick()
-        compose.onNodeWithTag("settings-project-options").performClick()
+        compose.onNodeWithTag("settings-project-options").assertDoesNotExist()
         compose.onNodeWithText("Start this review over").assertIsDisplayed()
-        compose.onNodeWithText("Close").performClick()
-        compose.onNodeWithTag("editor-settings-button").performClick()
         compose.onNodeWithTag("settings-app-version").performScrollTo().assertIsDisplayed()
         compose.onNodeWithTag("settings-reset-tutorial").performScrollTo().assertIsDisplayed()
         capture(f, "courtside-settings.png")

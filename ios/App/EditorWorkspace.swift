@@ -70,7 +70,7 @@ struct EditorWorkspace: View {
     @State private var playheadMs: Int64 = 0
     @State private var playing = false
     @State private var settings = false
-    private enum SettingsAction { case project, queue, storage, tour, analysis }
+    private enum SettingsAction { case projectExport, queue, storage, tour, analysis }
     @State private var settingsAction: SettingsAction?
     @State private var stage = EditorStage.rallies
     @State private var deck = RallyDeckNavigation()
@@ -81,8 +81,6 @@ struct EditorWorkspace: View {
     @State private var deckQueue: [RallyReviewStop] = []
     @State private var seekGeneration = 0
     @State private var pendingSeekMs: Int64?
-    @State private var compactProjectOptions = false
-    @State private var pendingCompactProjectExport = false
     @State private var resetConfirmation = false
     @State private var deleteConfirmation = false
     @State private var allSuggestions: [SuppressionRegion] = []
@@ -245,7 +243,7 @@ struct EditorWorkspace: View {
         .sheet(isPresented: $settings, onDismiss: {
             let action = settingsAction; settingsAction = nil
             switch action {
-            case .project: compactProjectOptions = true
+            case .projectExport: onSave(); onExportProject()
             case .queue: onShowQueue()
             case .storage: onManageStorage()
             case .tour: stage = .rallies; GuidedTourStore.restart(stage: .editor)
@@ -253,21 +251,6 @@ struct EditorWorkspace: View {
             case nil: break
             }
         }) { settingsPanel.interfaceScaled() }
-        .sheet(isPresented: $compactProjectOptions, onDismiss: {
-            if pendingCompactProjectExport { pendingCompactProjectExport = false; onSave(); onExportProject() }
-        }) {
-            NavigationStack {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Project file").font(.headline)
-                        Text("Features, model predictions, edits, ignored time and score markers. The source video is kept separate.").font(.callout)
-                        Button("Save project") { pendingCompactProjectExport = true; compactProjectOptions = false }
-                            .buttonStyle(EditorActionButtonStyle(background: EditorPalette.paper, foreground: EditorPalette.ink)).accessibilityIdentifier("exportProject")
-                    }.padding(20)
-                }.navigationTitle("Project options")
-                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { compactProjectOptions = false } } }
-            }.interfaceScaled()
-        }
         .alert("Delete current project?", isPresented: $deleteConfirmation) {
             Button("Delete", role: .destructive, action: onDeleteProject)
             Button("Cancel", role: .cancel) {}
@@ -288,10 +271,6 @@ struct EditorWorkspace: View {
             }, onPlay: togglePlay, onRate: { rate in
                 edit { $0.playbackRate = rate }
                 if playing { player.playImmediately(atRate: rate) }
-            }, onTeam: { first, name in
-                let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !name.isEmpty else { return }
-                editScore { if first { $0.team1Name = name } else { $0.team2Name = name } }
             }, onDecision: { keep in
                 let cleanup = suggestions.filter { suggestion in
                     deck.focus?.cleanupIds.contains(suggestion.id) == true ||
@@ -1025,13 +1004,17 @@ struct EditorWorkspace: View {
     private var settingsPanel: some View {
         NavigationStack {
             Form {
+                Section("Project settings") {
+                    settingsTeamField(first: true)
+                    settingsTeamField(first: false)
+                    Button("Save project") { settingsAction = .projectExport; settings = false }.accessibilityIdentifier("settingsSaveProject")
+                    Button("Change model or analyze again") { settingsAction = .analysis; settings = false }.accessibilityIdentifier("changeRallyModel")
+                }
                 Section { InterfaceScaleControl() }
                 #if DEBUG
                 PhoneTestControls()
                 #endif
-                Section("Project") {
-                    Button("Project options") { settingsAction = .project; settings = false }.accessibilityIdentifier("projectOptions")
-                    Button("Change model or analyze again") { settingsAction = .analysis; settings = false }.accessibilityIdentifier("changeRallyModel")
+                Section("App") {
                     Button("Processing queue") { settingsAction = .queue; settings = false }.accessibilityIdentifier("editorProcessingQueue")
                     Button("Manage storage") { settingsAction = .storage; settings = false }.accessibilityIdentifier("manageStorage")
                     Button("Restart guided tour") { settingsAction = .tour; settings = false }
@@ -1065,6 +1048,15 @@ struct EditorWorkspace: View {
             }.scrollContentBackground(.hidden).background(EditorPalette.paper).navigationTitle("Editor settings")
                 .navigationBarTitleDisplayMode(.inline).tint(EditorPalette.green)
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { settings = false }.accessibilityIdentifier("settingsDone") } }
+        }
+    }
+    private func settingsTeamField(first: Bool) -> some View {
+        HStack {
+            Text(first ? "Team 1" : "Team 2")
+            EditableTeamName(name: first ? score.team1Name : score.team2Name,
+                label: first ? "Team 1" : "Team 2", identifier: first ? "settingsTeam1Name" : "settingsTeam2Name") { value in
+                editScore { if first { $0.team1Name = value } else { $0.team2Name = value } }
+            }.multilineTextAlignment(.trailing)
         }
     }
     private func settingSlider(_ label: String, value: Int64, identifier: String, update: @escaping (Int64) -> Void) -> some View {

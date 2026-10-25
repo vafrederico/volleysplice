@@ -22,8 +22,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -177,7 +175,6 @@ internal fun RallyReviewWorkspace(
     onScrubbingChange: (Boolean) -> Unit,
     onPlay: (Long, Long) -> Unit,
     onPlaybackRateChange: (Float) -> Unit,
-    onTeamNamesChange: (String, String) -> Unit,
     onDecision: (RallyReviewItem, Boolean) -> Unit,
     onServe: (ServeMarker, ServingSide?) -> Unit,
     onNewServe: (EditableRallyGroup, ServingSide) -> Unit,
@@ -187,7 +184,6 @@ internal fun RallyReviewWorkspace(
     guidedTourTargets: GuidedTourTargets,
     player: @Composable () -> Unit,
 ) {
-    var editingTeam by rememberSaveable { mutableStateOf<Int?>(null) }
     val selected = rallies.firstOrNull { selectedId in it.cutIds }
     val focus = state.focus
     val rally = if (!state.browsing && !state.editingRally && focus?.rallyId == null) null else selected
@@ -254,11 +250,6 @@ internal fun RallyReviewWorkspace(
     }
 
     CourtsideTheme {
-        editingTeam?.let { team ->
-            RallyTeamNamesDialog(tracking.team1Name, tracking.team2Name, team,
-                onDismiss = { editingTeam = null },
-                onSave = { first, second -> onTeamNamesChange(first, second); editingTeam = null })
-        }
         BoxWithConstraints(Modifier.fillMaxSize().background(CourtsideGround).testTag("rally-review-workspace")) {
             val wide = maxWidth >= 720.dp || (maxWidth >= 560.dp && maxHeight < 480.dp)
             val stackedTransport = wide && maxWidth < 720.dp
@@ -421,26 +412,6 @@ internal fun RallyReviewWorkspace(
                             if (!sourceAvailable) TextButton(onClick = onRelink) { Text("Re-link video") }
                         }
                     }
-                        if (tracking.enabled) {
-                            val score = ScoreReducer.deriveAt(scoreOverlay.tracking, ScoreReducer.scoreBoundaryTimestamp(
-                                positionMs, scoreOverlay.rallyRanges, scoreOverlay.tracking, scoreOverlay.mergedRanges))
-                            Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp)
-                                .clip(RoundedCornerShape(6.dp)).background(Color(0xFF141718)).padding(horizontal = 12.dp, vertical = 2.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Box(Modifier.weight(1f).heightIn(min = 32.dp)
-                                    .clickable(role = Role.Button) { editingTeam = 1 }
-                                    .semantics { contentDescription = "Edit Team 1 name" }, contentAlignment = Alignment.CenterStart) {
-                                    Text(tracking.team1Name, color = Color.White, fontSize = 12.sp)
-                                }
-                                Text("" + score.team1Score + "  :  " + score.team2Score, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                                Box(Modifier.weight(1f).heightIn(min = 32.dp)
-                                    .clickable(role = Role.Button) { editingTeam = 2 }
-                                    .semantics { contentDescription = "Edit Team 2 name" }, contentAlignment = Alignment.CenterEnd) {
-                                    Text(tracking.team2Name, color = Color.White, fontSize = 12.sp,
-                                        textAlign = androidx.compose.ui.text.style.TextAlign.End)
-                                }
-                            }
-                        }
                     Box(Modifier.weight(1f).fillMaxWidth().background(Color(0xFF17191A))
                         .clickable(enabled = sourceAvailable, role = Role.Button,
                             onClickLabel = if (playing) "Pause" else "Play") {
@@ -543,29 +514,6 @@ private fun RallySpeedSelector(rate: Float, onChange: (Float) -> Unit) {
             }
         }
     }
-}
-
-@Composable
-private fun RallyTeamNamesDialog(
-    first: String, second: String, focusedTeam: Int, onDismiss: () -> Unit, onSave: (String, String) -> Unit,
-) {
-    var team1 by rememberSaveable { mutableStateOf(first) }
-    var team2 by rememberSaveable { mutableStateOf(second) }
-    val focus = remember { FocusRequester() }
-    AlertDialog(onDismissRequest = onDismiss, title = { Text("Team names") }, text = {
-        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedTextField(team1, { team1 = it }, label = { Text("Team 1") }, singleLine = true,
-                modifier = Modifier.fillMaxWidth().testTag("rally-team-1-input")
-                    .then(if (focusedTeam == 1) Modifier.focusRequester(focus) else Modifier))
-            OutlinedTextField(team2, { team2 = it }, label = { Text("Team 2") }, singleLine = true,
-                modifier = Modifier.fillMaxWidth().testTag("rally-team-2-input")
-                    .then(if (focusedTeam == 2) Modifier.focusRequester(focus) else Modifier))
-        }
-        LaunchedEffect(Unit) { focus.requestFocus() }
-    }, confirmButton = {
-        TextButton(onClick = { onSave(team1.ifBlank { "Team 1" }, team2.ifBlank { "Team 2" }) },
-            modifier = Modifier.testTag("rally-team-names-save")) { Text("Save") }
-    }, dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } })
 }
 
 @Composable

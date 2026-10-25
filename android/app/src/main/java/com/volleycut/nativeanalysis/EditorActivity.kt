@@ -1762,6 +1762,11 @@ private fun cleanupLabel(policy: SuppressionPolicyEngine.Policy): String = when 
 
 @Composable
 private fun EditorSettingsDialog(
+    tracking: ScoreTracking,
+    onTeamNamesChange: (String, String) -> Unit,
+    savingProject: Boolean,
+    onSaveProject: () -> Unit,
+    onResetProject: () -> Unit,
     cleanupSupported: Boolean,
     cleanupAvailable: Boolean,
     cleanupPreparing: Boolean,
@@ -1778,12 +1783,13 @@ private fun EditorSettingsDialog(
     onJoinGap: (Long) -> Unit,
     onReviewThreshold: (Float) -> Unit,
     onDisplayAnalysisMeasurements: (Boolean) -> Unit,
-    onProjectOptions: () -> Unit,
     onRestartTour: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
     var storeError by remember { mutableStateOf(false) }
+    var firstName by rememberSaveable { mutableStateOf(tracking.team1Name) }
+    var secondName by rememberSaveable { mutableStateOf(tracking.team2Name) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Settings") },
@@ -1792,8 +1798,24 @@ private fun EditorSettingsDialog(
                 Modifier.heightIn(max = 560.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                OutlinedButton(onClick = onProjectOptions,
-                    modifier = Modifier.fillMaxWidth().testTag("settings-project-options")) { Text("Project options") }
+                Text("PROJECT SETTINGS", color = Orange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                OutlinedTextField(firstName, { value ->
+                    firstName = value
+                    if (value.isNotBlank()) onTeamNamesChange(value, secondName.ifBlank { tracking.team2Name })
+                }, label = { Text("Team 1") }, singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("settings-team-1-input"))
+                OutlinedTextField(secondName, { value ->
+                    secondName = value
+                    if (value.isNotBlank()) onTeamNamesChange(firstName.ifBlank { tracking.team1Name }, value)
+                }, label = { Text("Team 2") }, singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("settings-team-2-input"))
+                OutlinedButton(onClick = onSaveProject, enabled = !savingProject,
+                    modifier = Modifier.fillMaxWidth().testTag("settings-save-project")) {
+                    Text(if (savingProject) "Saving project…" else "Save project")
+                }
+                OutlinedButton(onClick = onResetProject,
+                    modifier = Modifier.fillMaxWidth().testTag("settings-reset-project")) { Text("Start this review over", color = Danger) }
+                HorizontalDivider(color = Rail)
                 Text("DISPLAY", color = Orange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 UiScaleControl()
                 HorizontalDivider(color = Rail)
@@ -2924,7 +2946,6 @@ private fun EditorScreen(
     var selectedSuggestionId by remember { mutableStateOf<String?>(null) }
     var suppressionPreparing by remember { mutableStateOf(false) }
     var showEditorSettings by remember { mutableStateOf(false) }
-    var showProjectOptions by remember { mutableStateOf(false) }
     var selectedScoreMarkerId by remember { mutableStateOf<String?>(null) }
     var showYouTubeChapters by remember { mutableStateOf(false) }
     var youtubeChaptersStatus by remember { mutableStateOf<String?>(null) }
@@ -3549,6 +3570,16 @@ private fun EditorScreen(
 
     if (showEditorSettings) {
         EditorSettingsDialog(
+            tracking = draft.scoreTracking,
+            onTeamNamesChange = { first, second ->
+                updateDraft { it.copy(scoreTracking = it.scoreTracking.copy(team1Name = first, team2Name = second)) }
+            },
+            savingProject = feedbackExporting,
+            onSaveProject = {
+                showEditorSettings = false
+                feedbackSaveLauncher.launch(ModelFeedbackExporter.filename(seed.displayName))
+            },
+            onResetProject = { showEditorSettings = false; confirmReset = true },
             cleanupSupported = !RallyModels.isNeural(seed.rallyModelId),
             cleanupAvailable = seed.suppression != null,
             cleanupPreparing = suppressionPreparing,
@@ -3597,7 +3628,6 @@ private fun EditorScreen(
             onJoinGap = { joinGap -> updateDraft { it.copy(joinGapMs = joinGap.coerceIn(0, MAX_JOIN_GAP_MS)) } },
             onReviewThreshold = { threshold -> updateDraft { it.copy(confidenceReviewThreshold = threshold) } },
             onDisplayAnalysisMeasurements = onDisplayAnalysisMeasurements,
-            onProjectOptions = { showEditorSettings = false; showProjectOptions = true },
             onRestartTour = {
                 showEditorSettings = false
                 showRallyExport = false
@@ -3606,40 +3636,6 @@ private fun EditorScreen(
                 onRestartTour()
             },
             onDismiss = { showEditorSettings = false },
-        )
-    }
-
-    if (showProjectOptions) {
-        AlertDialog(
-            onDismissRequest = { showProjectOptions = false },
-            title = { Text("Project options") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(
-                        "Save the edit and score markers as a small project file, or return this review to its original suggestions.",
-                        color = Muted,
-                        fontSize = 12.sp,
-                    )
-                    OutlinedButton(
-                        enabled = !feedbackExporting,
-                        onClick = {
-                            showProjectOptions = false
-                            feedbackSaveLauncher.launch(ModelFeedbackExporter.filename(seed.displayName))
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text(if (feedbackExporting) "Saving project…" else "Save project") }
-                    OutlinedButton(
-                        onClick = {
-                            showProjectOptions = false
-                            confirmReset = true
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text("Start this review over", color = Danger) }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showProjectOptions = false }) { Text("Close") }
-            },
         )
     }
 
@@ -3918,9 +3914,6 @@ private fun EditorScreen(
                             }
                         },
                         onPlaybackRateChange = { rate -> updateDraft { it.copy(playbackRate = rate) } },
-                        onTeamNamesChange = { first, second -> updateDraft { current ->
-                            current.copy(scoreTracking = current.scoreTracking.copy(team1Name = first, team2Name = second))
-                        } },
                         onDecision = { item, included ->
                             val rally = editableRallies.firstOrNull { item.rallyId in it.cutIds }
                             updateDraft { current ->
