@@ -1,0 +1,756 @@
+{
+  "version": 4,
+  "passed": 68,
+  "failed": 0,
+  "inputMethods": "CDP trusted mouse, wheel and touch; DOM evaluation for state assertions and explicitly marked setup values",
+  "checks": [
+    {
+      "name": "Default R018 / 9:8 / 770400 ms / 36 / 4",
+      "pass": true
+    },
+    {
+      "name": "Editor pill opens existing Editor without adding",
+      "pass": true
+    },
+    {
+      "name": "Existing compact hierarchy, two source rows, no add form",
+      "pass": true
+    },
+    {
+      "name": "Editor decisions update shared fixture",
+      "pass": true
+    },
+    {
+      "name": "Rallies returns to Review with same shared edits and exact position",
+      "pass": true
+    },
+    {
+      "name": "Bounds route and original Done return survive workspace switch",
+      "pass": true
+    },
+    {
+      "name": "Bounds Done still returns Review",
+      "pass": true
+    },
+    {
+      "name": "Trusted wheel independently browses list",
+      "pass": true
+    },
+    {
+      "name": "Dual marker uses list rally midpoint",
+      "pass": true
+    },
+    {
+      "name": "Browse list scroll, center and suspended follow survive Editor switch",
+      "pass": true
+    },
+    {
+      "name": "Collapse preserves Browse list",
+      "pass": true
+    },
+    {
+      "name": "Real source gap seek stays Browse and highlights explicit add",
+      "pass": true
+    },
+    {
+      "name": "Source seek resumes following",
+      "pass": true
+    },
+    {
+      "name": "Explicit missing opens only add flow at exact sought position",
+      "pass": true
+    },
+    {
+      "name": "Cancel returns Browse at exact source position and adds nothing",
+      "pass": true
+    },
+    {
+      "name": "Editor pill from add exits add route without creation",
+      "pass": true
+    },
+    {
+      "name": "Editor-to-Rallies after add retains original Browse route",
+      "pass": true
+    },
+    {
+      "name": "Add returns Browse with one synthetic rally around exact gap point",
+      "pass": true
+    },
+    {
+      "name": "Added rally appears in shared Editor rows and source timeline",
+      "pass": true
+    },
+    {
+      "name": "Added rally appears in Rallies list",
+      "pass": true
+    },
+    {
+      "name": "Gap add clips to source boundary 0",
+      "pass": true
+    },
+    {
+      "name": "Gap add clips to source boundary 1560000",
+      "pass": true
+    },
+    {
+      "name": "Sub-minimum gap cannot add a rally",
+      "pass": true
+    },
+    {
+      "name": "Exact start-earlier",
+      "pass": true
+    },
+    {
+      "name": "Exact start-later",
+      "pass": true
+    },
+    {
+      "name": "Exact end-earlier",
+      "pass": true
+    },
+    {
+      "name": "Exact end-later",
+      "pass": true
+    },
+    {
+      "name": "Trusted mouse drag changes bounds and releases capture",
+      "pass": true
+    },
+    {
+      "name": "Editor trim reads same shared bounds",
+      "pass": true
+    },
+    {
+      "name": "Rallies sees Editor trim",
+      "pass": true
+    },
+    {
+      "name": "Editor source row seeks shared source without adding",
+      "pass": true
+    },
+    {
+      "name": "Rallies retains Editor source seek",
+      "pass": true
+    },
+    {
+      "name": "Editor-origin missing Cancel returns Editor without creating",
+      "pass": true
+    },
+    {
+      "name": "Editor-origin missing Add returns same Editor with shared rally",
+      "pass": true
+    },
+    {
+      "name": "Existing Editor green core handle changes shared bounds",
+      "pass": true
+    },
+    {
+      "name": "Existing Editor orange padding handle changes only padding",
+      "pass": true
+    },
+    {
+      "name": "Export opens honest local preview",
+      "pass": true
+    },
+    {
+      "name": "Speed control changes local rate",
+      "pass": true
+    },
+    {
+      "name": "Review completion still works",
+      "pass": true
+    },
+    {
+      "name": "Reset restores initial shared fixture",
+      "pass": true
+    },
+    {
+      "name": "Trusted touch scroll browses without seeking",
+      "pass": true
+    },
+    {
+      "name": "Layout 360 review",
+      "pass": true
+    },
+    {
+      "name": "Layout 360 browse",
+      "pass": true
+    },
+    {
+      "name": "Layout 360 bounds",
+      "pass": true
+    },
+    {
+      "name": "Layout 360 editor",
+      "pass": true
+    },
+    {
+      "name": "Layout 360 add-missing",
+      "pass": true
+    },
+    {
+      "name": "Layout 390 review",
+      "pass": true
+    },
+    {
+      "name": "Layout 390 browse",
+      "pass": true
+    },
+    {
+      "name": "Layout 390 bounds",
+      "pass": true
+    },
+    {
+      "name": "Layout 390 editor",
+      "pass": true
+    },
+    {
+      "name": "Layout 390 add-missing",
+      "pass": true
+    },
+    {
+      "name": "Layout 768 review",
+      "pass": true
+    },
+    {
+      "name": "Layout 768 browse",
+      "pass": true
+    },
+    {
+      "name": "Layout 768 bounds",
+      "pass": true
+    },
+    {
+      "name": "Layout 768 editor",
+      "pass": true
+    },
+    {
+      "name": "Layout 768 add-missing",
+      "pass": true
+    },
+    {
+      "name": "All 400/500/600 font faces loaded",
+      "pass": true
+    },
+    {
+      "name": "Offline file opens and routes work",
+      "pass": true
+    },
+    {
+      "name": "Offline Editor route works",
+      "pass": true
+    },
+    {
+      "name": "No uncaught browser JavaScript exceptions",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "JavaScript syntax compiles",
+      "pass": true
+    },
+    {
+      "name": "Self-contained under 512000 characters",
+      "pass": true,
+      "detail": 149957
+    },
+    {
+      "name": "No external runtime URLs",
+      "pass": true
+    },
+    {
+      "name": "No viewport height units or root percentage heights",
+      "pass": true
+    },
+    {
+      "name": "Original three font assets unchanged",
+      "pass": true
+    },
+    {
+      "name": "Original synthetic 36-rally fixture unchanged",
+      "pass": true
+    },
+    {
+      "name": "Original synthetic frame unchanged",
+      "pass": true
+    },
+    {
+      "name": "Approved v3 base stylesheet retained intact",
+      "pass": true
+    }
+  ],
+  "layouts": [
+    {
+      "width": 360,
+      "route": "review",
+      "app": {
+        "width": 360,
+        "height": 844
+      },
+      "pageOverflow": false,
+      "appOverflow": false,
+      "editor": null,
+      "fonts": [
+        {
+          "weight": "400",
+          "status": "loaded"
+        },
+        {
+          "weight": "500",
+          "status": "loaded"
+        },
+        {
+          "weight": "600",
+          "status": "loaded"
+        }
+      ]
+    },
+    {
+      "width": 360,
+      "route": "browse",
+      "app": {
+        "width": 360,
+        "height": 844
+      },
+      "pageOverflow": false,
+      "appOverflow": false,
+      "editor": null,
+      "fonts": [
+        {
+          "weight": "400",
+          "status": "loaded"
+        },
+        {
+          "weight": "500",
+          "status": "loaded"
+        },
+        {
+          "weight": "600",
+          "status": "loaded"
+        }
+      ]
+    },
+    {
+      "width": 360,
+      "route": "bounds",
+      "app": {
+        "width": 360,
+        "height": 844
+      },
+      "pageOverflow": false,
+      "appOverflow": false,
+      "editor": null,
+      "fonts": [
+        {
+          "weight": "400",
+          "status": "loaded"
+        },
+        {
+          "weight": "500",
+          "status": "loaded"
+        },
+        {
+          "weight": "600",
+          "status": "loaded"
+        }
+      ]
+    },
+    {
+      "width": 360,
+      "route": "editor",
+      "app": {
+        "width": 360,
+        "height": 844
+      },
+      "pageOverflow": false,
+      "appOverflow": false,
+      "editor": {
+        "client": 729,
+        "total": 2365,
+        "overflow": false
+      },
+      "fonts": [
+        {
+          "weight": "400",
+          "status": "loaded"
+        },
+        {
+          "weight": "500",
+          "status": "loaded"
+        },
+        {
+          "weight": "600",
+          "status": "loaded"
+        }
+      ]
+    },
+    {
+      "width": 360,
+      "route": "add-missing",
+      "app": {
+        "width": 360,
+        "height": 844
+      },
+      "pageOverflow": false,
+      "appOverflow": false,
+      "editor": null,
+      "fonts": [
+        {
+          "weight": "400",
+          "status": "loaded"
+        },
+        {
+          "weight": "500",
+          "status": "loaded"
+        },
+        {
+          "weight": "600",
+          "status": "loaded"
+        }
+      ]
+    },
+    {
+      "width": 390,
+      "route": "review",
+      "app": {
+        "width": 390,
+        "height": 844
+      },
+      "pageOverflow": false,
+      "appOverflow": false,
+      "editor": null,
+      "fonts": [
+        {
+          "weight": "400",
+          "status": "loaded"
+        },
+        {
+          "weight": "500",
+          "status": "loaded"
+        },
+        {
+          "weight": "600",
+          "status": "loaded"
+        }
+      ]
+    },
+    {
+      "width": 390,
+      "route": "browse",
+      "app": {
+        "width": 390,
+        "height": 844
+      },
+      "pageOverflow": false,
+      "appOverflow": false,
+      "editor": null,
+      "fonts": [
+        {
+          "weight": "400",
+          "status": "loaded"
+        },
+        {
+          "weight": "500",
+          "status": "loaded"
+        },
+        {
+          "weight": "600",
+          "status": "loaded"
+        }
+      ]
+    },
+    {
+      "width": 390,
+      "route": "bounds",
+      "app": {
+        "width": 390,
+        "height": 844
+      },
+      "pageOverflow": false,
+      "appOverflow": false,
+      "editor": null,
+      "fonts": [
+        {
+          "weight": "400",
+          "status": "loaded"
+        },
+        {
+          "weight": "500",
+          "status": "loaded"
+        },
+        {
+          "weight": "600",
+          "status": "loaded"
+        }
+      ]
+    },
+    {
+      "width": 390,
+      "route": "editor",
+      "app": {
+        "width": 390,
+        "height": 844
+      },
+      "pageOverflow": false,
+      "appOverflow": false,
+      "editor": {
+        "client": 729,
+        "total": 2389,
+        "overflow": false
+      },
+      "fonts": [
+        {
+          "weight": "400",
+          "status": "loaded"
+        },
+        {
+          "weight": "500",
+          "status": "loaded"
+        },
+        {
+          "weight": "600",
+          "status": "loaded"
+        }
+      ]
+    },
+    {
+      "width": 390,
+      "route": "add-missing",
+      "app": {
+        "width": 390,
+        "height": 844
+      },
+      "pageOverflow": false,
+      "appOverflow": false,
+      "editor": null,
+      "fonts": [
+        {
+          "weight": "400",
+          "status": "loaded"
+        },
+        {
+          "weight": "500",
+          "status": "loaded"
+        },
+        {
+          "weight": "600",
+          "status": "loaded"
+        }
+      ]
+    },
+    {
+      "width": 768,
+      "route": "review",
+      "app": {
+        "width": 390,
+        "height": 844
+      },
+      "pageOverflow": false,
+      "appOverflow": false,
+      "editor": null,
+      "fonts": [
+        {
+          "weight": "400",
+          "status": "loaded"
+        },
+        {
+          "weight": "500",
+          "status": "loaded"
+        },
+        {
+          "weight": "600",
+          "status": "loaded"
+        }
+      ]
+    },
+    {
+      "width": 768,
+      "route": "browse",
+      "app": {
+        "width": 390,
+        "height": 844
+      },
+      "pageOverflow": false,
+      "appOverflow": false,
+      "editor": null,
+      "fonts": [
+        {
+          "weight": "400",
+          "status": "loaded"
+        },
+        {
+          "weight": "500",
+          "status": "loaded"
+        },
+        {
+          "weight": "600",
+          "status": "loaded"
+        }
+      ]
+    },
+    {
+      "width": 768,
+      "route": "bounds",
+      "app": {
+        "width": 390,
+        "height": 844
+      },
+      "pageOverflow": false,
+      "appOverflow": false,
+      "editor": null,
+      "fonts": [
+        {
+          "weight": "400",
+          "status": "loaded"
+        },
+        {
+          "weight": "500",
+          "status": "loaded"
+        },
+        {
+          "weight": "600",
+          "status": "loaded"
+        }
+      ]
+    },
+    {
+      "width": 768,
+      "route": "editor",
+      "app": {
+        "width": 390,
+        "height": 844
+      },
+      "pageOverflow": false,
+      "appOverflow": false,
+      "editor": {
+        "client": 729,
+        "total": 2389,
+        "overflow": false
+      },
+      "fonts": [
+        {
+          "weight": "400",
+          "status": "loaded"
+        },
+        {
+          "weight": "500",
+          "status": "loaded"
+        },
+        {
+          "weight": "600",
+          "status": "loaded"
+        }
+      ]
+    },
+    {
+      "width": 768,
+      "route": "add-missing",
+      "app": {
+        "width": 390,
+        "height": 844
+      },
+      "pageOverflow": false,
+      "appOverflow": false,
+      "editor": null,
+      "fonts": [
+        {
+          "weight": "400",
+          "status": "loaded"
+        },
+        {
+          "weight": "500",
+          "status": "loaded"
+        },
+        {
+          "weight": "600",
+          "status": "loaded"
+        }
+      ]
+    }
+  ],
+  "screenshots": [
+    ".process/review-390.png",
+    ".process/editor-top-390.png",
+    ".process/editor-timeline-390.png",
+    ".process/editor-lower-390.png",
+    ".process/browse-390.png",
+    ".process/add-missing-390.png",
+    ".process/review-360.png",
+    ".process/editor-360.png",
+    ".process/timeline-360.png",
+    ".process/lower-360.png",
+    ".process/add-missing-360.png",
+    ".process/review-390.png",
+    ".process/editor-390.png",
+    ".process/timeline-390.png",
+    ".process/lower-390.png",
+    ".process/add-missing-390.png",
+    ".process/review-768.png",
+    ".process/editor-768.png",
+    ".process/timeline-768.png",
+    ".process/lower-768.png",
+    ".process/add-missing-768.png",
+    ".process/all-rallies-360.png",
+    ".process/all-rallies-390.png",
+    ".process/all-rallies-768.png"
+  ],
+  "limitations": [
+    "Synthetic local playback and sequence previews; no backend, native launch or real video export.",
+    "Project switching, source relink and extra-footage exclusion are honest preview dialogs."
+  ],
+  "taste": {
+    "lint": {
+      "fail": 0,
+      "warnings": [
+        {
+          "rule": "shadow",
+          "reason": "Only the floating preview dialog has a shadow."
+        },
+        {
+          "rule": "numbering",
+          "reason": "Clocks and existing Editor rally index data use zero padding."
+        }
+      ]
+    },
+    "ralliesInspect": {
+      "widths": [
+        360,
+        390,
+        768
+      ],
+      "fail": 0,
+      "warn": 0
+    },
+    "editorInspect": {
+      "widths": [
+        360,
+        390,
+        768
+      ],
+      "fail": 0,
+      "warn": 1,
+      "allow": [
+        "palette-cream"
+      ],
+      "allowReason": "User explicitly authorized the existing Editor paper palette, scoped to that route.",
+      "warning": {
+        "rule": "tiny-text",
+        "reason": "Existing compact Editor rally indices, timestamps, statuses and source-axis metadata use 11–12 px. Primary actions and content retain 13–20 px."
+      }
+    },
+    "visualReview": "Inspected actual screenshots for Review, Browse, Add missing, existing Editor top, timeline, trim tools and All rallies at 360/390/768, plus before/after inspector images.",
+    "htmlPreview": {
+      "width": 390,
+      "contentHeight": 1042,
+      "consoleMessages": 0,
+      "inspected": true
+    },
+    "browserFallback": "T3 click automation failed twice with Preview automation click timed out after 15000ms. Used authorized Taste Browser/Page CDP helper for actual mouse, wheel and touch."
+  },
+  "cleanup": {
+    "isolatedTasteTempProfile": true,
+    "resolvedScopeVerified": true,
+    "browserHelperClosesOwnedBrowserAndRemovesOwnedTempProfile": true,
+    "prototypeServer": "Temporary loopback-only prototype server; stopped after review."
+  }
+}

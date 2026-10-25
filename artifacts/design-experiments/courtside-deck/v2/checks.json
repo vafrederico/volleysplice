@@ -1,0 +1,62 @@
+{
+  "status": "pass",
+  "html_characters": 108980,
+  "javascript_syntax": "node --check passed",
+  "interaction_checks": {
+    "passed": 52,
+    "failed": 0,
+    "method": "T3 preview_evaluate; DOM pointer, keyboard and click events; observable local state and geometry assertions",
+    "coverage": [
+      "Live start/end state, duration, no-jump handle grab and stable DOM through continuous drags",
+      "0.5-second minimum and source limits; keyboard and stepper edits",
+      "Exact source click/drag/keyboard position; gap remains Browse with no selected card",
+      "Explicit missing action and added rally preserve gap position",
+      "Forward/backward list auto-scroll and collapsed rail",
+      "Coherent source playback, 36 original cards, score, review decisions, completion and reset"
+    ]
+  },
+  "static_checks": {
+    "html_under_512000_characters": true,
+    "original_fixture_and_frame_unchanged": true,
+    "original_woff2_subsets_unchanged": true,
+    "no_external_runtime_assets_or_machine_paths": true,
+    "no_viewport_height_units": true,
+    "no_root_percentage_height": true,
+    "pointer_capture_and_cleanup_present": true,
+    "single_C1_variant": true
+  },
+  "visual_checks": {
+    "widths": [
+      360,
+      390,
+      768
+    ],
+    "additional_inspector_width": 1440,
+    "screenshots_inspected": true,
+    "states": [
+      "Review",
+      "Browse",
+      "Source gap",
+      "Bounds",
+      "Editor"
+    ],
+    "app_size": "390 x 844; fluid below 390",
+    "console_errors": 0,
+    "horizontal_overflow": 0,
+    "clipped_fixed_controls_at_390": 0
+  },
+  "taste_inspector": {
+    "failures": 0,
+    "allowed_warning": "Desktop hero-void reflects an intentional centered phone prototype"
+  },
+  "taste_lint": {
+    "failures": 0,
+    "allowed_warning": "Zero padding formats clocks"
+  },
+  "isolation": "Taste only; supplied C1 baseline; baseline comparison and application source untouched; no delegation",
+  "limitations": [
+    "Pointer capture and physical touch were not exercised with a real gesture; programmatic event/state checks passed",
+    "T3 preview_press returned successfully but delivered no observable native key events; keyboard behavior was checked through DOM events",
+    "Synthetic media and session-local state; existing font license supplied by parent"
+  ]
+}

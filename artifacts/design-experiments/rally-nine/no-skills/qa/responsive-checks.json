@@ -1,0 +1,601 @@
+{
+  "renderer": "Isolated headless Edge fallback after T3 snapshot timeout; fonts and images awaited",
+  "errors": [],
+  "results": [
+    {
+      "variant": 1,
+      "screen": "review",
+      "width": 390,
+      "viewport": [
+        390,
+        844
+      ],
+      "body": [
+        390,
+        842
+      ],
+      "appWidth": 390,
+      "appHeight": 774,
+      "score": "9:8",
+      "pending": 4,
+      "selected": "R018",
+      "cards": 0,
+      "fontLoaded": true,
+      "images": true,
+      "smallTargets": []
+    },
+    {
+      "variant": 1,
+      "screen": "browse",
+      "width": 390,
+      "viewport": [
+        390,
+        844
+      ],
+      "body": [
+        390,
+        842
+      ],
+      "appWidth": 390,
+      "appHeight": 774,
+      "score": "9:8",
+      "pending": 4,
+      "selected": "R018",
+      "cards": 36,
+      "fontLoaded": true,
+      "images": true,
+      "smallTargets": []
+    },
+    {
+      "variant": 1,
+      "screen": "bounds",
+      "width": 390,
+      "viewport": [
+        390,
+        844
+      ],
+      "body": [
+        390,
+        842
+      ],
+      "appWidth": 390,
+      "appHeight": 774,
+      "score": "9:8",
+      "pending": 4,
+      "selected": "R018",
+      "cards": 0,
+      "fontLoaded": true,
+      "images": true,
+      "smallTargets": []
+    },
+    {
+      "variant": 1,
+      "screen": "review",
+      "width": 360,
+      "viewport": [
+        360,
+        844
+      ],
+      "body": [
+        360,
+        842
+      ],
+      "appWidth": 360,
+      "appHeight": 774,
+      "score": "9:8",
+      "pending": 4,
+      "selected": "R018",
+      "cards": 0,
+      "fontLoaded": true,
+      "images": true,
+      "smallTargets": []
+    },
+    {
+      "variant": 1,
+      "screen": "browse",
+      "width": 360,
+      "viewport": [
+        360,
+        844
+      ],
+      "body": [
+        360,
+        842
+      ],
+      "appWidth": 360,
+      "appHeight": 774,
+      "score": "9:8",
+      "pending": 4,
+      "selected": "R018",
+      "cards": 36,
+      "fontLoaded": true,
+      "images": true,
+      "smallTargets": []
+    },
+    {
+      "variant": 1,
+      "screen": "bounds",
+      "width": 360,
+      "viewport": [
+        360,
+        844
+      ],
+      "body": [
+        360,
+        842
+      ],
+      "appWidth": 360,
+      "appHeight": 774,
+      "score": "9:8",
+      "pending": 4,
+      "selected": "R018",
+      "cards": 0,
+      "fontLoaded": true,
+      "images": true,
+      "smallTargets": []
+    },
+    {
+      "variant": 1,
+      "screen": "review",
+      "width": 768,
+      "viewport": [
+        768,
+        844
+      ],
+      "body": [
+        768,
+        842
+      ],
+      "appWidth": 430,
+      "appHeight": 774,
+      "score": "9:8",
+      "pending": 4,
+      "selected": "R018",
+      "cards": 0,
+      "fontLoaded": true,
+      "images": true,
+      "smallTargets": []
+    },
+    {
+      "variant": 1,
+      "screen": "browse",
+      "width": 768,
+      "viewport": [
+        768,
+        844
+      ],
+      "body": [
+        768,
+        842
+      ],
+      "appWidth": 430,
+      "appHeight": 774,
+      "score": "9:8",
+      "pending": 4,
+      "selected": "R018",
+      "cards": 36,
+      "fontLoaded": true,
+      "images": true,
+      "smallTargets": []
+    },
+    {
+      "variant": 1,
+      "screen": "bounds",
+      "width": 768,
+      "viewport": [
+        768,
+        844
+      ],
+      "body": [
+        768,
+        842
+      ],
+      "appWidth": 430,
+      "appHeight": 774,
+      "score": "9:8",
+      "pending": 4,
+      "selected": "R018",
+      "cards": 0,
+      "fontLoaded": true,
+      "images": true,
+      "smallTargets": []
+    },
+    {
+      "variant": 2,
+      "screen": "review",
+      "width": 390,
+      "viewport": [
+        390,
+        844
+      ],
+      "body": [
+        390,
+        842
+      ],
+      "appWidth": 390,
+      "appHeight": 774,
+      "score": "9:8",
+      "pending": 4,
+      "selected": "R018",
+      "cards": 0,
+      "fontLoaded": true,
+      "images": true,
+      "smallTargets": []
+    },
+    {
+      "variant": 2,
+      "screen": "browse",
+      "width": 390,
+      "viewport": [
+        390,
+        844
+      ],
+      "body": [
+        390,
+        843
+      ],
+      "appWidth": 390,
+      "appHeight": 775,
+      "score": "9:8",
+      "pending": 4,
+      "selected": "R018",
+      "cards": 36,
+      "fontLoaded": true,
+      "images": true,
+      "smallTargets": []
+    },
+    {
+      "variant": 2,
+      "screen": "bounds",
+      "width": 390,
+      "viewport": [
+        390,
+        844
+      ],
+      "body": [
+        390,
+        842
+      ],
+      "appWidth": 390,
+      "appHeight": 774,
+      "score": "9:8",
+      "pending": 4,
+      "selected": "R018",
+      "cards": 0,
+      "fontLoaded": true,
+      "images": true,
+      "smallTargets": []
+    },
+    {
+      "variant": 2,
+      "screen": "review",
+      "width": 360,
+      "viewport": [
+        360,
+        844
+      ],
+      "body": [
+        360,
+        842
+      ],
+      "appWidth": 360,
+      "appHeight": 774,
+      "score": "9:8",
+      "pending": 4,
+      "selected": "R018",
+      "cards": 0,
+      "fontLoaded": true,
+      "images": true,
+      "smallTargets": []
+    },
+    {
+      "variant": 2,
+      "screen": "browse",
+      "width": 360,
+      "viewport": [
+        360,
+        844
+      ],
+      "body": [
+        360,
+        843
+      ],
+      "appWidth": 360,
+      "appHeight": 775,
+      "score": "9:8",
+      "pending": 4,
+      "selected": "R018",
+      "cards": 36,
+      "fontLoaded": true,
+      "images": true,
+      "smallTargets": []
+    },
+    {
+      "variant": 2,
+      "screen": "bounds",
+      "width": 360,
+      "viewport": [
+        360,
+        844
+      ],
+      "body": [
+        360,
+        842
+      ],
+      "appWidth": 360,
+      "appHeight": 774,
+      "score": "9:8",
+      "pending": 4,
+      "selected": "R018",
+      "cards": 0,
+      "fontLoaded": true,
+      "images": true,
+      "smallTargets": []
+    },
+    {
+      "variant": 2,
+      "screen": "review",
+      "width": 768,
+      "viewport": [
+        768,
+        844
+      ],
+      "body": [
+        768,
+        842
+      ],
+      "appWidth": 430,
+      "appHeight": 774,
+      "score": "9:8",
+      "pending": 4,
+      "selected": "R018",
+      "cards": 0,
+      "fontLoaded": true,
+      "images": true,
+      "smallTargets": []
+    },
+    {
+      "variant": 2,
+      "screen": "browse",
+      "width": 768,
+      "viewport": [
+        768,
+        844
+      ],
+      "body": [
+        768,
+        843
+      ],
+      "appWidth": 430,
+      "appHeight": 775,
+      "score": "9:8",
+      "pending": 4,
+      "selected": "R018",
+      "cards": 36,
+      "fontLoaded": true,
+      "images": true,
+      "smallTargets": []
+    },
+    {
+      "variant": 2,
+      "screen": "bounds",
+      "width": 768,
+      "viewport": [
+        768,
+        844
+      ],
+      "body": [
+        768,
+        842
+      ],
+      "appWidth": 430,
+      "appHeight": 774,
+      "score": "9:8",
+      "pending": 4,
+      "selected": "R018",
+      "cards": 0,
+      "fontLoaded": true,
+      "images": true,
+      "smallTargets": []
+    },
+    {
+      "variant": 3,
+      "screen": "review",
+      "width": 390,
+      "viewport": [
+        390,
+        844
+      ],
+      "body": [
+        390,
+        842
+      ],
+      "appWidth": 390,
+      "appHeight": 774,
+      "score": "9:8",
+      "pending": 4,
+      "selected": "R018",
+      "cards": 0,
+      "fontLoaded": true,
+      "images": true,
+      "smallTargets": []
+    },
+    {
+      "variant": 3,
+      "screen": "browse",
+      "width": 390,
+      "viewport": [
+        390,
+        844
+      ],
+      "body": [
+        390,
+        842
+      ],
+      "appWidth": 390,
+      "appHeight": 774,
+      "score": "9:8",
+      "pending": 4,
+      "selected": "R018",
+      "cards": 36,
+      "fontLoaded": true,
+      "images": true,
+      "smallTargets": []
+    },
+    {
+      "variant": 3,
+      "screen": "bounds",
+      "width": 390,
+      "viewport": [
+        390,
+        844
+      ],
+      "body": [
+        390,
+        842
+      ],
+      "appWidth": 390,
+      "appHeight": 774,
+      "score": "9:8",
+      "pending": 4,
+      "selected": "R018",
+      "cards": 0,
+      "fontLoaded": true,
+      "images": true,
+      "smallTargets": []
+    },
+    {
+      "variant": 3,
+      "screen": "review",
+      "width": 360,
+      "viewport": [
+        360,
+        844
+      ],
+      "body": [
+        360,
+        842
+      ],
+      "appWidth": 360,
+      "appHeight": 774,
+      "score": "9:8",
+      "pending": 4,
+      "selected": "R018",
+      "cards": 0,
+      "fontLoaded": true,
+      "images": true,
+      "smallTargets": []
+    },
+    {
+      "variant": 3,
+      "screen": "browse",
+      "width": 360,
+      "viewport": [
+        360,
+        844
+      ],
+      "body": [
+        360,
+        842
+      ],
+      "appWidth": 360,
+      "appHeight": 774,
+      "score": "9:8",
+      "pending": 4,
+      "selected": "R018",
+      "cards": 36,
+      "fontLoaded": true,
+      "images": true,
+      "smallTargets": []
+    },
+    {
+      "variant": 3,
+      "screen": "bounds",
+      "width": 360,
+      "viewport": [
+        360,
+        844
+      ],
+      "body": [
+        360,
+        842
+      ],
+      "appWidth": 360,
+      "appHeight": 774,
+      "score": "9:8",
+      "pending": 4,
+      "selected": "R018",
+      "cards": 0,
+      "fontLoaded": true,
+      "images": true,
+      "smallTargets": []
+    },
+    {
+      "variant": 3,
+      "screen": "review",
+      "width": 768,
+      "viewport": [
+        768,
+        844
+      ],
+      "body": [
+        768,
+        842
+      ],
+      "appWidth": 430,
+      "appHeight": 774,
+      "score": "9:8",
+      "pending": 4,
+      "selected": "R018",
+      "cards": 0,
+      "fontLoaded": true,
+      "images": true,
+      "smallTargets": []
+    },
+    {
+      "variant": 3,
+      "screen": "browse",
+      "width": 768,
+      "viewport": [
+        768,
+        844
+      ],
+      "body": [
+        768,
+        842
+      ],
+      "appWidth": 430,
+      "appHeight": 774,
+      "score": "9:8",
+      "pending": 4,
+      "selected": "R018",
+      "cards": 36,
+      "fontLoaded": true,
+      "images": true,
+      "smallTargets": []
+    },
+    {
+      "variant": 3,
+      "screen": "bounds",
+      "width": 768,
+      "viewport": [
+        768,
+        844
+      ],
+      "body": [
+        768,
+        842
+      ],
+      "appWidth": 430,
+      "appHeight": 774,
+      "score": "9:8",
+      "pending": 4,
+      "selected": "R018",
+      "cards": 0,
+      "fontLoaded": true,
+      "images": true,
+      "smallTargets": []
+    }
+  ],
+  "targetMeasurement": "Visible app buttons measured; display:none controls excluded. All at least 44 by 44 CSS pixels."
+}

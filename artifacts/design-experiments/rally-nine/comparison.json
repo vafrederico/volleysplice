@@ -1,0 +1,1657 @@
+{
+  "purpose": "Nine Android rally-editor design prototypes; three per skill condition.",
+  "generation": {
+    "agents": 3,
+    "variantsPerAgent": 3,
+    "provider": "codex",
+    "model": "gpt-6.1-sol",
+    "options": {
+      "reasoningEffort": "xhigh",
+      "serviceTier": "priority"
+    },
+    "parentHistoryCopied": false,
+    "separateWorktrees": true,
+    "identicalFixture": "fixture.json",
+    "identicalFrame": "frame.svg",
+    "otherConditionsVisibleDuringGeneration": false
+  },
+  "conditions": [
+    {
+      "condition": "no-skills",
+      "manifest": {
+        "condition": "no-skills",
+        "assignedSkill": null,
+        "variants": [
+          {
+            "id": "variant-1",
+            "name": "Focus Deck",
+            "concept": "A dark, concentrated review workspace: large footage, paired explicit decisions, and a compact one-column rally roster with the source map at left.",
+            "file": "variant-1.html",
+            "interactions": [
+              "Simulated play/pause and time progression",
+              "Explicit retained keep/remove and near/far decisions",
+              "Flag-derived review count, progression and completion",
+              "Start/end range and 0.1-second nudge editing, save and cancel",
+              "All 36 original rally cards selectable immediately",
+              "Source-proportional vertical timeline, gap seeking and collapse/restore",
+              "Mock full Editor at source position, missed-rally addition and return",
+              "Independent Review, Browse and Bounds toolbar and query states",
+              "Local browser persistence and reset"
+            ],
+            "checks": {
+              "status": "passed",
+              "responsiveViewports": [
+                360,
+                390,
+                768
+              ],
+              "independentStates": [
+                "review",
+                "browse",
+                "bounds"
+              ],
+              "initialRally": 18,
+              "initialScore": "Cedar 9 : 8 Harbor",
+              "flagDerivedPendingCount": 4,
+              "allOriginalCardsNavigated": 36,
+              "additionalT3InteractionAssertions": 43,
+              "reviewCompletionAndEditorAddReturnFlow": "passed",
+              "decisionsPersistAcrossNavigation": "passed",
+              "embeddedFixtureAndFrameExactMatch": true,
+              "visibleAppButtonsMinimumCssPx": 44,
+              "screenshotsInspected": true
+            }
+          },
+          {
+            "id": "variant-2",
+            "name": "Court Dock",
+            "concept": "Edge-to-edge footage with a floating control dock. Spatial far/near court buttons oppose keep/remove actions; browsing switches to thumbnail tiles and a right-side source map.",
+            "file": "variant-2.html",
+            "interactions": [
+              "Simulated play/pause and time progression",
+              "Explicit retained keep/remove and near/far decisions",
+              "Flag-derived review count, progression and completion",
+              "Start/end range and 0.1-second nudge editing, save and cancel",
+              "All 36 original rally cards selectable immediately",
+              "Source-proportional vertical timeline, gap seeking and collapse/restore",
+              "Mock full Editor at source position, missed-rally addition and return",
+              "Independent Review, Browse and Bounds toolbar and query states",
+              "Local browser persistence and reset"
+            ],
+            "checks": {
+              "status": "passed",
+              "responsiveViewports": [
+                360,
+                390,
+                768
+              ],
+              "independentStates": [
+                "review",
+                "browse",
+                "bounds"
+              ],
+              "initialRally": 18,
+              "initialScore": "Cedar 9 : 8 Harbor",
+              "flagDerivedPendingCount": 4,
+              "allOriginalCardsNavigated": 36,
+              "additionalT3InteractionAssertions": 43,
+              "reviewCompletionAndEditorAddReturnFlow": "passed",
+              "decisionsPersistAcrossNavigation": "passed",
+              "embeddedFixtureAndFrameExactMatch": true,
+              "visibleAppButtonsMinimumCssPx": 44,
+              "screenshotsInspected": true
+            }
+          },
+          {
+            "id": "variant-3",
+            "name": "Match Ledger",
+            "concept": "A score-first match journal. A numbered review gutter and progressive one-question decisions replace the dashboard; browsing becomes a ledger with right-aligned preview frames.",
+            "file": "variant-3.html",
+            "interactions": [
+              "Simulated play/pause and time progression",
+              "Explicit retained keep/remove and near/far decisions",
+              "Flag-derived review count, progression and completion",
+              "Start/end range and 0.1-second nudge editing, save and cancel",
+              "All 36 original rally cards selectable immediately",
+              "Source-proportional vertical timeline, gap seeking and collapse/restore",
+              "Mock full Editor at source position, missed-rally addition and return",
+              "Independent Review, Browse and Bounds toolbar and query states",
+              "Local browser persistence and reset"
+            ],
+            "checks": {
+              "status": "passed",
+              "responsiveViewports": [
+                360,
+                390,
+                768
+              ],
+              "independentStates": [
+                "review",
+                "browse",
+                "bounds"
+              ],
+              "initialRally": 18,
+              "initialScore": "Cedar 9 : 8 Harbor",
+              "flagDerivedPendingCount": 4,
+              "allOriginalCardsNavigated": 36,
+              "additionalT3InteractionAssertions": 43,
+              "reviewCompletionAndEditorAddReturnFlow": "passed",
+              "decisionsPersistAcrossNavigation": "passed",
+              "embeddedFixtureAndFrameExactMatch": true,
+              "visibleAppButtonsMinimumCssPx": 44,
+              "screenshotsInspected": true
+            }
+          }
+        ],
+        "inputsUsed": [
+          {
+            "name": "fixture.json",
+            "role": "Identical synthetic match, all 36 rallies, scores, flags and starting position",
+            "embedded": true,
+            "sha256": "a3eeb3932d89506bea319b8f0b2f37fb0c323bc5c72499d2038b8ac38351b0e5"
+          },
+          {
+            "name": "frame.svg",
+            "role": "Identical video illustration and every rally-card start-frame preview",
+            "embedded": true,
+            "sha256": "e8ddf42ef36a60169302233efb75ca9b32038ab9365718c795bf6703cd0037b5"
+          },
+          {
+            "name": "Source Sans 3",
+            "role": "Embedded subset variable font; complete SIL OFL license embedded in each HTML"
+          }
+        ],
+        "skillFilesRead": [],
+        "isolationReceipt": {
+          "read": [
+            "SHARED_AGENTS.md (complete)",
+            "INDEX.md",
+            "AGENTS.md (repository safety/build/privacy rules)",
+            "Shared synthetic fixture.json and frame.svg"
+          ],
+          "designSkillsRead": [],
+          "designReferencesRead": [],
+          "priorAppLayoutsRead": false,
+          "androidDesignDocumentsRead": false,
+          "otherAgentsOrOutputsInspected": false,
+          "delegatedFurther": false,
+          "applicationSourceModified": false,
+          "vaultWrites": false
+        },
+        "limitations": [
+          "Synthetic local interaction prototypes, not video playback, real detection, exports, or Android implementation.",
+          "Original synthetic illustration repeats across rallies as required by the comparison.",
+          "Newly added mock rallies inherit nearby fixture scores; this does not model score inference.",
+          "Decisions persist in browser localStorage per variant; storage availability depends on the embedding browser.",
+          "T3 preview screenshot failed twice: Preview snapshot failed: Preview automation snapshot timed out after 15000ms. Cua fallback reported Browser is not available: iab. Visual inspection used isolated headless Edge screenshots instead.",
+          "The compact source map is a seek surface. Rally cards provide the larger touch targets for exact rally selection.",
+          "Automatic approval review rejected temporary tooling cleanup twice with reason blocked by policy. Temporary tooling remains ignored by the experiment-local .gitignore; it is not required by the self-contained prototypes."
+        ],
+        "validation": {
+          "status": "passed with screenshot-tool fallback",
+          "responsiveCases": 27,
+          "runtimeErrors": 0,
+          "screenshotsCaptured": 15,
+          "t3Preview": "Thread-owned isolated tab used for interaction tests. Snapshot attempted twice and timed out.",
+          "visualFallback": "Isolated headless Microsoft Edge, awaiting embedded fonts and images. No installed design skills or design references used.",
+          "evidence": [
+            "artifacts/design-experiments/rally-nine/no-skills/qa/interaction-checks.json",
+            "artifacts/design-experiments/rally-nine/no-skills/qa/responsive-checks.json",
+            "artifacts/design-experiments/rally-nine/no-skills/qa/static-checks.json"
+          ]
+        }
+      }
+    },
+    {
+      "condition": "frontend-design",
+      "manifest": {
+        "condition": "frontend-design",
+        "assignedSkill": "Frontend Design",
+        "entries": [
+          {
+            "id": "variant-1",
+            "name": "Court Desk",
+            "file": "variant-1.html",
+            "concept": "A courtside control desk: inset video above broad keep/remove controls, then serving-side choices. A left source map and compact rally cards support browsing.",
+            "interactions": [
+              "Play/pause with advancing simulated source time",
+              "Explicit keep/remove and near/far decisions retained in localStorage per variant",
+              "Flag-derived four-item review queue, validation before next, and completion",
+              "Editable start/end with half-second nudges, range controls, save and cancel",
+              "All 36 fixture rallies selectable with immediate navigation and score changes",
+              "Source-proportional vertical timeline with source scrubbing, keyboard control, collapse and restore",
+              "Non-rally gap enters mock Editor at source position, add missed rally locally, return to Rallies",
+              "Outside-phone Review, Browse and Bounds controls and matching query parameters",
+              "Reset synthetic sample"
+            ],
+            "checks": {
+              "status": "passed",
+              "interactionMethod": "T3 preview_evaluate, native DOM click/input/keyboard events in the isolated collaborative browser tab",
+              "interactionCount": 34,
+              "interactionChecks": [
+                {
+                  "name": "Initial rally and score",
+                  "passed": true
+                },
+                {
+                  "name": "Flag-derived four-item queue",
+                  "passed": true
+                },
+                {
+                  "name": "Next blocked until explicit decisions",
+                  "passed": true
+                },
+                {
+                  "name": "Playback advances simulated time",
+                  "passed": true
+                },
+                {
+                  "name": "Pause stops playback",
+                  "passed": true
+                },
+                {
+                  "name": "Keep decision retained",
+                  "passed": true
+                },
+                {
+                  "name": "Remove decision retained",
+                  "passed": true
+                },
+                {
+                  "name": "Near serving side saved",
+                  "passed": true
+                },
+                {
+                  "name": "Far serving side saved",
+                  "passed": true
+                },
+                {
+                  "name": "Next review goes to rally 19",
+                  "passed": true
+                },
+                {
+                  "name": "Next review goes to rally 23",
+                  "passed": true
+                },
+                {
+                  "name": "Next review goes to rally 27",
+                  "passed": true
+                },
+                {
+                  "name": "All review flags resolved and completion offered",
+                  "passed": true
+                },
+                {
+                  "name": "36 cards available",
+                  "passed": true
+                },
+                {
+                  "name": "Every original rally selects immediately",
+                  "passed": true
+                },
+                {
+                  "name": "Source timeline positions proportional to source time",
+                  "passed": true
+                },
+                {
+                  "name": "Timeline collapses",
+                  "passed": true
+                },
+                {
+                  "name": "Timeline restores",
+                  "passed": true
+                },
+                {
+                  "name": "Source map selects non-rally time",
+                  "passed": true
+                },
+                {
+                  "name": "Non-rally time opens full Editor at position",
+                  "passed": true
+                },
+                {
+                  "name": "Return keeps source gap available",
+                  "passed": true
+                },
+                {
+                  "name": "Edit rally opens rally decisions",
+                  "passed": true
+                },
+                {
+                  "name": "Missed rally opens Editor in gap",
+                  "passed": true
+                },
+                {
+                  "name": "Add rally creates local clip in gap",
+                  "passed": true
+                },
+                {
+                  "name": "Return path shows added card",
+                  "passed": true
+                },
+                {
+                  "name": "Start and end nudges edit draft",
+                  "passed": true
+                },
+                {
+                  "name": "Bounds saved across navigation",
+                  "passed": true
+                },
+                {
+                  "name": "Choices and bounds persisted locally",
+                  "passed": true
+                },
+                {
+                  "name": "Cancel discards unsaved bound edits",
+                  "passed": true
+                },
+                {
+                  "name": "Reset restores neutral fixture",
+                  "passed": true
+                },
+                {
+                  "name": "Exact tenth-second formatting",
+                  "passed": true
+                },
+                {
+                  "name": "Start range updates draft and readout",
+                  "passed": true
+                },
+                {
+                  "name": "End range updates draft and readout",
+                  "passed": true
+                },
+                {
+                  "name": "Editor source slider selects exact gap position",
+                  "passed": true
+                }
+              ],
+              "responsiveLayouts": [
+                {
+                  "appWidth": 360,
+                  "cardCount": 0,
+                  "clipped": [],
+                  "pageHeight": 844,
+                  "pageWidth": 360,
+                  "screen": "review",
+                  "smallTargets": [],
+                  "stageHeight": 328,
+                  "variant": 1,
+                  "width": 360
+                },
+                {
+                  "appWidth": 360,
+                  "cardCount": 36,
+                  "clipped": [],
+                  "pageHeight": 844,
+                  "pageWidth": 360,
+                  "screen": "browse",
+                  "smallTargets": [],
+                  "stageHeight": 276,
+                  "variant": 1,
+                  "width": 360
+                },
+                {
+                  "appWidth": 360,
+                  "cardCount": 0,
+                  "clipped": [],
+                  "pageHeight": 844,
+                  "pageWidth": 360,
+                  "screen": "bounds",
+                  "smallTargets": [],
+                  "stageHeight": 328,
+                  "variant": 1,
+                  "width": 360
+                },
+                {
+                  "appWidth": 390,
+                  "cardCount": 0,
+                  "clipped": [],
+                  "pageHeight": 844,
+                  "pageWidth": 390,
+                  "screen": "review",
+                  "smallTargets": [],
+                  "stageHeight": 328,
+                  "variant": 1,
+                  "width": 390
+                },
+                {
+                  "appWidth": 390,
+                  "cardCount": 36,
+                  "clipped": [],
+                  "pageHeight": 844,
+                  "pageWidth": 390,
+                  "screen": "browse",
+                  "smallTargets": [],
+                  "stageHeight": 276,
+                  "variant": 1,
+                  "width": 390
+                },
+                {
+                  "appWidth": 390,
+                  "cardCount": 0,
+                  "clipped": [],
+                  "pageHeight": 844,
+                  "pageWidth": 390,
+                  "screen": "bounds",
+                  "smallTargets": [],
+                  "stageHeight": 328,
+                  "variant": 1,
+                  "width": 390
+                },
+                {
+                  "appWidth": 430,
+                  "cardCount": 0,
+                  "clipped": [],
+                  "pageHeight": 844,
+                  "pageWidth": 768,
+                  "screen": "review",
+                  "smallTargets": [],
+                  "stageHeight": 328,
+                  "variant": 1,
+                  "width": 768
+                },
+                {
+                  "appWidth": 430,
+                  "cardCount": 36,
+                  "clipped": [],
+                  "pageHeight": 844,
+                  "pageWidth": 768,
+                  "screen": "browse",
+                  "smallTargets": [],
+                  "stageHeight": 276,
+                  "variant": 1,
+                  "width": 768
+                },
+                {
+                  "appWidth": 430,
+                  "cardCount": 0,
+                  "clipped": [],
+                  "pageHeight": 844,
+                  "pageWidth": 768,
+                  "screen": "bounds",
+                  "smallTargets": [],
+                  "stageHeight": 328,
+                  "variant": 1,
+                  "width": 768
+                }
+              ],
+              "staticChecks": [
+                "node --check JavaScript syntax",
+                "36 original fixture rallies embedded",
+                "Identical embedded SVG for video and card previews",
+                "Three embedded font weights per file",
+                "No external asset dependencies",
+                "No viewport-height units",
+                "No machine or vault paths",
+                "No network requests, messages, uploads, forms or real exports"
+              ],
+              "visualInspection": {
+                "method": "T3 html_preview screenshots",
+                "states": [
+                  "Review",
+                  "Browse",
+                  "Bounds"
+                ],
+                "reviewWidths": [
+                  360,
+                  390
+                ],
+                "browseWidths": [
+                  360
+                ],
+                "boundsWidths": [
+                  390
+                ],
+                "consoleMessages": 0
+              }
+            },
+            "designPlan": {
+              "palette": {
+                "chalk": "#F0F5FA",
+                "ink": "#17334E",
+                "cobalt": "#2255CC",
+                "ice": "#DCE8F6",
+                "white": "#FFFFFF"
+              },
+              "type": "Barlow Semi Condensed",
+              "wireframe": "switch / review strip / inset video / keep-remove / serving side / next",
+              "alignment": "Controls and card content left aligned; score and primary actions centered.",
+              "briefReview": "Replaced a decorative sport headline with the actual review count; broad decision controls give the visual structure a job."
+            }
+          },
+          {
+            "id": "variant-2",
+            "name": "On Court",
+            "file": "variant-2.html",
+            "concept": "An immersive portrait court image contains serving-side choices and playback. Keep/remove and next form a short thumb dock. Browsing places the source map on the right.",
+            "interactions": [
+              "Play/pause with advancing simulated source time",
+              "Explicit keep/remove and near/far decisions retained in localStorage per variant",
+              "Flag-derived four-item review queue, validation before next, and completion",
+              "Editable start/end with half-second nudges, range controls, save and cancel",
+              "All 36 fixture rallies selectable with immediate navigation and score changes",
+              "Source-proportional vertical timeline with source scrubbing, keyboard control, collapse and restore",
+              "Non-rally gap enters mock Editor at source position, add missed rally locally, return to Rallies",
+              "Outside-phone Review, Browse and Bounds controls and matching query parameters",
+              "Reset synthetic sample"
+            ],
+            "checks": {
+              "status": "passed",
+              "interactionMethod": "T3 preview_evaluate, native DOM click/input/keyboard events in the isolated collaborative browser tab",
+              "interactionCount": 34,
+              "interactionChecks": [
+                {
+                  "name": "Initial rally and score",
+                  "passed": true
+                },
+                {
+                  "name": "Flag-derived four-item queue",
+                  "passed": true
+                },
+                {
+                  "name": "Next blocked until explicit decisions",
+                  "passed": true
+                },
+                {
+                  "name": "Playback advances simulated time",
+                  "passed": true
+                },
+                {
+                  "name": "Pause stops playback",
+                  "passed": true
+                },
+                {
+                  "name": "Keep decision retained",
+                  "passed": true
+                },
+                {
+                  "name": "Remove decision retained",
+                  "passed": true
+                },
+                {
+                  "name": "Near serving side saved",
+                  "passed": true
+                },
+                {
+                  "name": "Far serving side saved",
+                  "passed": true
+                },
+                {
+                  "name": "Next review goes to rally 19",
+                  "passed": true
+                },
+                {
+                  "name": "Next review goes to rally 23",
+                  "passed": true
+                },
+                {
+                  "name": "Next review goes to rally 27",
+                  "passed": true
+                },
+                {
+                  "name": "All review flags resolved and completion offered",
+                  "passed": true
+                },
+                {
+                  "name": "36 cards available",
+                  "passed": true
+                },
+                {
+                  "name": "Every original rally selects immediately",
+                  "passed": true
+                },
+                {
+                  "name": "Source timeline positions proportional to source time",
+                  "passed": true
+                },
+                {
+                  "name": "Timeline collapses",
+                  "passed": true
+                },
+                {
+                  "name": "Timeline restores",
+                  "passed": true
+                },
+                {
+                  "name": "Source map selects non-rally time",
+                  "passed": true
+                },
+                {
+                  "name": "Non-rally time opens full Editor at position",
+                  "passed": true
+                },
+                {
+                  "name": "Return keeps source gap available",
+                  "passed": true
+                },
+                {
+                  "name": "Edit rally opens rally decisions",
+                  "passed": true
+                },
+                {
+                  "name": "Missed rally opens Editor in gap",
+                  "passed": true
+                },
+                {
+                  "name": "Add rally creates local clip in gap",
+                  "passed": true
+                },
+                {
+                  "name": "Return path shows added card",
+                  "passed": true
+                },
+                {
+                  "name": "Start and end nudges edit draft",
+                  "passed": true
+                },
+                {
+                  "name": "Bounds saved across navigation",
+                  "passed": true
+                },
+                {
+                  "name": "Choices and bounds persisted locally",
+                  "passed": true
+                },
+                {
+                  "name": "Cancel discards unsaved bound edits",
+                  "passed": true
+                },
+                {
+                  "name": "Reset restores neutral fixture",
+                  "passed": true
+                },
+                {
+                  "name": "Exact tenth-second formatting",
+                  "passed": true
+                },
+                {
+                  "name": "Start range updates draft and readout",
+                  "passed": true
+                },
+                {
+                  "name": "End range updates draft and readout",
+                  "passed": true
+                },
+                {
+                  "name": "Editor source slider selects exact gap position",
+                  "passed": true
+                }
+              ],
+              "responsiveLayouts": [
+                {
+                  "appWidth": 360,
+                  "cardCount": 0,
+                  "clipped": [],
+                  "pageHeight": 844,
+                  "pageWidth": 360,
+                  "screen": "review",
+                  "smallTargets": [],
+                  "stageHeight": 470,
+                  "variant": 2,
+                  "width": 360
+                },
+                {
+                  "appWidth": 360,
+                  "cardCount": 36,
+                  "clipped": [],
+                  "pageHeight": 844,
+                  "pageWidth": 360,
+                  "screen": "browse",
+                  "smallTargets": [],
+                  "stageHeight": 337,
+                  "variant": 2,
+                  "width": 360
+                },
+                {
+                  "appWidth": 360,
+                  "cardCount": 0,
+                  "clipped": [],
+                  "pageHeight": 844,
+                  "pageWidth": 360,
+                  "screen": "bounds",
+                  "smallTargets": [],
+                  "stageHeight": 362,
+                  "variant": 2,
+                  "width": 360
+                },
+                {
+                  "appWidth": 390,
+                  "cardCount": 0,
+                  "clipped": [],
+                  "pageHeight": 844,
+                  "pageWidth": 390,
+                  "screen": "review",
+                  "smallTargets": [],
+                  "stageHeight": 470,
+                  "variant": 2,
+                  "width": 390
+                },
+                {
+                  "appWidth": 390,
+                  "cardCount": 36,
+                  "clipped": [],
+                  "pageHeight": 844,
+                  "pageWidth": 390,
+                  "screen": "browse",
+                  "smallTargets": [],
+                  "stageHeight": 337,
+                  "variant": 2,
+                  "width": 390
+                },
+                {
+                  "appWidth": 390,
+                  "cardCount": 0,
+                  "clipped": [],
+                  "pageHeight": 844,
+                  "pageWidth": 390,
+                  "screen": "bounds",
+                  "smallTargets": [],
+                  "stageHeight": 362,
+                  "variant": 2,
+                  "width": 390
+                },
+                {
+                  "appWidth": 430,
+                  "cardCount": 0,
+                  "clipped": [],
+                  "pageHeight": 844,
+                  "pageWidth": 768,
+                  "screen": "review",
+                  "smallTargets": [],
+                  "stageHeight": 470,
+                  "variant": 2,
+                  "width": 768
+                },
+                {
+                  "appWidth": 430,
+                  "cardCount": 36,
+                  "clipped": [],
+                  "pageHeight": 844,
+                  "pageWidth": 768,
+                  "screen": "browse",
+                  "smallTargets": [],
+                  "stageHeight": 337,
+                  "variant": 2,
+                  "width": 768
+                },
+                {
+                  "appWidth": 430,
+                  "cardCount": 0,
+                  "clipped": [],
+                  "pageHeight": 844,
+                  "pageWidth": 768,
+                  "screen": "bounds",
+                  "smallTargets": [],
+                  "stageHeight": 362,
+                  "variant": 2,
+                  "width": 768
+                }
+              ],
+              "staticChecks": [
+                "node --check JavaScript syntax",
+                "36 original fixture rallies embedded",
+                "Identical embedded SVG for video and card previews",
+                "Three embedded font weights per file",
+                "No external asset dependencies",
+                "No viewport-height units",
+                "No machine or vault paths",
+                "No network requests, messages, uploads, forms or real exports"
+              ],
+              "visualInspection": {
+                "method": "T3 html_preview screenshots",
+                "states": [
+                  "Review",
+                  "Browse",
+                  "Bounds"
+                ],
+                "reviewWidths": [
+                  360,
+                  390
+                ],
+                "browseWidths": [
+                  360
+                ],
+                "boundsWidths": [
+                  390
+                ],
+                "consoleMessages": 0
+              }
+            },
+            "designPlan": {
+              "palette": {
+                "mist": "#E8F2EF",
+                "teal": "#124E46",
+                "mint": "#C9E7DD",
+                "amber": "#F3C45E",
+                "white": "#FFFFFF"
+              },
+              "type": "Outfit",
+              "wireframe": "switch / status / tall video [serve + playback] / keep-remove / next",
+              "alignment": "Controls and card content left aligned; score and primary actions centered.",
+              "briefReview": "Kept amber exclusively for the serving decision over video, avoiding a general decorative accent. The immersive image is the memorable element."
+            }
+          },
+          {
+            "id": "variant-3",
+            "name": "Rally Ribbon",
+            "file": "variant-3.html",
+            "concept": "A berry score ribbon anchors a split video-and-queue composition. Serving choice comes first in the bottom shelf, followed by a joined keep/remove control. Browse cards read as a vertical rally ribbon.",
+            "interactions": [
+              "Play/pause with advancing simulated source time",
+              "Explicit keep/remove and near/far decisions retained in localStorage per variant",
+              "Flag-derived four-item review queue, validation before next, and completion",
+              "Editable start/end with half-second nudges, range controls, save and cancel",
+              "All 36 fixture rallies selectable with immediate navigation and score changes",
+              "Source-proportional vertical timeline with source scrubbing, keyboard control, collapse and restore",
+              "Non-rally gap enters mock Editor at source position, add missed rally locally, return to Rallies",
+              "Outside-phone Review, Browse and Bounds controls and matching query parameters",
+              "Reset synthetic sample"
+            ],
+            "checks": {
+              "status": "passed",
+              "interactionMethod": "T3 preview_evaluate, native DOM click/input/keyboard events in the isolated collaborative browser tab",
+              "interactionCount": 34,
+              "interactionChecks": [
+                {
+                  "name": "Initial rally and score",
+                  "passed": true
+                },
+                {
+                  "name": "Flag-derived four-item queue",
+                  "passed": true
+                },
+                {
+                  "name": "Next blocked until explicit decisions",
+                  "passed": true
+                },
+                {
+                  "name": "Playback advances simulated time",
+                  "passed": true
+                },
+                {
+                  "name": "Pause stops playback",
+                  "passed": true
+                },
+                {
+                  "name": "Keep decision retained",
+                  "passed": true
+                },
+                {
+                  "name": "Remove decision retained",
+                  "passed": true
+                },
+                {
+                  "name": "Near serving side saved",
+                  "passed": true
+                },
+                {
+                  "name": "Far serving side saved",
+                  "passed": true
+                },
+                {
+                  "name": "Next review goes to rally 19",
+                  "passed": true
+                },
+                {
+                  "name": "Next review goes to rally 23",
+                  "passed": true
+                },
+                {
+                  "name": "Next review goes to rally 27",
+                  "passed": true
+                },
+                {
+                  "name": "All review flags resolved and completion offered",
+                  "passed": true
+                },
+                {
+                  "name": "36 cards available",
+                  "passed": true
+                },
+                {
+                  "name": "Every original rally selects immediately",
+                  "passed": true
+                },
+                {
+                  "name": "Source timeline positions proportional to source time",
+                  "passed": true
+                },
+                {
+                  "name": "Timeline collapses",
+                  "passed": true
+                },
+                {
+                  "name": "Timeline restores",
+                  "passed": true
+                },
+                {
+                  "name": "Source map selects non-rally time",
+                  "passed": true
+                },
+                {
+                  "name": "Non-rally time opens full Editor at position",
+                  "passed": true
+                },
+                {
+                  "name": "Return keeps source gap available",
+                  "passed": true
+                },
+                {
+                  "name": "Edit rally opens rally decisions",
+                  "passed": true
+                },
+                {
+                  "name": "Missed rally opens Editor in gap",
+                  "passed": true
+                },
+                {
+                  "name": "Add rally creates local clip in gap",
+                  "passed": true
+                },
+                {
+                  "name": "Return path shows added card",
+                  "passed": true
+                },
+                {
+                  "name": "Start and end nudges edit draft",
+                  "passed": true
+                },
+                {
+                  "name": "Bounds saved across navigation",
+                  "passed": true
+                },
+                {
+                  "name": "Choices and bounds persisted locally",
+                  "passed": true
+                },
+                {
+                  "name": "Cancel discards unsaved bound edits",
+                  "passed": true
+                },
+                {
+                  "name": "Reset restores neutral fixture",
+                  "passed": true
+                },
+                {
+                  "name": "Exact tenth-second formatting",
+                  "passed": true
+                },
+                {
+                  "name": "Start range updates draft and readout",
+                  "passed": true
+                },
+                {
+                  "name": "End range updates draft and readout",
+                  "passed": true
+                },
+                {
+                  "name": "Editor source slider selects exact gap position",
+                  "passed": true
+                }
+              ],
+              "responsiveLayouts": [
+                {
+                  "appWidth": 360,
+                  "cardCount": 0,
+                  "clipped": [],
+                  "pageHeight": 844,
+                  "pageWidth": 360,
+                  "screen": "review",
+                  "smallTargets": [],
+                  "stageHeight": 357,
+                  "variant": 3,
+                  "width": 360
+                },
+                {
+                  "appWidth": 360,
+                  "cardCount": 36,
+                  "clipped": [],
+                  "pageHeight": 844,
+                  "pageWidth": 360,
+                  "screen": "browse",
+                  "smallTargets": [],
+                  "stageHeight": 300,
+                  "variant": 3,
+                  "width": 360
+                },
+                {
+                  "appWidth": 360,
+                  "cardCount": 0,
+                  "clipped": [],
+                  "pageHeight": 844,
+                  "pageWidth": 360,
+                  "screen": "bounds",
+                  "smallTargets": [],
+                  "stageHeight": 328,
+                  "variant": 3,
+                  "width": 360
+                },
+                {
+                  "appWidth": 390,
+                  "cardCount": 0,
+                  "clipped": [],
+                  "pageHeight": 844,
+                  "pageWidth": 390,
+                  "screen": "review",
+                  "smallTargets": [],
+                  "stageHeight": 357,
+                  "variant": 3,
+                  "width": 390
+                },
+                {
+                  "appWidth": 390,
+                  "cardCount": 36,
+                  "clipped": [],
+                  "pageHeight": 844,
+                  "pageWidth": 390,
+                  "screen": "browse",
+                  "smallTargets": [],
+                  "stageHeight": 300,
+                  "variant": 3,
+                  "width": 390
+                },
+                {
+                  "appWidth": 390,
+                  "cardCount": 0,
+                  "clipped": [],
+                  "pageHeight": 844,
+                  "pageWidth": 390,
+                  "screen": "bounds",
+                  "smallTargets": [],
+                  "stageHeight": 328,
+                  "variant": 3,
+                  "width": 390
+                },
+                {
+                  "appWidth": 430,
+                  "cardCount": 0,
+                  "clipped": [],
+                  "pageHeight": 844,
+                  "pageWidth": 768,
+                  "screen": "review",
+                  "smallTargets": [],
+                  "stageHeight": 357,
+                  "variant": 3,
+                  "width": 768
+                },
+                {
+                  "appWidth": 430,
+                  "cardCount": 36,
+                  "clipped": [],
+                  "pageHeight": 844,
+                  "pageWidth": 768,
+                  "screen": "browse",
+                  "smallTargets": [],
+                  "stageHeight": 300,
+                  "variant": 3,
+                  "width": 768
+                },
+                {
+                  "appWidth": 430,
+                  "cardCount": 0,
+                  "clipped": [],
+                  "pageHeight": 844,
+                  "pageWidth": 768,
+                  "screen": "bounds",
+                  "smallTargets": [],
+                  "stageHeight": 328,
+                  "variant": 3,
+                  "width": 768
+                }
+              ],
+              "staticChecks": [
+                "node --check JavaScript syntax",
+                "36 original fixture rallies embedded",
+                "Identical embedded SVG for video and card previews",
+                "Three embedded font weights per file",
+                "No external asset dependencies",
+                "No viewport-height units",
+                "No machine or vault paths",
+                "No network requests, messages, uploads, forms or real exports"
+              ],
+              "visualInspection": {
+                "method": "T3 html_preview screenshots",
+                "states": [
+                  "Review",
+                  "Browse",
+                  "Bounds"
+                ],
+                "reviewWidths": [
+                  360,
+                  390
+                ],
+                "browseWidths": [
+                  360,
+                  768
+                ],
+                "boundsWidths": [
+                  390
+                ],
+                "consoleMessages": 0
+              }
+            },
+            "designPlan": {
+              "palette": {
+                "rose": "#FAF0F4",
+                "berry": "#632B50",
+                "pink": "#E9B9CD",
+                "slate": "#433949",
+                "white": "#FFFFFF"
+              },
+              "type": "Manrope",
+              "wireframe": "switch / review / score ribbon / [video | queue] / serving side / keep-remove / next",
+              "alignment": "Controls and card content left aligned; score and primary actions centered.",
+              "briefReview": "Revised an initial stacked-card plan to expose a vertical review queue beside the video. This changes navigation and hierarchy rather than recoloring the first design."
+            }
+          }
+        ],
+        "inputsUsed": [
+          {
+            "file": "fixture.json",
+            "kind": "User-provided synthetic shared comparison fixture",
+            "embedded": true,
+            "rallies": 36,
+            "durationMs": 1560000,
+            "initialSelectedRallyId": "R018",
+            "initialReviewRallies": [
+              "R018",
+              "R019",
+              "R023",
+              "R027"
+            ]
+          },
+          {
+            "file": "frame.svg",
+            "kind": "User-provided neutral synthetic court illustration",
+            "embedded": "Base64 SVG, identical for video and every card preview",
+            "sha256": "e8ddf42ef36a60169302233efb75ca9b32038ab9365718c795bf6703cd0037b5"
+          },
+          {
+            "kind": "fonts",
+            "source": "Google Fonts, embedded TTF data URIs",
+            "families": [
+              "Barlow Semi Condensed",
+              "Outfit",
+              "Manrope"
+            ]
+          }
+        ],
+        "skillFilesRead": [
+          "frontend-design/SKILL.md"
+        ],
+        "isolationReceipt": {
+          "requiredVaultFilesRead": [
+            "SHARED_AGENTS.md",
+            "INDEX.md"
+          ],
+          "assignedDesignSkill": "Frontend Design only",
+          "otherSkillsRead": [],
+          "designReferencesRead": [],
+          "appSourceRead": false,
+          "priorRallyLayoutRead": false,
+          "currentAndroidUiDocumentsRead": false,
+          "otherAgentsOrOutputsInspected": false,
+          "delegatedFurther": false,
+          "vaultWrites": false,
+          "applicationFilesModified": false
+        },
+        "limitations": [
+          "Synthetic static court illustration with simulated playback; no actual video decoding or processing.",
+          "Local browser state simulates saved decisions and added rallies; no server or real exports.",
+          "Fonts are embedded and prototypes require no external network assets.",
+          "This is a design exploration, not an Android implementation."
+        ],
+        "validationLimitations": [
+          "T3 preview_snapshot failed twice: Preview snapshot failed: Preview automation snapshot timed out after 15000ms.",
+          "T3 high-level preview_click also returned: Preview automation click timed out after 15000ms.",
+          "Browser DOM event checks ran through T3 preview_evaluate; visual inspection used T3 html_preview. No separate html_render publication was made."
+        ],
+        "canvas": {
+          "heightPx": 780,
+          "outsideToolbarHeightPx": 64,
+          "maxWidthPx": 430,
+          "targetViewport": {
+            "width": 390,
+            "height": 844
+          },
+          "additionalWidthsChecked": [
+            360,
+            768
+          ]
+        },
+        "provenanceFiles": [
+          "artifacts/design-experiments/rally-nine/frontend-design/variant-1.html",
+          "artifacts/design-experiments/rally-nine/frontend-design/variant-2.html",
+          "artifacts/design-experiments/rally-nine/frontend-design/variant-3.html"
+        ]
+      }
+    },
+    {
+      "condition": "taste",
+      "manifest": {
+        "condition": "taste",
+        "assignedSkill": "Taste",
+        "syntheticPrototype": true,
+        "date": "2026-10-23",
+        "entries": [
+          {
+            "id": "taste-variant-1",
+            "name": "Courtside Deck",
+            "file": "variant-1.html",
+            "concept": "An evidence-first review deck with simultaneous decisions. A cool frame holds a white decision sheet beneath the match. Browsing places the source map to the left of a compact rally list.",
+            "interactions": [
+              "Keep/remove and serve remain visible together; bounds and Next are separate lower actions.",
+              "Editor / Rallies pill switches experience with a visible return path.",
+              "Play / pause advances a local simulated source clock.",
+              "Keep / remove and near / far decisions remain selected through navigation.",
+              "Next review visits the remaining flag-derived queue, then shows completion.",
+              "Browse exposes every fixture rally as a start-frame card; selecting one seeks immediately.",
+              "Source-proportional vertical rail collapses and restores; clicking a gap enters the mock full Editor.",
+              "Bounds supports start/end steppers in 0.1 s increments and continuous range dragging.",
+              "Find missed rally enters the full Editor in a gap; add creates a local rally and Return to Rallies keeps it.",
+              "Outside-phone Review / Browse / Bounds controls and matching screen query parameters preview states; Reset restores the fixture."
+            ],
+            "direction": {
+              "style": "framed-sheet",
+              "seed": 18391,
+              "redraws": 0,
+              "font": "IBM Plex Sans",
+              "sheet": "artifacts/design-experiments/rally-nine/taste/_process/variant-1/direction.json",
+              "question": "Should this rally be kept, and which court side serves?",
+              "face": "A low-chroma cool frame takes its temperature from the court illustration; the volleyball mark identifies the product.",
+              "signatureElement": "The two unresolved review flags become two explicit decision rows, beside a computed queue-progress strip."
+            },
+            "checks": {
+              "t3InteractionAssertions": 56,
+              "t3InteractionFailures": 0,
+              "widthsPx": [
+                360,
+                390,
+                768
+              ],
+              "statesChecked": [
+                "review",
+                "browse",
+                "bounds",
+                "editor"
+              ],
+              "horizontalOverflow": false,
+              "clippedControls": 0,
+              "appControlMinimumHeightPx": 44,
+              "fixtureRalliesNavigated": 36,
+              "reviewOrder": [
+                18,
+                19,
+                23,
+                27
+              ],
+              "reviewCompletion": "4/4",
+              "startingRally": 18,
+              "startingScore": {
+                "Cedar": 9,
+                "Harbor": 8
+              },
+              "embeddedFontLoaded": true,
+              "runtimeExternalAssets": 0,
+              "directFileOpening": "pass",
+              "javascriptSyntax": "pass",
+              "embeddedInputConsistency": "pass",
+              "viewportHeightUnits": 0,
+              "tasteLintFailures": 0,
+              "tasteInspectorFailures": 0,
+              "tasteInspectorWidthsPx": [
+                1440,
+                768,
+                390
+              ],
+              "acceptedWarnings": [
+                "Lint numbering is zero-padding for timestamps only.",
+                "Inspector hero-void at 1440px is the deliberate surrounding space around the brief-required max-width 430px app canvas."
+              ],
+              "responsiveEvidence": "artifacts/design-experiments/rally-nine/taste/_process/responsive-checks.json",
+              "interactionEvidence": "artifacts/design-experiments/rally-nine/taste/_process/t3-interactions.json",
+              "staticEvidence": "artifacts/design-experiments/rally-nine/taste/_process/static-checks.json",
+              "inspectorEvidence": "artifacts/design-experiments/rally-nine/taste/_process/variant-1/inspect/report.json",
+              "screenshotContactSheets": [
+                "artifacts/design-experiments/rally-nine/taste/_process/screens/v1-sheet-360.jpg",
+                "artifacts/design-experiments/rally-nine/taste/_process/screens/v1-sheet-390.jpg",
+                "artifacts/design-experiments/rally-nine/taste/_process/screens/v1-sheet-768.jpg"
+              ]
+            },
+            "appScreenCritique": [
+              "The court leads the reading order; the white lower sheet makes the review choices and next action easy to locate.",
+              "Review rows, bounds and next action share sheet edges. Browse rail plus list closes the full width with no orphan column.",
+              "Teal is confined to the source/time data and progress, with monochrome decision controls.",
+              "The selected score, card score, duration and source position are rendered from the same rally object; totals come from flags and rows.",
+              "The initial 0/4 progress is empty, with four pending items; missing serving side says unconfirmed.",
+              "Rail segments use start and duration divided by full source duration. Gaps remain source time and can open the Editor.",
+              "All requested states fit at 360 and 390 pixels; the canvas centers at 430 pixels on wider pages."
+            ],
+            "sha256": "f1c27b09e1aa0eec604f970aeab15d3d4ecd21257b4fe90df41996508984a585"
+          },
+          {
+            "id": "taste-variant-2",
+            "name": "Sideout Sheet",
+            "file": "variant-2.html",
+            "concept": "A guided decision sheet separates clip and serve into one question at a time. The scoreboard sits outside the match image, and browsing pairs compact flat rows with a source map on the right.",
+            "interactions": [
+              "Clip / Serve decision tabs; choosing Keep or Remove opens Serve when that flag still needs review.",
+              "Editor / Rallies pill switches experience with a visible return path.",
+              "Play / pause advances a local simulated source clock.",
+              "Keep / remove and near / far decisions remain selected through navigation.",
+              "Next review visits the remaining flag-derived queue, then shows completion.",
+              "Browse exposes every fixture rally as a start-frame card; selecting one seeks immediately.",
+              "Source-proportional vertical rail collapses and restores; clicking a gap enters the mock full Editor.",
+              "Bounds supports start/end steppers in 0.1 s increments and continuous range dragging.",
+              "Find missed rally enters the full Editor in a gap; add creates a local rally and Return to Rallies keeps it.",
+              "Outside-phone Review / Browse / Bounds controls and matching screen query parameters preview states; Reset restores the fixture."
+            ],
+            "direction": {
+              "style": "achromatic-ledger",
+              "seed": 27503,
+              "redraws": 0,
+              "font": "Geist",
+              "sheet": "artifacts/design-experiments/rally-nine/taste/_process/variant-2/direction.json",
+              "question": "What decision does this rally still need?",
+              "face": "An ink-only score and an open worksheet establish the face; blue appears only on time/source data.",
+              "signatureElement": "Clip and Serve tabs encode the two independent review flags, and the next unresolved question opens after a clip choice."
+            },
+            "checks": {
+              "t3InteractionAssertions": 56,
+              "t3InteractionFailures": 0,
+              "widthsPx": [
+                360,
+                390,
+                768
+              ],
+              "statesChecked": [
+                "review",
+                "browse",
+                "bounds",
+                "editor"
+              ],
+              "horizontalOverflow": false,
+              "clippedControls": 0,
+              "appControlMinimumHeightPx": 44,
+              "fixtureRalliesNavigated": 36,
+              "reviewOrder": [
+                18,
+                19,
+                23,
+                27
+              ],
+              "reviewCompletion": "4/4",
+              "startingRally": 18,
+              "startingScore": {
+                "Cedar": 9,
+                "Harbor": 8
+              },
+              "embeddedFontLoaded": true,
+              "runtimeExternalAssets": 0,
+              "directFileOpening": "pass",
+              "javascriptSyntax": "pass",
+              "embeddedInputConsistency": "pass",
+              "viewportHeightUnits": 0,
+              "tasteLintFailures": 0,
+              "tasteInspectorFailures": 0,
+              "tasteInspectorWidthsPx": [
+                1440,
+                768,
+                390
+              ],
+              "acceptedWarnings": [
+                "Lint numbering is zero-padding for timestamps only.",
+                "Inspector hero-void at 1440px is the deliberate surrounding space around the brief-required max-width 430px app canvas."
+              ],
+              "responsiveEvidence": "artifacts/design-experiments/rally-nine/taste/_process/responsive-checks.json",
+              "interactionEvidence": "artifacts/design-experiments/rally-nine/taste/_process/t3-interactions.json",
+              "staticEvidence": "artifacts/design-experiments/rally-nine/taste/_process/static-checks.json",
+              "inspectorEvidence": "artifacts/design-experiments/rally-nine/taste/_process/variant-2/inspect/report.json",
+              "screenshotContactSheets": [
+                "artifacts/design-experiments/rally-nine/taste/_process/screens/v2-sheet-360.jpg",
+                "artifacts/design-experiments/rally-nine/taste/_process/screens/v2-sheet-390.jpg",
+                "artifacts/design-experiments/rally-nine/taste/_process/screens/v2-sheet-768.jpg"
+              ]
+            },
+            "appScreenCritique": [
+              "The image carries the evidence, while one large question at the bottom limits competing decisions.",
+              "The two decision targets and two footer actions use paired equal widths, and browse rows align their scores on a common right edge.",
+              "The chrome stays achromatic; blue marks source and trim data, and the primary action stays near-black.",
+              "Scores, review flags and times use the shared fixture. A completed decision does not silently resolve the other flag.",
+              "Unchecked decision circles and unconfirmed labels distinguish missing judgments from an explicit Keep.",
+              "The right source rail retains proportional durations and a single current-position mark; the score is outside the film for legibility.",
+              "Both questions, the browse list, bounds and Editor fit the three requested widths with touch targets at least 44 pixels tall."
+            ],
+            "sha256": "e1910899ae9aa1d71508efbade968b842a077fbb39dcf3391dae0f7729aaa30f"
+          },
+          {
+            "id": "taste-variant-3",
+            "name": "Matchlight",
+            "file": "variant-3.html",
+            "concept": "A larger true-black film surface leads into a compact bottom dock. Serving side and bounds sit above the keep/remove/advance row; larger thumbnail rows and a right source map serve browsing.",
+            "interactions": [
+              "Compact lower dock with Keep / Remove and an advance arrow; controls invert to show explicit choices.",
+              "Editor / Rallies pill switches experience with a visible return path.",
+              "Play / pause advances a local simulated source clock.",
+              "Keep / remove and near / far decisions remain selected through navigation.",
+              "Next review visits the remaining flag-derived queue, then shows completion.",
+              "Browse exposes every fixture rally as a start-frame card; selecting one seeks immediately.",
+              "Source-proportional vertical rail collapses and restores; clicking a gap enters the mock full Editor.",
+              "Bounds supports start/end steppers in 0.1 s increments and continuous range dragging.",
+              "Find missed rally enters the full Editor in a gap; add creates a local rally and Return to Rallies keeps it.",
+              "Outside-phone Review / Browse / Bounds controls and matching screen query parameters preview states; Reset restores the fixture."
+            ],
+            "direction": {
+              "style": "true-black-flat",
+              "seed": 36109,
+              "redraws": 0,
+              "font": "Inter",
+              "sheet": "artifacts/design-experiments/rally-nine/taste/_process/variant-3/direction.json",
+              "question": "Can this point be checked while keeping the match in view?",
+              "face": "True black carries the media, a drawn volleyball mark names the product, and sport lime marks source/time data.",
+              "signatureElement": "The film-first surface and compact decision dock organize the review around the selected point, while lightness alone separates the lower work sheet."
+            },
+            "checks": {
+              "t3InteractionAssertions": 56,
+              "t3InteractionFailures": 0,
+              "widthsPx": [
+                360,
+                390,
+                768
+              ],
+              "statesChecked": [
+                "review",
+                "browse",
+                "bounds",
+                "editor"
+              ],
+              "horizontalOverflow": false,
+              "clippedControls": 0,
+              "appControlMinimumHeightPx": 44,
+              "fixtureRalliesNavigated": 36,
+              "reviewOrder": [
+                18,
+                19,
+                23,
+                27
+              ],
+              "reviewCompletion": "4/4",
+              "startingRally": 18,
+              "startingScore": {
+                "Cedar": 9,
+                "Harbor": 8
+              },
+              "embeddedFontLoaded": true,
+              "runtimeExternalAssets": 0,
+              "directFileOpening": "pass",
+              "javascriptSyntax": "pass",
+              "embeddedInputConsistency": "pass",
+              "viewportHeightUnits": 0,
+              "tasteLintFailures": 0,
+              "tasteInspectorFailures": 0,
+              "tasteInspectorWidthsPx": [
+                1440,
+                768,
+                390
+              ],
+              "acceptedWarnings": [
+                "Lint numbering is zero-padding for timestamps only.",
+                "Inspector hero-void at 1440px is the deliberate surrounding space around the brief-required max-width 430px app canvas."
+              ],
+              "responsiveEvidence": "artifacts/design-experiments/rally-nine/taste/_process/responsive-checks.json",
+              "interactionEvidence": "artifacts/design-experiments/rally-nine/taste/_process/t3-interactions.json",
+              "staticEvidence": "artifacts/design-experiments/rally-nine/taste/_process/static-checks.json",
+              "inspectorEvidence": "artifacts/design-experiments/rally-nine/taste/_process/variant-3/inspect/report.json",
+              "screenshotContactSheets": [
+                "artifacts/design-experiments/rally-nine/taste/_process/screens/v3-sheet-360.jpg",
+                "artifacts/design-experiments/rally-nine/taste/_process/screens/v3-sheet-390.jpg",
+                "artifacts/design-experiments/rally-nine/taste/_process/screens/v3-sheet-768.jpg"
+              ]
+            },
+            "appScreenCritique": [
+              "The film has the greatest emphasis and the lower dock keeps the next action within the same thumb area.",
+              "Rounded lower surfaces group decisions without shadows or borders; thumbnail rows share one media slot and one score edge.",
+              "Black, #111 and #2a2a2a provide depth; lime appears on source/time data while selected decisions invert to white.",
+              "All counts and scores come from the fixture or current local state; selection changes the film clock and active card together.",
+              "Initial progress has no stub at zero; pending side choices stay unselected and become explicit white selections.",
+              "The vertical rail uses the same time scale and marks as the other alternatives; full-source gaps remain navigable.",
+              "The bounds spacing was tightened after screenshot review to keep 44 pixel slider targets and all actions visible at 360 pixels."
+            ],
+            "sha256": "fad9957acca3863a15e931a2844b165488a9320364c68ce9e29c441ae875bc14"
+          }
+        ],
+        "inputsUsed": [
+          {
+            "name": "fixture.json",
+            "type": "provided synthetic comparison fixture",
+            "embedded": true,
+            "fieldsUsed": [
+              "product",
+              "project",
+              "team1Name",
+              "team2Name",
+              "durationMs",
+              "positionMs",
+              "selectedRallyId",
+              "rallies"
+            ],
+            "countsDerivedFrom": "needsClipReview OR servingSide == review; no reliance on pendingRallies"
+          },
+          {
+            "name": "frame.svg",
+            "type": "provided synthetic neutral court illustration",
+            "embedded": true,
+            "uses": [
+              "match image",
+              "every rally start-frame card",
+              "mock Editor filmstrip"
+            ],
+            "sha256": "e8ddf42ef36a60169302233efb75ca9b32038ab9365718c795bf6703cd0037b5"
+          },
+          {
+            "name": "IBM Plex Sans / Geist / Inter",
+            "type": "font bytes obtained from Google Fonts CSS API",
+            "embedded": true,
+            "runtimeNetworkRequired": false
+          }
+        ],
+        "sharedBootstrapFilesRead": [
+          "SHARED_AGENTS.md",
+          "INDEX.md"
+        ],
+        "skillFilesRead": [
+          {
+            "skill": "Taste",
+            "file": "SKILL.md",
+            "read": "complete"
+          },
+          {
+            "skill": "Taste",
+            "file": "references/app-screens.md",
+            "read": "complete"
+          },
+          {
+            "skill": "Taste",
+            "file": "scripts/draw.mjs",
+            "read": "argument and seed excerpts"
+          },
+          {
+            "skill": "Taste",
+            "file": "scripts/inspect.mjs",
+            "read": "argument, runner and output excerpts"
+          },
+          {
+            "skill": "Taste",
+            "file": "scripts/lib/cdp.mjs",
+            "read": "complete"
+          }
+        ],
+        "skillToolsExecuted": [
+          "Taste app direction draw",
+          "Taste lint --app",
+          "Taste inspect --app"
+        ],
+        "isolationReceipt": {
+          "designGuidance": "Only assigned Taste skill and its own app workflow, dealt sheets and supporting scripts.",
+          "unassignedSkillsRead": [],
+          "frontendDesignSkillRead": false,
+          "designPreferencesRead": false,
+          "applicationSourceRead": false,
+          "priorRallyLayoutRead": false,
+          "androidDesignDocumentsRead": false,
+          "otherAgentOutputsRead": false,
+          "otherWorktreesRead": false,
+          "delegatedFurther": false,
+          "vaultWrites": false,
+          "applicationSourceModified": false,
+          "existingProjectFilesModified": false,
+          "newOutputScope": "artifacts/design-experiments/rally-nine/taste/",
+          "committed": false,
+          "pushed": false,
+          "pullRequestCreated": false,
+          "productionAppStarted": false,
+          "instructionOverrideApplied": "The explicit Taste-only condition overrides the shared default to load both design skills."
+        },
+        "dataInventory": [
+          "VolleySplice is a portrait volleyball highlight editor.",
+          "Practice match is the shared synthetic project scope.",
+          "Cedar and Harbor are the two shared team names.",
+          "The source lasts 1,560,000 ms, shown as 26:00.",
+          "The initial position is 770,400 ms within rally 18.",
+          "Rally 18 starts at 766,200 ms and ends at 782,800 ms.",
+          "The selected score is Cedar 9 : 8 Harbor.",
+          "The 36 rallies retain their fixture numbers, bounds and scores.",
+          "Rallies 18, 19, 23 and 27 need clip and/or serving-side review.",
+          "The main job is resolving those independent flags, then navigating and correcting the full source."
+        ],
+        "validationSummary": {
+          "t3AssertionsPassed": 168,
+          "responsiveStateViews": 36,
+          "responsiveFailures": 0,
+          "directFileOpeningPasses": 3,
+          "consoleErrors": 0,
+          "screenshotsInspected": "Review, Browse, Bounds and Editor contact sheets at 360, 390 and 768 pixels, plus Taste inspector renders.",
+          "t3Screenshots": "Unavailable after two attempts; T3 navigation and evaluate-based interaction checks succeeded.",
+          "screenshotFallback": "Assigned Taste skill local headless Chrome CDP inspector and explicit viewport captures."
+        },
+        "limitations": [
+          "Synthetic local prototypes; no video decoding, analysis, audio, export, upload, message or backend action.",
+          "The provided court illustration is intentionally repeated for every start-frame preview; simulated time changes a clock rather than the illustration.",
+          "Choices and added rallies persist within a page session and reset on reload or the outside Reset button.",
+          "A rally added in a gap uses the preceding rally score and serving side as sample values; no actual score or serve inference is performed.",
+          "T3 raw screenshot limitation, repeated twice: Preview snapshot failed: Preview automation snapshot timed out after 15000ms.",
+          "The mock full Editor supports source scrubbing and local rally addition only; it is not the production Editor.",
+          "Native Android builds and real-media usability were not tested because application source was outside this experiment scope."
+        ]
+      }
+    }
+  ],
+  "limits": [
+    "Synthetic UI prototypes, not Android APK implementations or real video analysis.",
+    "The comparison gives each embedded prototype fresh isolated simulated storage; standalone originals retain their authored behavior.",
+    "The comparison losslessly packages font outlines as WOFF2 subsets containing the prototypes' characters; original prototype files are preserved.",
+    "Three outputs from one independent agent per condition; this is not a statistical skill evaluation.",
+    "Context isolation uses fresh tasks and separate worktrees; skill/file read limits are instructions documented by agent receipts, not filesystem access controls."
+  ]
+}

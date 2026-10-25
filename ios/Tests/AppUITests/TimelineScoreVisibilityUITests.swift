@@ -16,6 +16,7 @@ final class TimelineScoreVisibilityUITests: XCTestCase {
         XCTAssertTrue(app.buttons["reviewCleanup"].waitForExistence(timeout: 30))
         if app.buttons["tutorialSkip"].exists { app.buttons["tutorialSkip"].tap() }
 
+        app.buttons["workspace-editor-tab"].tap()
         let serves = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "timelineServe-"))
         let switches = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "timelineSwitch-"))
         XCTAssertTrue(serves.firstMatch.waitForExistence(timeout: 15))

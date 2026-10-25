@@ -24,6 +24,8 @@ final class ReferenceProjectUITests: XCTestCase {
         let reference = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'project-project-' AND label CONTAINS %@", referenceSourceName)).firstMatch
         try XCTSkipUnless(reference.waitForExistence(timeout: 10), "Import full iPad reference into this simulator first")
         reference.tap()
+        XCTAssertTrue(app.buttons["workspace-editor-tab"].waitForExistence(timeout: 30))
+        app.buttons["workspace-editor-tab"].tap()
         let settings = app.buttons["editorSettings"]
         XCTAssertTrue(settings.waitForExistence(timeout: 30)); settings.tap()
         let reset = app.buttons["uiScaleDefault"]
@@ -83,6 +85,8 @@ final class ReferenceProjectUITests: XCTestCase {
         let reference = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'project-project-' AND label CONTAINS %@", referenceSourceName)).firstMatch
         try XCTSkipUnless(reference.waitForExistence(timeout: 10), "Import full iPad reference into this simulator first")
         reference.tap()
+        XCTAssertTrue(app.buttons["workspace-editor-tab"].waitForExistence(timeout: 30))
+        app.buttons["workspace-editor-tab"].tap()
         let summary = app.descendants(matching: .any).matching(identifier: "exportSummary").firstMatch
         XCTAssertTrue(summary.waitForExistence(timeout: 30))
         XCTAssertEqual(summary.value as? String, "Compact workspace")
@@ -179,6 +183,8 @@ final class ReferenceProjectUITests: XCTestCase {
         let reference = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'project-project-' AND label CONTAINS %@", referenceSourceName)).firstMatch
         try XCTSkipUnless(reference.waitForExistence(timeout: 10), "Import full iPad reference into this simulator first")
         reference.tap()
+        XCTAssertTrue(app.buttons["workspace-editor-tab"].waitForExistence(timeout: 30))
+        app.buttons["workspace-editor-tab"].tap()
         XCTAssertTrue(app.buttons["reviewCleanup"].waitForExistence(timeout: 45), app.debugDescription)
         let summary = app.descendants(matching: .any).matching(identifier: "exportSummary").firstMatch
         XCTAssertTrue(["Wide workspace", "Compact workspace"].contains(summary.value as? String ?? ""))
@@ -218,12 +224,12 @@ final class ReferenceProjectUITests: XCTestCase {
         before.adjust(toNormalizedSliderPosition: 0)
         before.adjust(toNormalizedSliderPosition: 0.2)
         app.buttons["settingsDone"].tap()
-        let export = app.buttons["exportTab"]
+        let export = app.buttons["workspace-export-tab"]
         reveal(export, in: app); export.tap()
         let video = app.buttons["exportVideo"]
         reveal(video, in: app)
         capture("full-reference-export", app: app)
-        reveal(app.buttons["reviewTab"], in: app); app.buttons["reviewTab"].tap()
+        reveal(app.buttons["workspace-editor-tab"], in: app); app.buttons["workspace-editor-tab"].tap()
     }
 
     @MainActor private func capture(_ name: String, app: XCUIApplication) {

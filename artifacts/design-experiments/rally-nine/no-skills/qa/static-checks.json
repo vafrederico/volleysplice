@@ -1,0 +1,35 @@
+[
+  {
+    "variant": 1,
+    "exactFixtureEmbedded": true,
+    "exactFrameEmbedded": true,
+    "fontEmbeddedWithLicense": true,
+    "noExternalResources": true,
+    "noViewportHeightUnits": true,
+    "noMachinePathsOrPrivateVaultReferences": true,
+    "bytes": 104411,
+    "sha256": "7e2a69dfdd60c67f4c18b7858cc7a524e36969242667ea266ca90ef0f67a9527"
+  },
+  {
+    "variant": 2,
+    "exactFixtureEmbedded": true,
+    "exactFrameEmbedded": true,
+    "fontEmbeddedWithLicense": true,
+    "noExternalResources": true,
+    "noViewportHeightUnits": true,
+    "noMachinePathsOrPrivateVaultReferences": true,
+    "bytes": 104411,
+    "sha256": "a3a3f17e8c39351c94b290a409156e4892a22e0383928bf91943742bb5386a86"
+  },
+  {
+    "variant": 3,
+    "exactFixtureEmbedded": true,
+    "exactFrameEmbedded": true,
+    "fontEmbeddedWithLicense": true,
+    "noExternalResources": true,
+    "noViewportHeightUnits": true,
+    "noMachinePathsOrPrivateVaultReferences": true,
+    "bytes": 104417,
+    "sha256": "eea3066a47aaf893c8505324fee408198fead6bf4e25c4cd15f0b68919774de3"
+  }
+]

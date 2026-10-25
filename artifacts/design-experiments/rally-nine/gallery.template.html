@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nine rally editor designs</title>
+<style>
+*{box-sizing:border-box}body{margin:0;color:var(--foreground,#202326);font:14px/1.45 var(--font-sans,system-ui,sans-serif)}
+button,select,input{font:inherit}button,select{min-height:38px;border:1px solid var(--border,#ced3d7);border-radius:6px;background:var(--card,#fff);color:inherit;padding:7px 11px;cursor:pointer}
+button:hover,select:hover{border-color:var(--foreground,#555)}button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--ring,#567);outline-offset:3px}button[aria-pressed=true]{background:var(--foreground,#222);color:var(--background,#fff);border-color:transparent}button:disabled{cursor:default;opacity:.55}
+.toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px}.toolbar label{display:flex;align-items:center;gap:7px}.toolbar select{max-width:100%}
+.context{margin:0 0 12px;color:var(--muted-foreground,#626970);font-size:12px}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px 12px;align-items:start}.grid.focus{grid-template-columns:minmax(0,430px);justify-content:center}.grid.compare{grid-template-columns:repeat(2,minmax(0,1fr));max-width:920px;margin:auto}
+.tile{min-width:0}.tile[hidden]{display:none}.tilehead{display:flex;align-items:center;gap:6px;margin:0 0 6px}.tilehead strong{font-size:13px;font-weight:600;min-width:0;flex:1}.tilehead button{padding:4px 7px;min-height:30px;font-size:12px}.method{color:var(--muted-foreground,#626970);font-size:12px;margin:0 0 6px}.description{font-size:12px;color:var(--muted-foreground,#626970);margin:7px 0 0}.stage{position:relative;overflow:hidden;background:var(--card,#fff);border:1px solid var(--border,#dce0e2);border-radius:4px}.stage iframe{display:block;border:0;width:390px;height:844px;transform-origin:top left;background:#fff}.selection{display:flex;align-items:center;gap:5px;font-size:12px}.selection input{margin:0;width:16px;height:16px}.provenance{font-size:12px;color:var(--muted-foreground,#626970);margin:18px 0 0;border-top:1px solid var(--border,#ddd);padding-top:12px}
+@media(max-width:560px){.grid{grid-template-columns:minmax(0,430px);justify-content:center}.grid.compare{grid-template-columns:minmax(0,430px)}.toolbar .push{margin-left:0}.tilehead strong{font-size:14px}.toolbar button,.toolbar select{min-height:42px}.toolbar select{flex:1}.context{font-size:13px}}
+</style>
+</head>
+<body>
+<div class="toolbar" aria-label="Comparison controls">
+ <label>Show <select id="scope" aria-label="Designs to show"><option value="all">All nine</option><option value="no-skills">No design skills · 3</option><option value="frontend-design">Frontend Design · 3</option><option value="taste">Taste · 3</option></select></label>
+ <button id="compare" disabled>Compare selected</button>
+</div>
+<div class="toolbar" aria-label="Prototype screen">
+ <button data-screen="review" aria-pressed="true">Review</button>
+ <button data-screen="browse" aria-pressed="false">Browse</button>
+ <button data-screen="bounds" aria-pressed="false">Bounds</button>
+ <button id="reset">Reset prototypes</button>
+</div>
+<p class="context">Three independent agents. Same model, brief, sample match and video frame. Use Focus for a larger interactive design, or select any two to compare.</p>
+<main class="grid" id="grid" aria-label="Nine Android design prototypes"></main>
+<p class="provenance">A1–A3: no design skills. B1–B3: Frontend Design only. C1–C3: Taste only. Each group was generated with a fresh context in a separate worktree, with instructions to read only its assigned skill and avoid the other groups. These are synthetic interaction prototypes; playback and edits are local simulations.</p>
+<script id="design-data" type="application/gzip">__DESIGNS_JSON__</script>
+<script>__INFLATE_JS__</script>
+<script>
+'use strict';
+(()=>{
+const bytes=Uint8Array.from(atob(document.getElementById('design-data').textContent.trim()),char=>char.charCodeAt(0));
+const decoded=fflate.strFromU8(fflate.gunzipSync(bytes));
+const payload=JSON.parse(decoded);
+payload.assets.filter(uri=>uri.startsWith('data:font/')).forEach((uri,index)=>{
+ const font=new FontFace(`comparison-preload-${index}`,`url("${uri}")`);document.fonts.add(font);font.load().catch(error=>console.error(error));
+});
+const designs=payload.designs;
+function unpack(d){
+ const html=d.html.replace(/@@VS_ASSET_(\d+)@@/g,(_,id)=>payload.assets[Number(id)]);
+ // Each embedded prototype gets fresh, private simulated storage. Original files stay untouched.
+ const hook=`<script>(()=>{const values=new Map;const storage={getItem:key=>values.has(String(key))?values.get(String(key)):null,setItem:(key,value)=>values.set(String(key),String(value)),removeItem:key=>values.delete(String(key)),clear:()=>values.clear(),key:index=>[...values.keys()][index]??null,get length(){return values.size}};try{Object.defineProperty(window,'localStorage',{value:storage,configurable:true})}catch(e){}const replace=history.replaceState.bind(history),push=history.pushState.bind(history);history.replaceState=(state,title)=>replace(state,title);history.pushState=(state,title)=>push(state,title)})();<`+`/script>`;
+ return html.replace(/<head(?:\s[^>]*)?>/i,match=>match+hook);
+}
+const grid=document.getElementById('grid'),scope=document.getElementById('scope'),selected=new Set;
+const frames=new Map;let screen='review',focus=null,comparison=false;
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function resize(frame){const stage=frame.parentElement;const width=stage.clientWidth;if(!width)return;const scale=width/390;frame.style.transform=`scale(${scale})`;stage.style.height=`${Math.ceil(844*scale)}px`;}
+function setScreen(frame){try{const doc=frame.contentDocument;if(!doc)return;const buttons=[...doc.querySelectorAll('button,[role="tab"]')];const target=buttons.find(b=>b.textContent.trim().toLowerCase()===screen);if(target)target.click();}catch(error){console.error('Prototype screen switch failed',error);}}
+function renderVisibility(){grid.classList.toggle('focus',!!focus);grid.classList.toggle('compare',comparison);for(const [id,frame]of frames){const design=designs.find(d=>d.id===id);frame.closest('.tile').hidden=focus?focus!==id:comparison?!selected.has(id):scope.value!=='all'&&design.condition!==scope.value;if(!frame.closest('.tile').hidden)resize(frame);}document.querySelectorAll('.focus-button').forEach(b=>b.textContent=focus===b.dataset.id?'All designs':'Focus');}
+for(const d of designs){
+ const option=document.createElement('option');option.value=d.id;option.textContent=`${d.id} · ${d.name}`;scope.append(option);
+ const tile=document.createElement('article');tile.className='tile';tile.dataset.id=d.id;
+ tile.innerHTML=`<p class="method">${esc(d.method)}</p><div class="tilehead"><strong>${esc(d.id)} · ${esc(d.name)}</strong><label class="selection"><input type="checkbox" data-select="${esc(d.id)}" aria-label="Compare ${esc(d.id)}"></label><button class="focus-button" data-id="${esc(d.id)}">Focus</button></div><div class="stage"></div><p class="description">${esc(d.concept)}</p>`;
+ const frame=document.createElement('iframe');frame.title=`${d.id}: ${d.name} — interactive Android prototype`;frame.addEventListener('load',()=>{if(screen!=='review')setScreen(frame);resize(frame)});frame.srcdoc=unpack(d);tile.querySelector('.stage').append(frame);grid.append(tile);frames.set(d.id,frame);resize(frame);
+ new ResizeObserver(()=>resize(frame)).observe(tile.querySelector('.stage'));
+ tile.querySelector('.focus-button').onclick=()=>{comparison=false;focus=focus===d.id?null:d.id;scope.value=focus||'all';renderVisibility();};
+ tile.querySelector('input').onchange=event=>{if(event.target.checked){if(selected.size>=2){event.target.checked=false;return;}selected.add(d.id);}else selected.delete(d.id);document.getElementById('compare').disabled=selected.size!==2;};
+}
+scope.onchange=()=>{comparison=false;focus=designs.some(d=>d.id===scope.value)?scope.value:null;renderVisibility();};
+document.getElementById('compare').onclick=()=>{focus=null;comparison=!comparison;scope.value='all';renderVisibility();};
+document.querySelectorAll('[data-screen]').forEach(button=>button.onclick=()=>{screen=button.dataset.screen;document.querySelectorAll('[data-screen]').forEach(b=>b.setAttribute('aria-pressed',String(b===button)));frames.forEach(setScreen);});
+document.getElementById('reset').onclick=()=>{for(const d of designs){const frame=frames.get(d.id);const buttons=[...frame.contentDocument.querySelectorAll('button')];const reset=buttons.find(b=>/reset/i.test([b.textContent,b.getAttribute('aria-label'),b.dataset.action,b.title].join(' ')));if(reset){reset.click();if(screen!=='review')setScreen(frame);}else frame.srcdoc=unpack(d);}};
+console.assert(designs.length===9,'Expected nine designs');console.assert(new Set(designs.map(d=>d.id)).size===9,'Design identifiers must be unique');
+window.__comparison={designs:designs.map(({html,...info})=>info),frames,screen:()=>screen};
+})();
+</script>
+</body>
+</html>

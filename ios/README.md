@@ -8,9 +8,43 @@ AVFoundation, PhotoKit and thin Objective-C++ bridges for OpenCV primitives and
 ONNX Runtime.
 Android is the reference for analysis contracts and editor behavior.
 
+The default rally-review workflow and available Windows validation are documented
+in [Courtside Deck](COURTSIDE-DECK.md). The existing full Editor remains available
+through the Editor pill; all workspace tabs share the same draft and AVPlayer.
+
 Restoring original model ranges keeps their saved rally IDs and existing score
 corrections. Linked serve markers follow the restored boundaries and later edits;
 removing a restored rally also removes its linked serve from visible scoring.
+
+## Testing phone layouts on iPad
+
+In a Debug build, open the Settings cogwheel and enable **Test as iPhone** under
+Developer testing, then choose **iPhone model**:
+
+| Model | Portrait size (points) |
+| --- | --- |
+| iPhone SE (3rd gen) | 375 × 667 |
+| iPhone 13 / 14 (default) | 390 × 844 |
+| iPhone 16 Pro | 402 × 874 |
+| iPhone 16 Pro Max | 440 × 956 |
+
+The app uses a centered viewport with approximate safe-area spacing and phone
+layout rules. Rotate the iPad to swap width and height for landscape testing.
+Disable the toggle to return to the normal
+iPad workspace. Switching preserves the project, edits, selected pill and player.
+The toggle and selected model are also available from setup Settings and persist
+across launches. Changing models keeps the same project, edits, pill and player.
+
+This runs the native controls and AVPlayer on the iPad. Modal presentation,
+keyboards, alerts and file/share pickers still belong to iPadOS; it does not emulate iPhone hardware,
+display density or device-specific safe areas. Release builds contain neither
+the toggle nor the phone-viewport behavior.
+
+For repeatable controls checks, a Debug build can be launched explicitly with
+`--device-ui-fixture`. This opens the bundled synthetic 20-second test project;
+normal launches never create it. Its reserved destination is replaced only if it
+already identifies itself as a synthetic fixture. Existing projects, source
+recordings and queue entries are preserved.
 
 ## Build
 

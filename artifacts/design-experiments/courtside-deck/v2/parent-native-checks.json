@@ -1,0 +1,144 @@
+{
+  "method": "Isolated local Edge; Chrome DevTools Protocol trusted mouse and touch gestures after two T3 drag timeouts.",
+  "passed": 18,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "start native pointer capture",
+      "pass": true
+    },
+    {
+      "name": "start grab has no jump",
+      "pass": true
+    },
+    {
+      "name": "start moves during gesture",
+      "pass": true,
+      "details": {
+        "before": {
+          "screen": "review",
+          "start": 766200,
+          "end": 782800,
+          "position": 770400,
+          "dragging": null,
+          "inside": "R018",
+          "selectedCards": 0
+        },
+        "during": {
+          "screen": "review",
+          "start": 768373,
+          "end": 782800,
+          "position": 768373,
+          "dragging": "bound",
+          "inside": "R018",
+          "selectedCards": 0
+        }
+      }
+    },
+    {
+      "name": "start capture released",
+      "pass": true
+    },
+    {
+      "name": "end native pointer capture",
+      "pass": true
+    },
+    {
+      "name": "end grab has no jump",
+      "pass": true
+    },
+    {
+      "name": "end moves during gesture",
+      "pass": true,
+      "details": {
+        "before": {
+          "screen": "review",
+          "start": 768373,
+          "end": 782800,
+          "position": 768373,
+          "dragging": null,
+          "inside": "R018",
+          "selectedCards": 0
+        },
+        "during": {
+          "screen": "review",
+          "start": 768373,
+          "end": 780627,
+          "position": 780627,
+          "dragging": "bound",
+          "inside": "R018",
+          "selectedCards": 0
+        }
+      }
+    },
+    {
+      "name": "end capture released",
+      "pass": true
+    },
+    {
+      "name": "touch drag updates live bound",
+      "pass": true
+    },
+    {
+      "name": "touch grab has no jump",
+      "pass": true
+    },
+    {
+      "name": "touch drag cleanup",
+      "pass": true
+    },
+    {
+      "name": "native gap seek stays in Browse",
+      "pass": true,
+      "details": {
+        "screen": "browse",
+        "start": 806200,
+        "end": 822800,
+        "position": 794500.1513174443,
+        "dragging": null,
+        "inside": null,
+        "scroll": 1291,
+        "selectedCards": 0,
+        "gapHighlighted": true
+      }
+    },
+    {
+      "name": "native gap seek highlights missing action",
+      "pass": true
+    },
+    {
+      "name": "explicit Add missing preserves exact seek",
+      "pass": true
+    },
+    {
+      "name": "native seeking scrolls list both directions",
+      "pass": true,
+      "details": {
+        "forward": 2461,
+        "backward": 43
+      }
+    },
+    {
+      "name": "trusted mouse and touch input observed",
+      "pass": true
+    },
+    {
+      "name": "no browser runtime exceptions",
+      "pass": true,
+      "details": []
+    },
+    {
+      "name": "gap list centers the chronological nearest rally",
+      "pass": true,
+      "details": {
+        "nearest": "R018",
+        "scroll": 1213,
+        "top": 121,
+        "expected": 121.5
+      }
+    }
+  ],
+  "limits": [
+    "Emulated trusted touch input; physical hardware and screen-reader behavior are unverified."
+  ]
+}

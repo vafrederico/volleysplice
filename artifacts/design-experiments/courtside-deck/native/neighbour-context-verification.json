@@ -1,0 +1,36 @@
+{
+  "versionName": "0.10.30-debug",
+  "versionCode": 44,
+  "apkSha256": "2906b37eb706d5bba10d50a901483539d10ff3d3424b8c95cc503398b74d1b15",
+  "signatureVerified": true,
+  "installedOnPhysicalPixel": true,
+  "change": "Restore the previous and next retained rally as visible bars on the focused timeline. A shared piecewise source-time scale reserves local trim detail and readable neighboring bars, marks compressed gaps with scale breaks, and maps seeks and held drags through the same frozen scale. Removed and excluded neighbors remain skipped.",
+  "jvm": { "tests": 250, "failures": 0 },
+  "physicalUi": {
+    "fullClassTests": 21,
+    "fullClassPasses": 20,
+    "fullClassFailures": 1,
+    "initialFailure": "The repeated-scrubbing stress test encountered a temporarily absent Compose hierarchy after an Editor/Rallies layout switch.",
+    "isolatedRetryTests": 1,
+    "isolatedRetryFailures": 0,
+    "note": "All 21 cases have passed, with the stress case passing on isolated retry; this is not a single clean full-class pass.",
+    "restoredFeatureChecks": [
+      "Rendered green neighbor bars on both sides of a 500ms selected core, checked through actual pixels in portrait and landscape.",
+      "Seeking into both neighboring rallies renders the expected source-video frames and preserves the rally being edited.",
+      "The selected end handle remains independently draggable with both neighbor bars visible.",
+      "Removed-neighbor navigation, imported 100ms and padded 500ms cores, frozen held gestures, retained-frame trimming, and both merge directions pass."
+    ]
+  },
+  "emulatorUi": {
+    "tests": 21,
+    "passes": 17,
+    "failures": 4,
+    "limitation": "The existing emulator hardware H.264 decoder failure returns black frames. All four failures are rendered-video checks, including the new neighbor-seek case. Its initial bar-pixel assertions and portrait capture passed before the video assertion. Real video assertions were verified on the physical Pixel."
+  },
+  "screenshot": "neighbour-context-portrait.png",
+  "screenshotSource": "Emulator, synthetic three-rally fixture; native UI inspected. Black video reflects the emulator decoder limitation, not a placeholder in the app.",
+  "lint": "passed",
+  "diffWhitespace": "passed",
+  "privacy": "Generic changed-text detectors passed; private-ledger configuration is unavailable, so no ledger-aware audit is claimed.",
+  "deviceState": "Fixture restores the selected real project and preferences. Actual app reopened after checks; no physical live screen stream, uninstall, reset, or private screenshot publication."
+}

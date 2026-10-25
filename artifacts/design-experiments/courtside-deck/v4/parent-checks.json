@@ -1,0 +1,90 @@
+{
+  "version": 4,
+  "method": "Parent integration smoke checks using DOM button clicks, local state assertions and html_preview rendering; native mouse/wheel/touch validation is recorded separately in the agent's checks.json.",
+  "passed": 14,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "Editor pill opens existing timeline workspace",
+      "pass": true
+    },
+    {
+      "name": "Existing Editor hierarchy present",
+      "pass": true
+    },
+    {
+      "name": "Navigation does not add or seek",
+      "pass": true
+    },
+    {
+      "name": "Return restores Review",
+      "pass": true
+    },
+    {
+      "name": "Gap seek remains Browse",
+      "pass": true
+    },
+    {
+      "name": "Missing opens dedicated form at exact gap",
+      "pass": true
+    },
+    {
+      "name": "Cancel adds nothing and returns Browse",
+      "pass": true
+    },
+    {
+      "name": "Editor pill exits add form without creating",
+      "pass": true
+    },
+    {
+      "name": "Add to Editor switch preserves Browse origin",
+      "pass": true
+    },
+    {
+      "name": "Explicit Add creates exactly one rally",
+      "pass": true
+    },
+    {
+      "name": "Existing Editor sees added shared rally",
+      "pass": true
+    },
+    {
+      "name": "Editor sees reviewed choices",
+      "pass": true
+    },
+    {
+      "name": "Rallies sees Editor decision",
+      "pass": true
+    },
+    {
+      "name": "Reset restores fixture",
+      "pass": true
+    }
+  ],
+  "visualChecks": [
+    {
+      "width": 390,
+      "route": "editor",
+      "consoleErrors": 0
+    },
+    {
+      "width": 360,
+      "route": "editor",
+      "internalScrollTop": 870,
+      "consoleErrors": 0
+    },
+    {
+      "width": 390,
+      "route": "add-missing",
+      "consoleErrors": 0
+    },
+    {
+      "width": 728,
+      "route": "editor",
+      "consoleErrors": 0
+    }
+  ],
+  "limitations": [
+    "Standalone HTML representation of the existing Android Editor; no native app launch or real export."
+  ]
+}

@@ -1,0 +1,87 @@
+{
+  "validationDate": "2026-10-24",
+  "ios": {
+    "version": "1.0.0",
+    "build": 4,
+    "debugBuildInstalled": true,
+    "nativeRuntime": "Physical iPad via WDA",
+    "targetedChecksPassed": 10,
+    "checks": {
+      "phone-portrait": [
+        {
+          "check": "Duplicate team/score bar absent; configured video overlay remains visible",
+          "result": "passed"
+        },
+        {
+          "check": "Team fields appear directly in the first Project settings section, without nested Project options",
+          "result": "passed"
+        },
+        {
+          "check": "Both inline team edits update the actual video score overlay",
+          "result": "passed"
+        },
+        {
+          "check": "Editor shares the same project team names",
+          "result": "passed"
+        },
+        {
+          "check": "Explicit fixture reload remains isolated from existing projects",
+          "result": "passed"
+        }
+      ],
+      "ipad-landscape": [
+        {
+          "check": "Duplicate team/score bar absent; configured video overlay remains visible",
+          "result": "passed"
+        },
+        {
+          "check": "Team fields appear directly in the first Project settings section, without nested Project options",
+          "result": "passed"
+        },
+        {
+          "check": "Both inline team edits update the actual video score overlay",
+          "result": "passed"
+        },
+        {
+          "check": "Editor shares the same project team names",
+          "result": "passed"
+        },
+        {
+          "check": "Explicit fixture reload remains isolated from existing projects",
+          "result": "passed"
+        }
+      ]
+    },
+    "hostedAppleTestSuitesExecuted": false,
+    "portableXCTestPassed": 207
+  },
+  "android": {
+    "version": "0.10.34-debug",
+    "versionCode": 48,
+    "debugBuildInstalledOnPixel": true,
+    "jvmTestsPassed": 250,
+    "targetedPhysicalPixelTests": [
+      "Team names edited inline in Settings share the Editor draft and survive recreation",
+      "Project actions are directly inside Settings; Export still owns overlay settings",
+      "Timeline seeking renders the expected video frames"
+    ],
+    "targetedPhysicalPixelTestsPassed": 3
+  },
+  "dataPreservation": {
+    "metadataFilesCompared": 7,
+    "documentFilesCompared": 6,
+    "ownedSyntheticDocumentsChanged": 2,
+    "unexpectedDocumentChanges": 0,
+    "preferenceFilesChanged": 0,
+    "protectedUserPreferencesUnchanged": true
+  },
+  "limits": [
+    "Synthetic media and native controls checks; no new production export, long-video or VoiceOver qualification.",
+    "iPhone layout uses the Debug iPad viewport, not iPhone hardware.",
+    "Release packaging was not repeated for this UI-only change."
+  ],
+  "privacy": {
+    "genericChangedFileCheck": "pass",
+    "ledgerAwareAudit": "not run; ledger configuration unset"
+  }
+}

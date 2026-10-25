@@ -13,12 +13,11 @@
         <string>UIInterfaceOrientationLandscapeRight</string>
     </array>
     <key>UISupportedInterfaceOrientations~ipad</key><array>
+        <string>UIInterfaceOrientationPortrait</string>
+        <string>UIInterfaceOrientationPortraitUpsideDown</string>
         <string>UIInterfaceOrientationLandscapeLeft</string>
         <string>UIInterfaceOrientationLandscapeRight</string>
     </array>
-    <!-- iPad landscape-only compatibility on the supported iOS 17–26 SDKs.
-         Multitasking without this opt-out requires all interface orientations. -->
-    <key>UIRequiresFullScreen</key><true/>
     <key>BGTaskSchedulerPermittedIdentifiers</key><array><string>com.volleysplice.VolleySplice.processing.*</string></array>
     <key>UIBackgroundModes</key><array><string>processing</string></array>
 </dict></plist>

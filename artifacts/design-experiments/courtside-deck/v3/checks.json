@@ -1,0 +1,1294 @@
+{
+  "version": 3,
+  "summary": {
+    "passed": 64,
+    "failed": 0
+  },
+  "method": "Chromium via Taste CDP helper; trusted mouse, wheel, keyboard, and emulated touch input. Functional state setup explicitly identified by check.",
+  "checks": [
+    {
+      "id": "default-fixture",
+      "pass": true,
+      "evidence": {
+        "variant": 1,
+        "version": 3,
+        "screen": "review",
+        "selected": "R018",
+        "insideRallyId": "R018",
+        "nearestRallyId": "R018",
+        "positionMs": 770400,
+        "pending": 4,
+        "completed": 0,
+        "total": 36,
+        "collapsed": false,
+        "playing": false,
+        "list": {
+          "scrollTop": 0,
+          "following": true,
+          "centerRallyId": null,
+          "centerPositionMs": null
+        },
+        "dragging": null,
+        "current": {
+          "id": "R018",
+          "number": 18,
+          "startMs": 766200,
+          "endMs": 782800,
+          "team1Score": 9,
+          "team2Score": 8,
+          "included": true,
+          "needsClipReview": true,
+          "servingSide": "review",
+          "baseStart": 766200,
+          "baseEnd": 782800
+        },
+        "rallies": [
+          {
+            "id": "R001",
+            "number": 1,
+            "startMs": 86200,
+            "endMs": 102800,
+            "team1Score": 0,
+            "team2Score": 0,
+            "included": true,
+            "needsClipReview": false,
+            "servingSide": "near",
+            "baseStart": 86200,
+            "baseEnd": 102800
+          },
+          {
+            "id": "R002",
+            "number": 2,
+            "startMs": 126200,
+            "endMs": 142800,
+            "team1Score": 1,
+            "team2Score": 0,
+            "included": true,
+            "needsClipReview": false,
+            "servingSide": "far",
+            "baseStart": 126200,
+            "baseEnd": 142800
+          },
+          {
+            "id": "R003",
+            "number": 3,
+            "startMs": 166200,
+            "endMs": 182800,
+            "team1Score": 1,
+            "team2Score": 1,
+            "included": true,
+            "needsClipReview": false,
+            "servingSide": "near",
+            "baseStart": 166200,
+            "baseEnd": 182800
+          },
+          {
+            "id": "R004",
+            "number": 4,
+            "startMs": 206200,
+            "endMs": 222800,
+            "team1Score": 2,
+            "team2Score": 1,
+            "included": true,
+            "needsClipReview": false,
+            "servingSide": "far",
+            "baseStart": 206200,
+            "baseEnd": 222800
+          },
+          {
+            "id": "R005",
+            "number": 5,
+            "startMs": 246200,
+            "endMs": 262800,
+            "team1Score": 2,
+            "team2Score": 2,
+            "included": true,
+            "needsClipReview": false,
+            "servingSide": "near",
+            "baseStart": 246200,
+            "baseEnd": 262800
+          },
+          {
+            "id": "R006",
+            "number": 6,
+            "startMs": 286200,
+            "endMs": 302800,
+            "team1Score": 3,
+            "team2Score": 2,
+            "included": true,
+            "needsClipReview": false,
+            "servingSide": "far",
+            "baseStart": 286200,
+            "baseEnd": 302800
+          },
+          {
+            "id": "R007",
+            "number": 7,
+            "startMs": 326200,
+            "endMs": 342800,
+            "team1Score": 3,
+            "team2Score": 3,
+            "included": true,
+            "needsClipReview": false,
+            "servingSide": "near",
+            "baseStart": 326200,
+            "baseEnd": 342800
+          },
+          {
+            "id": "R008",
+            "number": 8,
+            "startMs": 366200,
+            "endMs": 382800,
+            "team1Score": 4,
+            "team2Score": 3,
+            "included": true,
+            "needsClipReview": false,
+            "servingSide": "far",
+            "baseStart": 366200,
+            "baseEnd": 382800
+          },
+          {
+            "id": "R009",
+            "number": 9,
+            "startMs": 406200,
+            "endMs": 422800,
+            "team1Score": 4,
+            "team2Score": 4,
+            "included": true,
+            "needsClipReview": false,
+            "servingSide": "near",
+            "baseStart": 406200,
+            "baseEnd": 422800
+          },
+          {
+            "id": "R010",
+            "number": 10,
+            "startMs": 446200,
+            "endMs": 462800,
+            "team1Score": 5,
+            "team2Score": 4,
+            "included": true,
+            "needsClipReview": false,
+            "servingSide": "far",
+            "baseStart": 446200,
+            "baseEnd": 462800
+          },
+          {
+            "id": "R011",
+            "number": 11,
+            "startMs": 486200,
+            "endMs": 502800,
+            "team1Score": 5,
+            "team2Score": 5,
+            "included": true,
+            "needsClipReview": false,
+            "servingSide": "near",
+            "baseStart": 486200,
+            "baseEnd": 502800
+          },
+          {
+            "id": "R012",
+            "number": 12,
+            "startMs": 526200,
+            "endMs": 542800,
+            "team1Score": 6,
+            "team2Score": 5,
+            "included": true,
+            "needsClipReview": false,
+            "servingSide": "far",
+            "baseStart": 526200,
+            "baseEnd": 542800
+          },
+          {
+            "id": "R013",
+            "number": 13,
+            "startMs": 566200,
+            "endMs": 582800,
+            "team1Score": 6,
+            "team2Score": 6,
+            "included": true,
+            "needsClipReview": false,
+            "servingSide": "near",
+            "baseStart": 566200,
+            "baseEnd": 582800
+          },
+          {
+            "id": "R014",
+            "number": 14,
+            "startMs": 606200,
+            "endMs": 622800,
+            "team1Score": 7,
+            "team2Score": 6,
+            "included": true,
+            "needsClipReview": false,
+            "servingSide": "far",
+            "baseStart": 606200,
+            "baseEnd": 622800
+          },
+          {
+            "id": "R015",
+            "number": 15,
+            "startMs": 646200,
+            "endMs": 662800,
+            "team1Score": 7,
+            "team2Score": 7,
+            "included": true,
+            "needsClipReview": false,
+            "servingSide": "near",
+            "baseStart": 646200,
+            "baseEnd": 662800
+          },
+          {
+            "id": "R016",
+            "number": 16,
+            "startMs": 686200,
+            "endMs": 702800,
+            "team1Score": 8,
+            "team2Score": 7,
+            "included": true,
+            "needsClipReview": false,
+            "servingSide": "far",
+            "baseStart": 686200,
+            "baseEnd": 702800
+          },
+          {
+            "id": "R017",
+            "number": 17,
+            "startMs": 726200,
+            "endMs": 742800,
+            "team1Score": 8,
+            "team2Score": 8,
+            "included": true,
+            "needsClipReview": false,
+            "servingSide": "near",
+            "baseStart": 726200,
+            "baseEnd": 742800
+          },
+          {
+            "id": "R018",
+            "number": 18,
+            "startMs": 766200,
+            "endMs": 782800,
+            "team1Score": 9,
+            "team2Score": 8,
+            "included": true,
+            "needsClipReview": true,
+            "servingSide": "review",
+            "baseStart": 766200,
+            "baseEnd": 782800
+          },
+          {
+            "id": "R019",
+            "number": 19,
+            "startMs": 806200,
+            "endMs": 822800,
+            "team1Score": 9,
+            "team2Score": 9,
+            "included": true,
+            "needsClipReview": false,
+            "servingSide": "review",
+            "baseStart": 806200,
+            "baseEnd": 822800
+          },
+          {
+            "id": "R020",
+            "number": 20,
+            "startMs": 846200,
+            "endMs": 862800,
+            "team1Score": 10,
+            "team2Score": 9,
+            "included": true,
+            "needsClipReview": false,
+            "servingSide": "far",
+            "baseStart": 846200,
+            "baseEnd": 862800
+          },
+          {
+            "id": "R021",
+            "number": 21,
+            "startMs": 886200,
+            "endMs": 902800,
+            "team1Score": 10,
+            "team2Score": 10,
+            "included": true,
+            "needsClipReview": false,
+            "servingSide": "near",
+            "baseStart": 886200,
+            "baseEnd": 902800
+          },
+          {
+            "id": "R022",
+            "number": 22,
+            "startMs": 926200,
+            "endMs": 942800,
+            "team1Score": 11,
+            "team2Score": 10,
+            "included": true,
+            "needsClipReview": false,
+            "servingSide": "far",
+            "baseStart": 926200,
+            "baseEnd": 942800
+          },
+          {
+            "id": "R023",
+            "number": 23,
+            "startMs": 966200,
+            "endMs": 982800,
+            "team1Score": 11,
+            "team2Score": 11,
+            "included": true,
+            "needsClipReview": true,
+            "servingSide": "near",
+            "baseStart": 966200,
+            "baseEnd": 982800
+          },
+          {
+            "id": "R024",
+            "number": 24,
+            "startMs": 1006200,
+            "endMs": 1022800,
+            "team1Score": 12,
+            "team2Score": 11,
+            "included": true,
+            "needsClipReview": false,
+            "servingSide": "far",
+            "baseStart": 1006200,
+            "baseEnd": 1022800
+          },
+          {
+            "id": "R025",
+            "number": 25,
+            "startMs": 1046200,
+            "endMs": 1062800,
+            "team1Score": 12,
+            "team2Score": 12,
+            "included": true,
+            "needsClipReview": false,
+            "servingSide": "near",
+            "baseStart": 1046200,
+            "baseEnd": 1062800
+          },
+          {
+            "id": "R026",
+            "number": 26,
+            "startMs": 1086200,
+            "endMs": 1102800,
+            "team1Score": 13,
+            "team2Score": 12,
+            "included": true,
+            "needsClipReview": false,
+            "servingSide": "far",
+            "baseStart": 1086200,
+            "baseEnd": 1102800
+          },
+          {
+            "id": "R027",
+            "number": 27,
+            "startMs": 1126200,
+            "endMs": 1142800,
+            "team1Score": 13,
+            "team2Score": 13,
+            "included": true,
+            "needsClipReview": false,
+            "servingSide": "review",
+            "baseStart": 1126200,
+            "baseEnd": 1142800
+          },
+          {
+            "id": "R028",
+            "number": 28,
+            "startMs": 1166200,
+            "endMs": 1182800,
+            "team1Score": 14,
+            "team2Score": 13,
+            "included": true,
+            "needsClipReview": false,
+            "servingSide": "far",
+            "baseStart": 1166200,
+            "baseEnd": 1182800
+          },
+          {
+            "id": "R029",
+            "number": 29,
+            "startMs": 1206200,
+            "endMs": 1222800,
+            "team1Score": 14,
+            "team2Score": 14,
+            "included": true,
+            "needsClipReview": false,
+            "servingSide": "near",
+            "baseStart": 1206200,
+            "baseEnd": 1222800
+          },
+          {
+            "id": "R030",
+            "number": 30,
+            "startMs": 1246200,
+            "endMs": 1262800,
+            "team1Score": 15,
+            "team2Score": 14,
+            "included": true,
+            "needsClipReview": false,
+            "servingSide": "far",
+            "baseStart": 1246200,
+            "baseEnd": 1262800
+          },
+          {
+            "id": "R031",
+            "number": 31,
+            "startMs": 1286200,
+            "endMs": 1302800,
+            "team1Score": 15,
+            "team2Score": 15,
+            "included": true,
+            "needsClipReview": false,
+            "servingSide": "near",
+            "baseStart": 1286200,
+            "baseEnd": 1302800
+          },
+          {
+            "id": "R032",
+            "number": 32,
+            "startMs": 1326200,
+            "endMs": 1342800,
+            "team1Score": 16,
+            "team2Score": 15,
+            "included": true,
+            "needsClipReview": false,
+            "servingSide": "far",
+            "baseStart": 1326200,
+            "baseEnd": 1342800
+          },
+          {
+            "id": "R033",
+            "number": 33,
+            "startMs": 1366200,
+            "endMs": 1382800,
+            "team1Score": 16,
+            "team2Score": 16,
+            "included": true,
+            "needsClipReview": false,
+            "servingSide": "near",
+            "baseStart": 1366200,
+            "baseEnd": 1382800
+          },
+          {
+            "id": "R034",
+            "number": 34,
+            "startMs": 1406200,
+            "endMs": 1422800,
+            "team1Score": 17,
+            "team2Score": 16,
+            "included": true,
+            "needsClipReview": false,
+            "servingSide": "far",
+            "baseStart": 1406200,
+            "baseEnd": 1422800
+          },
+          {
+            "id": "R035",
+            "number": 35,
+            "startMs": 1446200,
+            "endMs": 1462800,
+            "team1Score": 17,
+            "team2Score": 17,
+            "included": true,
+            "needsClipReview": false,
+            "servingSide": "near",
+            "baseStart": 1446200,
+            "baseEnd": 1462800
+          },
+          {
+            "id": "R036",
+            "number": 36,
+            "startMs": 1486200,
+            "endMs": 1502800,
+            "team1Score": 18,
+            "team2Score": 17,
+            "included": true,
+            "needsClipReview": false,
+            "servingSide": "far",
+            "baseStart": 1486200,
+            "baseEnd": 1502800
+          }
+        ]
+      }
+    },
+    {
+      "id": "timing-header-no-duration-or-zoom",
+      "pass": true
+    },
+    {
+      "id": "header-start-earlier",
+      "pass": true,
+      "evidence": {
+        "before": 766200,
+        "after": 765200,
+        "ui": {
+          "readout": "12:45.2",
+          "expected": "12:45.2",
+          "aria": 765200,
+          "strip": "52.381%",
+          "cursor": "23.8095%"
+        }
+      }
+    },
+    {
+      "id": "header-start-later",
+      "pass": true,
+      "evidence": {
+        "before": 766200,
+        "after": 767200,
+        "ui": {
+          "readout": "12:47.2",
+          "expected": "12:47.2",
+          "aria": 767200,
+          "strip": "47.8528%",
+          "cursor": "27.6074%"
+        }
+      }
+    },
+    {
+      "id": "header-end-earlier",
+      "pass": true,
+      "evidence": {
+        "before": 782800,
+        "after": 781800,
+        "ui": {
+          "readout": "13:01.8",
+          "expected": "13:01.8",
+          "aria": 781800,
+          "strip": "47.8528%",
+          "cursor": "72.3926%"
+        }
+      }
+    },
+    {
+      "id": "header-end-later",
+      "pass": true,
+      "evidence": {
+        "before": 782800,
+        "after": 783800,
+        "ui": {
+          "readout": "13:03.8",
+          "expected": "13:03.8",
+          "aria": 783800,
+          "strip": "52.381%",
+          "cursor": "76.1905%"
+        }
+      }
+    },
+    {
+      "id": "constraint-start-earlier",
+      "pass": true,
+      "evidence": {
+        "position": 0,
+        "start": 0,
+        "end": 782800
+      }
+    },
+    {
+      "id": "constraint-end-later",
+      "pass": true,
+      "evidence": {
+        "position": 1560000,
+        "start": 766200,
+        "end": 1560000
+      }
+    },
+    {
+      "id": "constraint-start-later",
+      "pass": true,
+      "evidence": {
+        "position": 782300,
+        "start": 782300,
+        "end": 782800
+      }
+    },
+    {
+      "id": "constraint-end-earlier",
+      "pass": true,
+      "evidence": {
+        "position": 766700,
+        "start": 766200,
+        "end": 766700
+      }
+    },
+    {
+      "id": "continuous-trusted-drag-start",
+      "pass": true,
+      "evidence": {
+        "values": [
+          766417,
+          766635,
+          766852,
+          767069,
+          767287,
+          767504,
+          767721,
+          767939
+        ],
+        "captured": true,
+        "final": 767939
+      }
+    },
+    {
+      "id": "continuous-trusted-drag-end",
+      "pass": true,
+      "evidence": {
+        "values": [
+          783017,
+          783235,
+          783452,
+          783669,
+          783887,
+          784104,
+          784321,
+          784539
+        ],
+        "captured": true,
+        "final": 784539
+      }
+    },
+    {
+      "id": "keyboard-edge-tenth",
+      "pass": true
+    },
+    {
+      "id": "keyboard-edge-shift-second",
+      "pass": true
+    },
+    {
+      "id": "all-36-cards-scores-thumbnails",
+      "pass": true
+    },
+    {
+      "id": "source-initial-center-geometry",
+      "pass": true,
+      "evidence": {
+        "expected": "R018",
+        "actual": "R018",
+        "time": 774500,
+        "expectedTime": 774500,
+        "top": 49.6474,
+        "expectedTop": 49.6474358974359,
+        "label": "List · Rally 18 · 12:54.5",
+        "dist": 0.5
+      }
+    },
+    {
+      "id": "trusted-wheel-browses-only",
+      "pass": true,
+      "evidence": {
+        "before": {
+          "scroll": 1232,
+          "position": 770400,
+          "list": "R018"
+        },
+        "after": {
+          "scroll": 1856,
+          "position": 770400,
+          "list": "R026"
+        },
+        "trusted": true
+      }
+    },
+    {
+      "id": "wheel-center-geometry",
+      "pass": true,
+      "evidence": {
+        "expected": "R026",
+        "actual": "R026",
+        "time": 1094500,
+        "expectedTime": 1094500,
+        "top": 70.1603,
+        "expectedTop": 70.16025641025641,
+        "label": "List · Rally 26 · 18:14.5",
+        "dist": 0.5
+      }
+    },
+    {
+      "id": "manual-scroll-not-snapped-back",
+      "pass": true
+    },
+    {
+      "id": "browse-reaches-first-rally-without-seek",
+      "pass": true
+    },
+    {
+      "id": "first-viewport-center",
+      "pass": true,
+      "evidence": {
+        "expected": "R002",
+        "actual": "R002",
+        "time": 134500,
+        "expectedTime": 134500,
+        "top": 8.62179,
+        "expectedTop": 8.621794871794872,
+        "label": "List · Rally 2 · 02:14.5",
+        "dist": 16.5
+      }
+    },
+    {
+      "id": "browse-reaches-last-rally-without-seek",
+      "pass": true
+    },
+    {
+      "id": "last-viewport-center",
+      "pass": true,
+      "evidence": {
+        "expected": "R035",
+        "actual": "R035",
+        "time": 1454500,
+        "expectedTime": 1454500,
+        "top": 93.2372,
+        "expectedTop": 93.23717948717949,
+        "label": "List · Rally 35 · 24:14.5",
+        "dist": 16.5
+      }
+    },
+    {
+      "id": "playback-follow-suspended-after-manual-browse",
+      "pass": true
+    },
+    {
+      "id": "collapse-reopen-retains-scroll-and-marker",
+      "pass": true,
+      "evidence": {
+        "held": 1856,
+        "after": {
+          "scrollTop": 1856,
+          "following": false,
+          "centerRallyId": "R026",
+          "centerPositionMs": 1094500
+        }
+      }
+    },
+    {
+      "id": "collapse-restored-center",
+      "pass": true,
+      "evidence": {
+        "expected": "R026",
+        "actual": "R026",
+        "time": 1094500,
+        "expectedTime": 1094500,
+        "top": 70.1603,
+        "expectedTop": 70.16025641025641,
+        "label": "List · Rally 26 · 18:14.5",
+        "dist": 0.5
+      }
+    },
+    {
+      "id": "variable-gaps-variable-card-real-midpoint",
+      "pass": true,
+      "evidence": {
+        "expected": "R026",
+        "actual": "R026",
+        "time": 1106000,
+        "expectedTime": 1106000,
+        "top": 70.8974,
+        "expectedTop": 70.8974358974359,
+        "label": "List · Rally 26 · 18:26.0",
+        "dist": 0.5
+      }
+    },
+    {
+      "id": "marker-uses-time-not-list-percent",
+      "pass": true
+    },
+    {
+      "id": "trusted-source-seek-stays-browse-and-centers",
+      "pass": true,
+      "evidence": {
+        "position": 1094499.8860206264,
+        "list": {
+          "scrollTop": 1856,
+          "following": true,
+          "centerRallyId": "R026",
+          "centerPositionMs": 1094500
+        }
+      }
+    },
+    {
+      "id": "source-seek-center-geometry",
+      "pass": true,
+      "evidence": {
+        "expected": "R026",
+        "actual": "R026",
+        "time": 1094500,
+        "expectedTime": 1094500,
+        "top": 70.1603,
+        "expectedTop": 70.16025641025641,
+        "label": "List · Rally 26 · 18:14.5",
+        "dist": 0.5
+      }
+    },
+    {
+      "id": "coincident-markers-separate-shapes-and-sides",
+      "pass": true,
+      "evidence": {
+        "play": 70.1602,
+        "list": 70.1603,
+        "playLeft": 14,
+        "listLeft": 41.928932189941406,
+        "border": "2px",
+        "shape": "matrix(0.707107, 0.707107, -0.707107, 0.707107, 0, -5)"
+      }
+    },
+    {
+      "id": "source-scroll-no-feedback-loop",
+      "pass": true
+    },
+    {
+      "id": "card-selection-resumes-following",
+      "pass": true
+    },
+    {
+      "id": "exact-gap-highlight",
+      "pass": true
+    },
+    {
+      "id": "explicit-missing-opens-editor-at-exact-position",
+      "pass": true,
+      "evidence": {
+        "gap": 794500,
+        "editorPosition": 794500
+      }
+    },
+    {
+      "id": "missing-add-covers-exact-gap-position",
+      "pass": true
+    },
+    {
+      "id": "missing-return-to-browse",
+      "pass": true
+    },
+    {
+      "id": "inclusion-alone-still-needs-side",
+      "pass": true
+    },
+    {
+      "id": "decisions-progress-top-and-enabled-next",
+      "pass": true
+    },
+    {
+      "id": "review-completion",
+      "pass": true
+    },
+    {
+      "id": "reset-restores-all-defaults",
+      "pass": true
+    },
+    {
+      "id": "bounds-tenth-stepper-regression",
+      "pass": true
+    },
+    {
+      "id": "trusted-emulated-touch-browses-only",
+      "pass": true,
+      "evidence": {
+        "before": {
+          "scrollTop": 1232,
+          "following": true,
+          "centerRallyId": "R018",
+          "centerPositionMs": 774500
+        },
+        "after": {
+          "scrollTop": 1373,
+          "following": false,
+          "centerRallyId": "R020",
+          "centerPositionMs": 854500
+        },
+        "position": 770400,
+        "receipt": [
+          {
+            "type": "touchstart",
+            "trusted": true
+          },
+          {
+            "type": "touchmove",
+            "trusted": true
+          },
+          {
+            "type": "touchmove",
+            "trusted": true
+          },
+          {
+            "type": "touchmove",
+            "trusted": true
+          },
+          {
+            "type": "touchmove",
+            "trusted": true
+          },
+          {
+            "type": "touchmove",
+            "trusted": true
+          },
+          {
+            "type": "touchmove",
+            "trusted": true
+          },
+          {
+            "type": "touchmove",
+            "trusted": true
+          },
+          {
+            "type": "touchmove",
+            "trusted": true
+          },
+          {
+            "type": "touchmove",
+            "trusted": true
+          },
+          {
+            "type": "touchmove",
+            "trusted": true
+          },
+          {
+            "type": "touchmove",
+            "trusted": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "touch-center-geometry",
+      "pass": true,
+      "evidence": {
+        "expected": "R020",
+        "actual": "R020",
+        "time": 854500,
+        "expectedTime": 854500,
+        "top": 54.7756,
+        "expectedTop": 54.77564102564103,
+        "label": "List · Rally 20 · 14:14.5",
+        "dist": 14.5
+      }
+    },
+    {
+      "id": "layout-360-review",
+      "pass": true,
+      "evidence": {
+        "overflow": 0,
+        "appWidth": 360,
+        "appHeight": 844,
+        "clipped": [],
+        "buttons": [
+          [
+            44,
+            44
+          ],
+          [
+            44,
+            44
+          ],
+          [
+            44,
+            44
+          ],
+          [
+            44,
+            44
+          ]
+        ],
+        "font": true,
+        "pending": 4
+      }
+    },
+    {
+      "id": "layout-360-browse",
+      "pass": true,
+      "evidence": {
+        "overflow": 0,
+        "appWidth": 360,
+        "appHeight": 844,
+        "clipped": [],
+        "buttons": [],
+        "font": true,
+        "pending": 4
+      }
+    },
+    {
+      "id": "layout-360-bounds",
+      "pass": true,
+      "evidence": {
+        "overflow": 0,
+        "appWidth": 360,
+        "appHeight": 844,
+        "clipped": [],
+        "buttons": [
+          [
+            44,
+            44
+          ],
+          [
+            44,
+            44
+          ],
+          [
+            44,
+            44
+          ],
+          [
+            44,
+            44
+          ]
+        ],
+        "font": true,
+        "pending": 4
+      }
+    },
+    {
+      "id": "layout-360-gap",
+      "pass": true,
+      "evidence": {
+        "overflow": 0,
+        "appWidth": 360,
+        "appHeight": 844,
+        "clipped": [],
+        "buttons": [],
+        "font": true,
+        "pending": 4
+      }
+    },
+    {
+      "id": "layout-360-editor",
+      "pass": true,
+      "evidence": {
+        "overflow": 0,
+        "appWidth": 360,
+        "appHeight": 844,
+        "clipped": [],
+        "buttons": [],
+        "font": true,
+        "pending": 4
+      }
+    },
+    {
+      "id": "runtime-errors-360",
+      "pass": true,
+      "evidence": []
+    },
+    {
+      "id": "layout-390-review",
+      "pass": true,
+      "evidence": {
+        "overflow": 0,
+        "appWidth": 390,
+        "appHeight": 844,
+        "clipped": [],
+        "buttons": [
+          [
+            44,
+            44
+          ],
+          [
+            44,
+            44
+          ],
+          [
+            44,
+            44
+          ],
+          [
+            44,
+            44
+          ]
+        ],
+        "font": true,
+        "pending": 4
+      }
+    },
+    {
+      "id": "layout-390-browse",
+      "pass": true,
+      "evidence": {
+        "overflow": 0,
+        "appWidth": 390,
+        "appHeight": 844,
+        "clipped": [],
+        "buttons": [],
+        "font": true,
+        "pending": 4
+      }
+    },
+    {
+      "id": "layout-390-bounds",
+      "pass": true,
+      "evidence": {
+        "overflow": 0,
+        "appWidth": 390,
+        "appHeight": 844,
+        "clipped": [],
+        "buttons": [
+          [
+            44,
+            44
+          ],
+          [
+            44,
+            44
+          ],
+          [
+            44,
+            44
+          ],
+          [
+            44,
+            44
+          ]
+        ],
+        "font": true,
+        "pending": 4
+      }
+    },
+    {
+      "id": "layout-390-gap",
+      "pass": true,
+      "evidence": {
+        "overflow": 0,
+        "appWidth": 390,
+        "appHeight": 844,
+        "clipped": [],
+        "buttons": [],
+        "font": true,
+        "pending": 4
+      }
+    },
+    {
+      "id": "layout-390-editor",
+      "pass": true,
+      "evidence": {
+        "overflow": 0,
+        "appWidth": 390,
+        "appHeight": 844,
+        "clipped": [],
+        "buttons": [],
+        "font": true,
+        "pending": 4
+      }
+    },
+    {
+      "id": "runtime-errors-390",
+      "pass": true,
+      "evidence": []
+    },
+    {
+      "id": "layout-768-review",
+      "pass": true,
+      "evidence": {
+        "overflow": 0,
+        "appWidth": 390,
+        "appHeight": 844,
+        "clipped": [],
+        "buttons": [
+          [
+            44,
+            44
+          ],
+          [
+            44,
+            44
+          ],
+          [
+            44,
+            44
+          ],
+          [
+            44,
+            44
+          ]
+        ],
+        "font": true,
+        "pending": 4
+      }
+    },
+    {
+      "id": "layout-768-browse",
+      "pass": true,
+      "evidence": {
+        "overflow": 0,
+        "appWidth": 390,
+        "appHeight": 844,
+        "clipped": [],
+        "buttons": [],
+        "font": true,
+        "pending": 4
+      }
+    },
+    {
+      "id": "layout-768-bounds",
+      "pass": true,
+      "evidence": {
+        "overflow": 0,
+        "appWidth": 390,
+        "appHeight": 844,
+        "clipped": [],
+        "buttons": [
+          [
+            44,
+            44
+          ],
+          [
+            44,
+            44
+          ],
+          [
+            44,
+            44
+          ],
+          [
+            44,
+            44
+          ]
+        ],
+        "font": true,
+        "pending": 4
+      }
+    },
+    {
+      "id": "layout-768-gap",
+      "pass": true,
+      "evidence": {
+        "overflow": 0,
+        "appWidth": 390,
+        "appHeight": 844,
+        "clipped": [],
+        "buttons": [],
+        "font": true,
+        "pending": 4
+      }
+    },
+    {
+      "id": "layout-768-editor",
+      "pass": true,
+      "evidence": {
+        "overflow": 0,
+        "appWidth": 390,
+        "appHeight": 844,
+        "clipped": [],
+        "buttons": [],
+        "font": true,
+        "pending": 4
+      }
+    },
+    {
+      "id": "runtime-errors-768",
+      "pass": true,
+      "evidence": []
+    },
+    {
+      "id": "self-contained-offline-size",
+      "pass": true,
+      "evidence": {
+        "characters": 114457,
+        "sha256": "ecad020030d53d41d0456d040c67f54c83ab4419592a8ebc40a51b6ff6ea543c"
+      }
+    },
+    {
+      "id": "no-viewport-height-or-root-percent",
+      "pass": true
+    }
+  ]
+}

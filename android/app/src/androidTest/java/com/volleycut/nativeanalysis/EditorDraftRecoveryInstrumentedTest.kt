@@ -172,7 +172,7 @@ class EditorDraftRecoveryInstrumentedTest {
                     }
                     val exported = ModelFeedbackImporter.parse(device.executeShellCommand("cat ${destination.absolutePath}"))
                     assertTrue("Export changed to edits made after opening the picker", exported.draft.cuts.first().included)
-                    if (isDesktopEditor(scenario)) compose.onNodeWithText("Review").performClick()
+                    compose.onNodeWithTag("workspace-editor-tab").performClick()
                     compose.onNodeWithText("✓ Remove").performScrollTo().assertIsDisplayed()
                     compose.onNodeWithText("Saved the detailed project file").assertExists()
                 } finally { ActivityLifecycleMonitorRegistry.getInstance().removeLifecycleCallback(lifecycle) }
@@ -780,15 +780,8 @@ class EditorDraftRecoveryInstrumentedTest {
     }
 
     private fun saveProject(scenario: ActivityScenario<EditorActivity>) {
-        val expanded = isDesktopEditor(scenario)
-        if (expanded) {
-            compose.onNodeWithText("Export").performClick()
-        } else {
-            compose.onNodeWithText("Project options").performScrollTo().performClick()
-        }
-        val save = compose.onNodeWithText("Save project")
-        if (expanded) save.performScrollTo()
-        save.performClick()
+        compose.onNodeWithTag("workspace-export-tab").performClick()
+        compose.onNodeWithText("Save project").performScrollTo().performClick()
     }
 
     private fun launchEditor(block: (ActivityScenario<EditorActivity>) -> Unit) {
@@ -838,6 +831,11 @@ class EditorDraftRecoveryInstrumentedTest {
                     }
                 }
             }
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithTag("workspace-editor-tab")
+                    .fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()
+            }
+            compose.onNodeWithTag("workspace-editor-tab").performClick()
             block(scenario)
         }
     }

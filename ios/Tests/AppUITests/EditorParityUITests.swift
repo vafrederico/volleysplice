@@ -6,17 +6,17 @@ import UIKit
 final class EditorParityUITests: XCTestCase {
     @MainActor func testMoreMenuQueueAndConfirmedProjectDeletion() {
         let app = launchFixture(); defer { app.terminate() }
-        app.buttons["editorMore"].tap()
+        app.buttons["editorSettings"].tap()
         XCTAssertFalse(app.buttons["backToProjects"].exists)
         XCTAssertFalse(app.buttons["openSavedProjects"].exists)
         app.buttons["editorProcessingQueue"].tap()
         XCTAssertTrue(app.navigationBars["Processing queue"].waitForExistence(timeout: 15))
         app.buttons["queueDone"].tap()
-        app.buttons["editorMore"].tap(); app.buttons["deleteCurrentProject"].tap()
+        app.buttons["deleteCurrentProject"].tap()
         XCTAssertTrue(app.alerts["Delete current project?"].waitForExistence(timeout: 15))
         app.alerts.buttons["Cancel"].tap()
         XCTAssertTrue(app.buttons["reviewCleanup"].exists)
-        app.buttons["editorMore"].tap(); app.buttons["deleteCurrentProject"].tap()
+        app.buttons["deleteCurrentProject"].tap()
         app.alerts.buttons["Delete"].tap()
         XCTAssertTrue(app.buttons["chooseRecording"].waitForExistence(timeout: 15))
         XCTAssertFalse(app.buttons["reviewCleanup"].exists)
@@ -32,8 +32,10 @@ final class EditorParityUITests: XCTestCase {
         app.launch()
         let skip = app.buttons["tutorialSkip"]
         if skip.waitForExistence(timeout: 5) { skip.tap() }
-        XCTAssertTrue(app.buttons["reviewCleanup"].waitForExistence(timeout: 30), app.debugDescription)
+        XCTAssertTrue(app.buttons["editorSettings"].waitForExistence(timeout: 30), app.debugDescription)
         if skip.exists { skip.tap() }
+        app.buttons["workspace-editor-tab"].tap()
+        XCTAssertTrue(app.buttons["reviewCleanup"].waitForExistence(timeout: 15), app.debugDescription)
         return app
     }
     @MainActor private func wait(_ element: XCUIElement, predicate: String, _ arguments: Any..., file: StaticString = #filePath, line: UInt = #line) {
@@ -114,7 +116,7 @@ final class EditorParityUITests: XCTestCase {
 
     @MainActor func testStorageIsAccessibleFromEditorAndSetupSettings() {
         let app = launchFixture(); defer { app.terminate() }
-        app.buttons["editorMore"].tap()
+        app.buttons["editorSettings"].tap()
         app.buttons["manageStorage"].tap()
         XCTAssertTrue(app.buttons["appStorageDone"].waitForExistence(timeout: 20))
         XCTAssertTrue(app.descendants(matching: .any)["appStorageTotal"].exists)
@@ -131,7 +133,8 @@ final class EditorParityUITests: XCTestCase {
 
     @MainActor func testQueueEntryCanBeRemovedWithoutPausingEverything() {
         let app = launchFixture(extra: ["--parity-queue"]); defer { app.terminate() }
-        app.buttons["processingQueueBar"].tap()
+        app.buttons["editorSettings"].tap()
+        app.buttons["editorProcessingQueue"].tap()
         let remove = app.buttons["removeJob-00000000-0000-4000-8000-000000000023"]
         XCTAssertTrue(remove.waitForExistence(timeout: 15))
         remove.tap()
@@ -304,7 +307,7 @@ final class EditorParityUITests: XCTestCase {
 
     @MainActor func testVideoExportAsksForDestinationBeforeWriting() {
         let app = launchFixture(); defer { app.terminate() }
-        let exportStage = app.buttons["exportTab"]
+        let exportStage = app.buttons["workspace-export-tab"]
         reveal(exportStage, in: app); exportStage.tap()
         let export = app.buttons["exportVideo"]
         reveal(export, in: app); export.tap()
@@ -315,37 +318,18 @@ final class EditorParityUITests: XCTestCase {
         // file-provider, or decoded-media correctness test.
     }
 
-    @MainActor func testCompactPortraitFollowsAndroidSectionOrder() throws {
+    @MainActor func testCompactPortraitHasSharedBarAndExportOwnsSaveActions() throws {
         let app = launchFixture(); defer { app.terminate() }
         let summary = app.descendants(matching: .any).matching(identifier: "exportSummary").firstMatch
-        try XCTSkipUnless((summary.value as? String) == "Compact workspace", "Compact portrait organization is exercised on iPhone; iPad portrait retains the Android desktop breakpoint.")
-
-        let project = app.buttons["projectSelector"]
-        let review = app.buttons["reviewTab"]
-        let nowReviewing = app.staticTexts["NOW REVIEWING"]
-        let finalVideo = app.staticTexts["YOUR FINAL VIDEO"]
-        XCTAssertTrue(project.isHittable)
+        try XCTSkipUnless((summary.value as? String) == "Compact workspace", "Phone portrait layout")
+        XCTAssertTrue(app.buttons["projectSelector"].isHittable)
         XCTAssertTrue(app.buttons["editorSettings"].isHittable)
-        XCTAssertTrue(review.isHittable)
-        XCTAssertLessThan(project.frame.midY, review.frame.midY)
-        XCTAssertLessThan(review.frame.midY, nowReviewing.frame.midY)
-        XCTAssertLessThan(nowReviewing.frame.midY, finalVideo.frame.midY)
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "VIDEO EDITOR")).firstMatch.exists)
-        capture("compact-portrait-header-and-summary", app: app)
-
-        let export = app.buttons["exportVideo"]
-        reveal(export, in: app)
-        XCTAssertEqual(export.label, "Save final video")
-        XCTAssertTrue(app.buttons["youtubeChaptersButton"].exists)
-        XCTAssertTrue(app.buttons["projectOptions"].exists)
-        capture("compact-portrait-final-video", app: app)
-
-        let play = app.buttons["playPause"]
-        reveal(play, in: app)
-        let cleanup = app.buttons["reviewCleanup"]
-        XCTAssertLessThan(play.frame.midY, cleanup.frame.midY)
-        XCTAssertTrue(app.sliders["sourceSeek"].exists)
-        XCTAssertFalse(app.buttons["undoEdit"].exists)
-        capture("compact-portrait-player-and-queues", app: app)
+        XCTAssertFalse(app.staticTexts["YOUR FINAL VIDEO"].exists)
+        XCTAssertFalse(app.buttons["exportVideo"].exists)
+        app.buttons["workspace-export-tab"].tap()
+        XCTAssertTrue(app.buttons["exportVideo"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["exportProject"].exists)
+        XCTAssertTrue(app.buttons["exportChapters"].exists)
+        capture("compact-shared-bar-and-export", app: app)
     }
 }

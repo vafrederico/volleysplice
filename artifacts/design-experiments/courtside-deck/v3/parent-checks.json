@@ -1,0 +1,190 @@
+{
+  "passed": 12,
+  "failed": 0,
+  "method": "Final standalone file in isolated Edge; trusted mouse clicks and wheel after restoring original C1 font weights. Prototype JavaScript unchanged from agent validation.",
+  "checks": [
+    {
+      "name": "all three original C1 font weights decode",
+      "pass": true,
+      "evidence": [
+        {
+          "weight": 400,
+          "loaded": true
+        },
+        {
+          "weight": 500,
+          "loaded": true
+        },
+        {
+          "weight": 600,
+          "loaded": true
+        }
+      ]
+    },
+    {
+      "name": "header layout 360",
+      "pass": true,
+      "evidence": {
+        "overflow": false,
+        "buttons": [
+          {
+            "w": 44,
+            "h": 44
+          },
+          {
+            "w": 44,
+            "h": 44
+          },
+          {
+            "w": 44,
+            "h": 44
+          },
+          {
+            "w": 44,
+            "h": 44
+          }
+        ],
+        "title": "Rally 18",
+        "obsolete": false
+      }
+    },
+    {
+      "name": "header layout 390",
+      "pass": true,
+      "evidence": {
+        "overflow": false,
+        "buttons": [
+          {
+            "w": 44,
+            "h": 44
+          },
+          {
+            "w": 44,
+            "h": 44
+          },
+          {
+            "w": 44,
+            "h": 44
+          },
+          {
+            "w": 44,
+            "h": 44
+          }
+        ],
+        "title": "Rally 18",
+        "obsolete": false
+      }
+    },
+    {
+      "name": "header layout 768",
+      "pass": true,
+      "evidence": {
+        "overflow": false,
+        "buttons": [
+          {
+            "w": 44,
+            "h": 44
+          },
+          {
+            "w": 44,
+            "h": 44
+          },
+          {
+            "w": 44,
+            "h": 44
+          },
+          {
+            "w": 44,
+            "h": 44
+          }
+        ],
+        "title": "Rally 18",
+        "obsolete": false
+      }
+    },
+    {
+      "name": "start-earlier trusted click is exactly 1s",
+      "pass": true,
+      "evidence": {
+        "before": 766200,
+        "after": 765200
+      }
+    },
+    {
+      "name": "start-later trusted click is exactly 1s",
+      "pass": true,
+      "evidence": {
+        "before": 766200,
+        "after": 767200
+      }
+    },
+    {
+      "name": "end-earlier trusted click is exactly 1s",
+      "pass": true,
+      "evidence": {
+        "before": 782800,
+        "after": 781800
+      }
+    },
+    {
+      "name": "end-later trusted click is exactly 1s",
+      "pass": true,
+      "evidence": {
+        "before": 782800,
+        "after": 783800
+      }
+    },
+    {
+      "name": "trusted wheel scrolls list without seeking",
+      "pass": true,
+      "evidence": {
+        "before": {
+          "position": 770400,
+          "selected": "R018",
+          "list": {
+            "scrollTop": 1232,
+            "following": true,
+            "centerRallyId": "R018",
+            "centerPositionMs": 774500
+          },
+          "playTop": "49.3846%"
+        },
+        "after": {
+          "position": 770400,
+          "selected": "R018",
+          "list": {
+            "scrollTop": 1856,
+            "following": false,
+            "centerRallyId": "R026",
+            "centerPositionMs": 1094500
+          },
+          "playTop": "49.3846%",
+          "trusted": true
+        }
+      }
+    },
+    {
+      "name": "second marker follows actual viewport-center rally",
+      "pass": true,
+      "evidence": {
+        "card": "R026",
+        "marker": "R026",
+        "expected": 1094500,
+        "actual": 1094500,
+        "following": false
+      }
+    },
+    {
+      "name": "rail collapse preserves independent list position",
+      "pass": true
+    },
+    {
+      "name": "no runtime exceptions",
+      "pass": true,
+      "evidence": []
+    }
+  ],
+  "limitations": [
+    "Playback remains simulated; touch and screen-reader behavior on physical hardware are unverified."
+  ]
+}

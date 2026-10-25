@@ -1,0 +1,225 @@
+{
+  "currentIteration": "linear-context-verification.json (0.10.31-debug). Build and validation fields below describe the preceding 0.10.29 trim-audit baseline. The 0.10.30 compressed-scale experiment is superseded.",
+  "design": "Courtside Deck C1 v4, implemented with native Compose controls and real project/video data.",
+  "navigation": "Project picker beside the logo with an adjacent trash action; Rallies/Editor/Export pills and Settings share one top bar. Landscape centers the pills and places review controls, included clips and total time at the right. Very narrow portrait windows wrap the same bar into two rows.",
+  "state": "Both layouts use one EditorDraft, score tracking and ExoPlayer. Navigation state is saveable; draft writes flush on Stop.",
+  "timelineIteration": "Replaced preview strips with Editor-style timelines, removed rally-list thumbnails, and kept list following active during continuous seeking.",
+  "seekAndEditIteration": "Timeline drags enable optimized video scrubbing and finish with an exact seek. Edit selected rally remains below the list while Review is a separate action. Source seeking selects the intersected rally; gaps retain the selection.",
+  "serveAndContextIteration": "Not a serve is a visible third serving choice for assigned and unresolved markers. The focused timeline shows the previous and next retained rallies, skips removed or fully excluded neighbors, and keeps its window fixed while trimming.",
+  "sharedControlsIteration": "Playback speed sits right of duration and shares the persisted Editor rate. Both team names open a shared-draft editing dialog. Play/pause uses centered vector geometry. Export exposes the existing MP4, chapters and project-save actions.",
+  "navigationAndTrimIteration": "Focused controls end with Previous rally, Next review and Next rally. Adjacent navigation skips removed rallies without resolving pending decisions. Trimming retains the viewed frame while it remains in the adjusted range and clamps to the nearest edge only when excluded.",
+  "shortWindowIteration": "Compact browser heading, status, legend and footer leave usable list height at 560 by 360 dp. Manual touch-down suspends auto-follow before scrolling. The narrow player pane uses one transport row with its current timestamp over the video.",
+  "playbackNavigationIteration": "Previous rally, Next rally and Next review preserve ExoPlayer playWhenReady, including buffering. They replace the preview stop boundary with the new rally end; paused navigation remains paused. Timeline scrubbing and trimming still pause for frame inspection.",
+  "portraitControlsIteration": "Removed the portrait Editor's duplicate logo/project/settings/More header and its save-video, chapters and project-options actions. Export owns the shared score-overlay toggle, always-visible/fading choices, point-history toggle, MP4, chapters and project-save actions. Export cancellation remains available in Export.",
+  "projectAndSettingsIteration": "The selector wraps the project name plus padding and a fixed adjacent chevron; each project-menu entry retains its analysis/export status. The 44dp trash follows the selector and opens the existing confirmation. Settings contains Project options, version and Reset tutorial. Reset returns to Rallies and starts the twelve-step guided tour.",
+  "seekFreezeInvestigation": {
+    "observedVersion": "0.10.24-debug",
+    "finding": "A stale scrcpy screen-mirroring server retained an encoder buffer pool exceeding 6 GB. The per-buffer size matched the active screen encoder; the app itself had one activity and much smaller memory use.",
+    "encoderPoolBytesObserved": 6152340480,
+    "availableMemoryBeforeKiB": 539464,
+    "availableMemoryAfterStoppingStreamKiB": 6322212,
+    "availableMemoryAfterValidationAndAppReopenKiB": 5548420,
+    "resolution": "Closed the physical Device-panel streams and stopped the exact stale scrcpy server after verifying its process arguments. Memory recovered without a phone reboot. The prior app build then passed its rendered-frame seeking check. Final validation used no live screen stream.",
+    "postValidation": "No scrcpy server remains. The fixture's codecs are released after its process exits. The restored real project uses one HEVC video decoder and one AAC audio decoder, with one activity and about 250301 KiB total app PSS.",
+    "relatedUpstreamReport": "https://github.com/Genymobile/scrcpy/issues/6992",
+    "scope": "This isolates the observed runaway buffer pool and validates repeated synthetic seeks; it does not prove the absence of every possible app or device leak."
+  },
+  "build": {
+    "variant": "debug",
+    "versionName": "0.10.29-debug",
+    "versionCode": 43,
+    "compileSdk": 37,
+    "minSdk": 34,
+    "abis": [
+      "arm64-v8a",
+      "x86_64"
+    ],
+    "apk": "android/app/build/outputs/apk/debug/app-debug.apk",
+    "sha256": "8be13a0d3fb16b929779cb57363b15e2cd6bf7441dcb3f063b5ab490bdf3d5d4",
+    "signatureVerified": true
+  },
+  "validation": {
+    "jvmTests": 249,
+    "jvmFailures": 0,
+    "androidUiTests": 20,
+    "androidUiFailures": 0,
+    "androidUiEmulatorTests": 3,
+    "androidUiPhysicalTests": 20,
+    "portraitResponsiveChecks": 2,
+    "portraitResponsiveWidthsDp": [
+      360,
+      768
+    ],
+    "portraitResponsiveFailures": 0,
+    "validationNotes": "The complete twenty-case class passes in one physical Pixel run on the final APK. All 249 JVM tests and lint pass. Three focused emulator cases cover both merge directions, independently draggable short-core handles with maximum/default padding, and explicit off-view padding context. Earlier interrupted runs were checked for liveness before restarting. Initial emulator capture was obscured by its lock layer; the final emulator capture was repeated after dismissing its nonsecure keyguard and visually inspected. Physical fixture captures are not included in these public artifacts. Screenshot capture now waits for native accessibility idle after the frame commit.",
+    "shortWideUiChecks": 2,
+    "shortWideUiFailures": 0,
+    "shortWideBaselineVersion": "0.10.23-debug",
+    "shortWideWindowDp": [
+      560,
+      360
+    ],
+    "androidVersion": "17",
+    "lint": "passed",
+    "diffWhitespace": "passed",
+    "landscapeRotationChecks": 2,
+    "landscapeRotationFailures": 0,
+    "previousPortraitResponsiveBaseline": {
+      "version": "0.10.25-debug",
+      "widthsDp": [
+        360,
+        390,
+        768
+      ]
+    },
+    "previousFullSuiteBaseline": {
+      "version": "0.10.26-debug",
+      "jvmTests": 243,
+      "jvmFailures": 0,
+      "androidUiTests": 15,
+      "androidUiFailures": 0,
+      "androidUiPhysicalTests": 15,
+      "androidUiEmulatorTests": 3,
+      "portraitResponsiveWidthsDp": [
+        360,
+        768
+      ]
+    },
+    "portraitResponsiveBaselineVersion": "0.10.26-debug"
+  },
+  "installation": {
+    "device": "Google Pixel 10 Pro",
+    "transport": "wireless ADB",
+    "result": "0.10.29-debug installed in place on Pixel. Installed SHA-256 matches the signed local debug APK; app data retained. Only synthetic fixture state is changed by tests and prior app state is restored.",
+    "validationScope": "Current final build: debug assembly, signature/digest verification, lint,249 JVM cases,all20 physical UI cases in one run,and3 focused emulator cases. The full class includes frame rendering, stress seeks, recreation, playback-preserving navigation, shared editing, tutorial, accessibility seeking,and both landscape rotations. Prior narrow/tablet checks remain explicitly versioned baselines.",
+    "dataPreservation": "Physical checks use a temporary synthetic project and restore the prior selected project, layout preference, guided-tour state and global fade preference before deleting their own fixture. Delete confirmation is cancelled during the test. No app uninstall or data reset."
+  },
+  "deviceChecks": [
+    "Keep/remove and bounds edits carry from Rallies to Editor and back.",
+    "Continuous native handle dragging changes the persisted draft.",
+    "Serving-side choices, manual additions and other edits survive activity recreation.",
+    "Source-gap seeking stays in Browse; Cancel creates nothing; explicit Add creates one real manual cut.",
+    "Independent list scrolling moves its diamond without seeking playback; pill switches retain list position.",
+    "Source seeking resumes following while the finger remains down; list/navigation state survives recreation and landscape rotation.",
+    "Physical final-build check: displayed pixels change at focused-timeline seeks, held source-rail seeks and missing-rally source seeks.",
+    "The selected rally opens for editing while another review remains; serving-side and bounds edits persist in the shared draft.",
+    "Visible Not a serve removes assigned and unresolved markers, remains selected across layout switches and recreation, and permits Near/Far to restore a marker.",
+    "Focused context skips removed neighbors on both sides and updates immediately after the selected rally is removed.",
+    "Playback speed and edited team names share Editor's draft and survive activity recreation.",
+    "Project selection, the settings modal and the persistent Export tab open their existing native flows.",
+    "On emulator and physical Pixel, a held trim gesture preserves the playhead while inside the new bounds, clamps when crossed, and applies the same rule to one-second nudges.",
+    "Physical navigation check: repeated Next/Previous taps preserve playback, paused taps remain paused, and Next review continues playback beyond the prior rally's end.",
+    "Physical stress check: six complete held-scrubbing cycles render red, green, blue and yellow source frames, survive six Editor/Rallies round trips and three activity recreations, then resume playback.",
+    "Portrait Editor has one project selector and no duplicate header/settings menu or export controls. Each video-menu entry exposes its status; the trash action opens confirmation and Cancel retains the project.",
+    "Project options, version and tutorial reset are accessible from Settings. Export score/fade/history settings persist across activity recreation, and the fixture restores the prior global fade preference.",
+    "Manual list scrolling and previous/next retained-rally navigation pass in a 560 by 360 dp window. The emulator's original window size is restored after the check.",
+    "A legacy Editor preference no longer overrides the Rallies-first default. Explicit Editor selection survives activity recreation.",
+    "Short project names render without ellipsis at 360 and 768 dp, with an adjacent chevron and trash; selector width follows its content.",
+    "The twelve-step tutorial switches actual views, reveals target controls, survives recreation, preserves the draft, and supports completed/reset/dismissed states.",
+    "Both landscape rotations have one safe top bar, centered pills, trailing review and export metrics, and the full three-pane Editor.",
+    "0.10.27: Review cleanup/clips/serves use smaller two-line labels, follow the clip/time summary, and sit immediately before Settings while the pills remain centered in either landscape rotation."
+  ],
+  "screenshotBaselineVersion": "0.10.23-debug",
+  "portraitIterationScreenshotVersion": "0.10.25-debug",
+  "portraitIterationScreenshots": [
+    "portrait-editor-360.png",
+    "portrait-editor-390.png",
+    "portrait-editor-768.png",
+    "export-options-360.png",
+    "export-options-390.png",
+    "export-options-768.png",
+    "settings-360.png",
+    "project-menu-360.png"
+  ],
+  "screenshots": [
+    "review.png",
+    "browse.png",
+    "landscape.png",
+    "shared-controls.png",
+    "export.png",
+    "narrow-browser.png",
+    "narrow-landscape.png"
+  ],
+  "fonts": "Courtside Sans: renamed, outline-preserving IBM Plex Sans subsets with the original SIL OFL notices included.",
+  "limitations": [
+    "UI checks use a synthetic four-color H.264 video, not private recordings.",
+    "The emulator's hardware H.264 decoder fails during playback; emulator screenshots verify native layout only. Rendered-frame checks pass on the physical Pixel with0.10.29.",
+    "The live physical screen stream was left closed to avoid recreating the observed external encoder leak.",
+    "Visual review used native screenshots and Compose interaction checks; the HTML/browser Taste inspector does not inspect native Compose screens. Long selected project names ellipsize when constrained; project-menu entries show their status separately."
+  ],
+  "ralliesDefaultAndTutorialIteration": "Rallies is the first pill and the default for a new project/session, ignoring the former device-wide layout preference. The selected view survives recreation. Twelve tutorial steps open actual rally tagging, trimming, navigation, all-rallies browsing, source seeking, missing-rally creation, Editor and Export views without changing cuts, reviewed IDs or serves. Empty projects skip controls requiring a rally; unfinished legacy tours migrate to the new first step; completed and dismissed tours remain closed.",
+  "landscapeBarIteration": "Ready Editor and Export have one bar and no duplicate content headers. Safe-drawing, display-cutout and waterfall insets plus outer padding keep both edge controls clear in either landscape rotation. Pills center within the safe area; Cleanup/Clips/Serves review controls, clips included, total time and Settings are on the right. Metrics may scroll in tight wide windows while tabs and Settings stay fixed. Window classification includes the height occupied by the bar to preserve the full landscape editor.",
+  "playerInitializationIteration": "Set the initial playback position with the media item before prepare, avoiding a Media3 timeline race observed during recreation when an immediate post-prepare seek was used.",
+  "ralliesTutorialAndLandscapeScreenshotVersion": "0.10.26-debug",
+  "ralliesTutorialAndLandscapeScreenshots": [
+    "single-landscape-bar.png",
+    "reverse-landscape-bar.png",
+    "project-sized-360.png",
+    "project-sized-768.png",
+    "tour-tagging-360.png",
+    "tour-list-360.png",
+    "tour-add-360.png",
+    "tour-editor-360.png",
+    "tour-export-360.png",
+    "tour-tagging-768.png",
+    "tour-list-768.png",
+    "tour-add-768.png",
+    "tour-editor-768.png",
+    "tour-export-768.png"
+  ],
+  "landscapeReviewPlacementIteration": "The summary wraps its content and aligns to the trailing edge. Clip count and total time precede Review cleanup, Review clips and Review serves, with those buttons immediately before Settings. Count text is 11sp and the two-line review labels are 9sp. Pills retain their geometric center. Overflow scroll starts from the trailing edge so the review controls stay next to Settings.",
+  "trailingReviewScreenshotVersion": "0.10.27-debug",
+  "trailingReviewScreenshots": [
+    "trailing-review-landscape.png",
+    "trailing-review-reverse-landscape.png"
+  ],
+  "auditFollowup": {
+    "reviewedCommit": "0c0f754f79e2da57ca4af29cbd9b638f2dd9b7cb",
+    "findings": [
+      {
+        "severity": "P2",
+        "issue": "Trimming clamped playback to core bounds while retained padding still contained the viewed frame.",
+        "repair": "Clamp in the shared draft callback using the actual updated retained bounds; remove duplicate core-only clamping from dragging and nudges.",
+        "coverage": "Two-second before/after padding, end and start nudges and drags, preserved frames in both padding regions, clamp only when the retained edge excludes the frame."
+      },
+      {
+        "severity": "P2",
+        "issue": "Distant retained neighbours expanded the focused window enough to collapse trim handles.",
+        "repair": "Bound local context around the selection with a proportional margin for short cores; retain far neighbours as labeled edge chevrons.",
+        "coverage": "A five-second selection between distant neighbours retains more than 48dp of handle separation on a 306dp track; removed intermediate rallies and game clipping remain covered. Native short-rally edge-marker screenshot inspected."
+      },
+      {
+        "severity": "P2",
+        "issue": "The Add source timeline could only seek through pointer gestures.",
+        "repair": "WholeTimeline exposes progress range and SetProgress, validates finite values and uses the existing seek callback without creating footage.",
+        "coverage": "Enter Add inside an existing rally, seek a gap through semantics, verify confirmation enables and cuts are unchanged, seek back, reject NaN, then explicitly confirm one new cut."
+      }
+    ]
+  },
+  "auditFollowupScreenshotVersion": "0.10.28-debug",
+  "auditFollowupScreenshots": [
+    "local-context-audit-fix.png"
+  ],
+  "auditRoundTwoFollowup": {
+    "reviewedCommit": "5bbf754f5fc116b742f66af126d6bbb03910362a",
+    "findings": [
+      {
+        "severity": "P2",
+        "issue": "Clamping still used old cut membership when trimming joined the selected rally to a neighbour.",
+        "repair": "Use one current-draft grouping helper for rendering and the post-trim callback, including final materialization, pending review boundaries and active serves. Resolve the new group with the selected cut anchor.",
+        "coverage": "Both previous/start and next/end merge directions preserve a frame inside the newly joined retained range; serving and pending-review separators still prevent joins."
+      },
+      {
+        "severity": "P2",
+        "issue": "Short cores still had overlapping handles when their selected retained padding widened the local scale.",
+        "repair": "Zoom only around the core, with margin min(8s,twice core duration),clipped to source. Label off-view padding and indicate off-view playback explicitly.",
+        "coverage": "500ms core with10s padding and100ms imported core with2s padding retain separate24dp hit regions; both end and start handles are dragged independently through native UI. Core geometry also uses a306dp canvas including44dp insets in JVM checks."
+      }
+    ]
+  },
+  "auditRoundTwoScreenshotVersion": "0.10.29-debug",
+  "auditRoundTwoScreenshots": [
+    "short-core-maximum-padding.png",
+    "short-core-default-padding.png"
+  ]
+}
