@@ -5038,6 +5038,7 @@ private fun EditorScreen(
                             userRemovedSuggestionIds = userRemovedSuggestionIds,
                             userRemoved = selectedRally.cutIds.any { it in userRemovedCleanupCutIds },
                             handlesEnabled = selectedSuggestion == null,
+                            halfHeightCoreHandles = true,
                             onSeek = ::seekTo,
                             onSuggestionSelect = { id ->
                                 activeSuggestions.firstOrNull { it.fragmentId() == id }
@@ -7152,6 +7153,7 @@ private fun FocusTimeline(
     userRemovedSuggestionIds: Set<String>,
     userRemoved: Boolean,
     handlesEnabled: Boolean,
+    halfHeightCoreHandles: Boolean = false,
     onSeek: (Long) -> Unit,
     onSuggestionSelect: (String) -> Unit,
     onStartChange: (Long) -> Unit,
@@ -7273,14 +7275,14 @@ private fun FocusTimeline(
                 )
                 .border(3.dp, Orange, RoundedCornerShape(8.dp)),
         )
-        val coreHandleWidth = 12.dp
+        val coreHandleWidth = if (halfHeightCoreHandles) 44.dp else 12.dp
         val coreHandlePx = with(density) { coreHandleWidth.toPx() }
         Box(
             Modifier
                 .align(Alignment.BottomStart)
                 .offset { IntOffset((xAt(cut.coreStartMs) - coreHandlePx / 2).roundToInt(), 0) }
                 .width(coreHandleWidth)
-                .height(27.dp)
+                .height(if (halfHeightCoreHandles) 44.dp else 27.dp)
                 .semantics { contentDescription = "Adjust rally start at ${preciseTime(cut.coreStartMs)}" }
                 .draggable(
                     orientation = Orientation.Horizontal,
@@ -7288,15 +7290,20 @@ private fun FocusTimeline(
                         onCoreStartChange(cut.coreStartMs + deltaToMs(delta))
                     },
                 )
-                .background(Color.White.copy(alpha = .75f), RoundedCornerShape(6.dp))
-                .border(3.dp, Green, RoundedCornerShape(6.dp)),
-        )
+                .then(if (halfHeightCoreHandles) Modifier else Modifier
+                    .background(Color.White.copy(alpha = .75f), RoundedCornerShape(6.dp))
+                    .border(3.dp, Green, RoundedCornerShape(6.dp))),
+            contentAlignment = Alignment.BottomCenter,
+        ) {
+            if (halfHeightCoreHandles) Box(Modifier.padding(bottom = 2.dp).width(10.dp).height(20.dp)
+                .background(Green, RoundedCornerShape(4.dp)).border(2.dp, Color.White, RoundedCornerShape(4.dp)))
+        }
         Box(
             Modifier
                 .align(Alignment.BottomStart)
                 .offset { IntOffset((xAt(cut.coreEndMs) - coreHandlePx / 2).roundToInt(), 0) }
                 .width(coreHandleWidth)
-                .height(27.dp)
+                .height(if (halfHeightCoreHandles) 44.dp else 27.dp)
                 .semantics { contentDescription = "Adjust rally end at ${preciseTime(cut.coreEndMs)}" }
                 .draggable(
                     orientation = Orientation.Horizontal,
@@ -7304,9 +7311,14 @@ private fun FocusTimeline(
                         onCoreEndChange(cut.coreEndMs + deltaToMs(delta))
                     },
                 )
-                .background(Color.White.copy(alpha = .75f), RoundedCornerShape(6.dp))
-                .border(3.dp, Green, RoundedCornerShape(6.dp)),
-        )
+                .then(if (halfHeightCoreHandles) Modifier else Modifier
+                    .background(Color.White.copy(alpha = .75f), RoundedCornerShape(6.dp))
+                    .border(3.dp, Green, RoundedCornerShape(6.dp))),
+            contentAlignment = Alignment.BottomCenter,
+        ) {
+            if (halfHeightCoreHandles) Box(Modifier.padding(bottom = 2.dp).width(10.dp).height(20.dp)
+                .background(Green, RoundedCornerShape(4.dp)).border(2.dp, Color.White, RoundedCornerShape(4.dp)))
+        }
         }
     }
 }

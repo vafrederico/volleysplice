@@ -767,10 +767,16 @@ class RallyReviewUiInstrumentedTest {
         // Rallies -> existing Editor. Its controls mutate the identical persisted cut.
         pill("Editor").performClick()
         compose.onNodeWithTag("rally-review-workspace").assertDoesNotExist()
+        // The compact handle keeps a full-height drag target above its shorter drawing.
+        compose.onNodeWithContentDescription("Adjust rally start at " + preciseTime(trimmedStart))
+            .performScrollTo().performTouchInput { swipe(center, center - Offset(12f * density, 0f), 400) }
+        awaitDraft(f) { it.cuts.first { c -> c.id == "R001" }.coreStartMs < trimmedStart }
+        val editorTrimmedStart = requireNotNull(f.store.load()).cuts.first { it.id == "R001" }.coreStartMs
+        capture(f, "courtside-half-height-editor.png")
         compose.onNodeWithTag("editor-rally-remove").performScrollTo().performClick()
         awaitDraft(f) { !it.cuts.first { c -> c.id == "R001" }.included }
         pill("Rallies").performClick()
-        compose.onNodeWithTag("rally-start-readout").assertTextEquals("Start " + preciseTime(trimmedStart))
+        compose.onNodeWithTag("rally-start-readout").assertTextEquals("Start " + preciseTime(editorTrimmedStart))
         compose.onNodeWithText("Remove").assertIsSelected()
         compose.onNodeWithTag("rally-next-review").performClick()
         compose.onNodeWithText("Rally 2").assertIsDisplayed()

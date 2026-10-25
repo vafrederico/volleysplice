@@ -440,6 +440,7 @@ struct CourtsideTimeline: View {
                 kept: .init(startMs: selected.keepStartMs, endMs: selected.keepEndMs), bounds: bounds, playhead: playhead,
                 startLabel: "Trim rally start", endLabel: "Trim rally end", startIdentifier: "deckTrimStart", endIdentifier: "deckTrimEnd",
                 contextWindow: RallyReview.context(for: selected, rallies: rallies, effectiveIds: effectiveIds, bounds: bounds),
+                halfHeightHandles: true,
                 onTrim: onTrim) { scale in
                     track(scale)
                 }

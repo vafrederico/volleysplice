@@ -728,7 +728,7 @@ struct EditorWorkspace: View {
                 startLabel: "Rally core start", endLabel: "Rally core end", startIdentifier: "trimStartHandle", endIdentifier: "trimEndHandle",
                 color: EditorPalette.ink,
                 contextWindow: isPhone && !desktop ? TimeRange(startMs: max(bounds.startMs, cut.keepStartMs - 2_000), endMs: min(bounds.endMs, cut.keepEndMs + 2_000)) : nil,
-                onPaddingTrim: isPhone && !desktop && cut.origin == .inferred ? { start, value in setPaddingEdge(isStart: start, value: value) } : nil,
+                halfHeightHandles: isPhone && !desktop,
                 onTrim: { start, value in
                     trim(cut, start: start ? value : cut.coreStartMs, end: start ? cut.coreEndMs : value)
                 }, track: { scale in focusedTrack(cut, window: scale.window) })

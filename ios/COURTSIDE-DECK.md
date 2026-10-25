@@ -64,7 +64,10 @@ native system sans typography. The full Editor retains its established palette.
   automatically to enlarge short cores;
   the one-second buttons remain available for those. The full Editor retains its
   core detail scale on wide layouts. Phone portrait Editor uses one track with
-  core handles below the padding handles on a shared linear scale. Drag translation uses the original boundary and a
+  half-height rally core handles; padding is displayed and configured through
+  Settings. Both Rallies workspaces and Android portrait Editor use the same
+  half-height handle treatment, keeping their full-height touch areas.
+  Drag translation uses the original boundary and a
   frozen scale, so touching away from the center cannot jump the edge.
 - Trim writes reconcile the current presentation before resolving the selected
   group's retained range. Joining a previous or next rally preserves a frame in

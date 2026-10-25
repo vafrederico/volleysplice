@@ -666,8 +666,8 @@ private fun RallyBoundsTimeline(
                     Size((x(cut.coreEndMs) - x(cut.coreStartMs)).coerceAtLeast(1f), 20.dp.toPx()), CornerRadius(3.dp.toPx()))
             }
             listOf(a, b).forEach { at ->
-                drawRoundRect(Color.White, Offset(at - 5.dp.toPx(), 18.dp.toPx()), Size(10.dp.toPx(), 44.dp.toPx()), CornerRadius(3.dp.toPx()))
-                drawRoundRect(Green, Offset(at - 3.dp.toPx(), 19.dp.toPx()), Size(6.dp.toPx(), 42.dp.toPx()), CornerRadius(2.dp.toPx()))
+                drawRoundRect(Color.White, Offset(at - 5.dp.toPx(), 34.dp.toPx()), Size(10.dp.toPx(), 28.dp.toPx()), CornerRadius(3.dp.toPx()))
+                drawRoundRect(Green, Offset(at - 3.dp.toPx(), 36.dp.toPx()), Size(6.dp.toPx(), 24.dp.toPx()), CornerRadius(2.dp.toPx()))
             }
             val p = x(positionMs)
             drawLine(Orange, Offset(p, 0f), Offset(p, size.height), 2.dp.toPx())
