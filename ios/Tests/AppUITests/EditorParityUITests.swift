@@ -32,9 +32,10 @@ final class EditorParityUITests: XCTestCase {
         app.launch()
         let skip = app.buttons["tutorialSkip"]
         if skip.waitForExistence(timeout: 5) { skip.tap() }
-        XCTAssertTrue(app.buttons["reviewCleanup"].waitForExistence(timeout: 30), app.debugDescription)
+        XCTAssertTrue(app.buttons["editorSettings"].waitForExistence(timeout: 30), app.debugDescription)
         if skip.exists { skip.tap() }
         app.buttons["workspace-editor-tab"].tap()
+        XCTAssertTrue(app.buttons["reviewCleanup"].waitForExistence(timeout: 15), app.debugDescription)
         return app
     }
     @MainActor private func wait(_ element: XCUIElement, predicate: String, _ arguments: Any..., file: StaticString = #filePath, line: UInt = #line) {
@@ -132,7 +133,8 @@ final class EditorParityUITests: XCTestCase {
 
     @MainActor func testQueueEntryCanBeRemovedWithoutPausingEverything() {
         let app = launchFixture(extra: ["--parity-queue"]); defer { app.terminate() }
-        app.buttons["processingQueueBar"].tap()
+        app.buttons["editorSettings"].tap()
+        app.buttons["editorProcessingQueue"].tap()
         let remove = app.buttons["removeJob-00000000-0000-4000-8000-000000000023"]
         XCTAssertTrue(remove.waitForExistence(timeout: 15))
         remove.tap()

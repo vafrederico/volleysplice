@@ -24,11 +24,27 @@ final class PhoneTestLayoutTests: XCTestCase {
         XCTAssertEqual(layout.width, 390); XCTAssertEqual(layout.height, 844)
     }
     func testPhoneAutomaticScaleMatchesNativePhoneInBothOrientations() {
+        for device in PhoneTestDevice.allCases {
         for landscape in [false, true] {
-            let layout = PhoneTestLayout(landscape: landscape)
+            let layout = PhoneTestLayout(landscape: landscape, device: device)
             XCTAssertEqual(InterfaceScale.automatic(isPhone: true, width: layout.width, height: layout.height), landscape ? 0.75 : 1)
             XCTAssertEqual(EditorLayout.mode(width: layout.contentWidth / (landscape ? 0.75 : 1),
                 height: layout.contentHeight / (landscape ? 0.75 : 1)), landscape ? .desktop : .compact)
         }
+        }
+    }
+    func testEveryPresetRotatesAndKeepsPositiveSafeContent() {
+        for device in PhoneTestDevice.allCases {
+            let portrait = PhoneTestLayout(landscape: false, device: device)
+            let landscape = PhoneTestLayout(landscape: true, device: device)
+            XCTAssertEqual(portrait.width, landscape.height)
+            XCTAssertEqual(portrait.height, landscape.width)
+            XCTAssertGreaterThan(portrait.contentHeight, 0)
+            XCTAssertGreaterThan(landscape.contentWidth, 0)
+            XCTAssertEqual(landscape.leading + landscape.contentWidth + landscape.trailing, landscape.width)
+        }
+        XCTAssertEqual(PhoneTestLayout(landscape: false, device: .se3).contentHeight, 647)
+        XCTAssertEqual(PhoneTestLayout(landscape: true, device: .se3).contentWidth, 667)
+        XCTAssertEqual(PhoneTestDevice(storedValue: "obsolete"), .iphone13)
     }
 }

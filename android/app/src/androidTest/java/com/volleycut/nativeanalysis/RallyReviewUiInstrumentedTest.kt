@@ -104,6 +104,30 @@ class RallyReviewUiInstrumentedTest {
             }, error)
         }
     }
+    @Test
+    fun ralliesSharesVideoOverlayOptionsAndPortraitEditorOmitsRetiredActions() = withProject(configureDraft = {
+        it.copy(renderScoreOverlay = true, renderScoreTimeline = true, fadeScoreOverlay = false)
+    }) { f ->
+        compose.waitUntil(8_000) { compose.onNodeWithTag("rally-score-overlay", useUnmergedTree = true).isDisplayed() }
+        compose.onNodeWithTag("rally-score-overlay", useUnmergedTree = true).assertIsDisplayed()
+        capture(f, "courtside-score-overlay.png")
+        pill("Export").performClick()
+        compose.onNodeWithTag("export-render-scores").performClick()
+        awaitDraft(f) { !it.renderScoreOverlay && !it.renderScoreTimeline }
+        pill("Rallies").performClick()
+        compose.onNodeWithTag("rally-score-overlay", useUnmergedTree = true).assertDoesNotExist()
+        pill("Export").performClick()
+        compose.onNodeWithTag("export-render-scores").performClick()
+        awaitDraft(f) { it.renderScoreOverlay }
+        pill("Rallies").performClick()
+        compose.onNodeWithTag("rally-score-overlay", useUnmergedTree = true).assertIsDisplayed()
+        pill("Editor").performClick()
+        compose.onNodeWithTag("editor-rally-remove").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Split at playhead").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Preview rally").assertDoesNotExist()
+        compose.onNodeWithText("Reset extra time").assertDoesNotExist()
+        capture(f, "courtside-portrait-current-rally.png")
+    }
     private fun pill(text: String) = compose.onNode(hasText(text) and hasClickAction())
     private fun detailScale(f: Fixture, cutId: String = "R001"): RallyTimelineScale {
         val draft = requireNotNull(f.store.load())

@@ -26,10 +26,10 @@ final class EditorTutorialUITests: XCTestCase {
         toggle.tap()
         let enabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "1"), object: toggle)
         XCTAssertEqual(XCTWaiter.wait(for: [enabled], timeout: 15), .completed)
-        XCTAssertTrue(app.buttons["processingQueueBar"].waitForExistence(timeout: 15))
         toggle.tap(); toggle.tap()
         XCTAssertFalse(app.alerts["Unable to complete"].exists)
-        app.buttons["processingQueueBar"].tap()
+        app.buttons["editorSettings"].tap()
+        app.buttons["editorProcessingQueue"].tap()
         let name = "ios-parity-deferred-score.mp4"
         let rows = app.cells.containing(.staticText, identifier: name)
         let queued = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in

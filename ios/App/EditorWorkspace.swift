@@ -100,6 +100,8 @@ struct EditorWorkspace: View {
     @State private var playerChromeHeight: CGFloat = 82
     @State private var overviewHeight: CGFloat = 212
     @State private var serveReviewReveal = 0
+    @State private var compactReviewReveal = 0
+    @State private var compactReviewTarget = "compact-current-rally"
     @AppStorage(GuidedTourStore.key) private var tourState = ""
     @Environment(\.interfaceScale) private var interfaceScale
     @Environment(\.phoneTestLayout) private var phoneTest
@@ -190,7 +192,9 @@ struct EditorWorkspace: View {
                     portrait: geometry.size.height > safeWidth, included: keptRallyCount,
                     duration: time(EditorMath.totalFinalMs(intervals)), layoutDescription: desktop ? "Wide workspace" : "Compact workspace", cleanup: presentation.pendingCleanup.count,
                     clips: reviewCuts.count, serves: score.enabled ? reviewServes.count : 0,
-                    onCleanup: nextCleanup, onClips: nextReview, onServes: nextServeReview,
+                    onCleanup: { nextCleanup(); revealCompactReview("compact-current-rally") },
+                    onClips: { nextReview(); revealCompactReview("compact-current-rally") },
+                    onServes: { nextServeReview(); revealCompactReview("compact-review") },
                     onSettings: { settings = true }, onDelete: { deleteConfirmation = true }, projectItems: { projectMenuItems })
                     .padding(.leading, landscapeInsets.leading).padding(.trailing, landscapeInsets.trailing)
                 if stage == .rallies {
@@ -312,6 +316,7 @@ struct EditorWorkspace: View {
             }, video: {
                 ZStack {
                     SourcePlayerView(player: player).contentShape(Rectangle()).onTapGesture { togglePlay() }
+                    videoScoreOverlay
                     if player.currentItem == nil {
                         VStack(spacing: 12) {
                             Text("Reconnect the source video to enable playback.").font(.callout).foregroundStyle(.white)
@@ -463,10 +468,6 @@ struct EditorWorkspace: View {
                     compactSourceCard
                     compactCard { scoreSection(desktop: false).guidedTourTarget("editor-score-panel") }.id("compact-review")
                     videoSection(desktop: false)
-                    Toggle("Play only final cut", isOn: Binding(get: { draft.finalPreviewEnabled }, set: { value in
-                        edit { $0.finalPreviewEnabled = value }; lastPreviewSeek = -1
-                    })).font(.system(size: 13)).accessibilityIdentifier("finalCutPreview")
-                    compactReviewQueues { target in proxy.scrollTo(target, anchor: .top) }.guidedTourTarget("editor-review-queues")
                     compactCard { gameTimeline(twoRows: true) }
                     compactCard { currentClipControls(desktop: false) }.id("compact-current-rally")
                     compactCard { rangeTools.guidedTourTarget("editor-marking") }
@@ -475,6 +476,7 @@ struct EditorWorkspace: View {
                 }.padding(.horizontal, 16).padding(.vertical, 12)
             }
                 .onChange(of: selectedSuggestionId) { _, id in if id != nil { proxy.scrollTo("compact-current-rally", anchor: .top) } }
+                .onChange(of: compactReviewReveal) { _, _ in proxy.scrollTo(compactReviewTarget, anchor: .top) }
                 .onChange(of: tourState) { _, _ in revealTutorial(using: proxy) }
                 .onAppear { revealTutorial(using: proxy) }
         }
@@ -504,24 +506,12 @@ struct EditorWorkspace: View {
                     }
                 }
                 Label("Saved on this device", systemImage: "circle.fill").font(.system(size: 10)).foregroundStyle(EditorPalette.green)
+                finalCutPreview.font(.system(size: 13))
             }
         }
     }
-    private func compactReviewQueues(scrollTo: @escaping (String) -> Void) -> some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) { compactQueueButtons(scrollTo: scrollTo) }
-            VStack(spacing: 8) { compactQueueButtons(scrollTo: scrollTo) }
-        }
-    }
-    @ViewBuilder private func compactQueueButtons(scrollTo: @escaping (String) -> Void) -> some View {
-        compactQueueButton("Review cleanup", count: presentation.pendingCleanup.count, identifier: "reviewCleanup") { nextCleanup(); scrollTo("compact-current-rally") }
-        compactQueueButton("Review clips", count: reviewCuts.count, identifier: "reviewClips") { nextReview(); scrollTo("compact-current-rally") }
-        compactQueueButton("Review serves", count: score.enabled ? reviewServes.count : 0, identifier: "reviewServes") { nextServeReview(); scrollTo("compact-review") }
-    }
-    private func compactQueueButton(_ title: String, count: Int, identifier: String, action: @escaping () -> Void) -> some View {
-        Button("\(title) · \(count)", action: action).font(.system(size: 11, weight: .semibold)).fixedSize(horizontal: true, vertical: false)
-            .buttonStyle(EditorActionButtonStyle(background: count > 0 ? (identifier == "reviewCleanup" ? EditorPalette.cleanupReview : EditorPalette.clipReview) : EditorPalette.rail.opacity(0.4), foreground: EditorPalette.ink, minimumHeight: 44))
-            .disabled(count == 0).accessibilityLabel("\(title) \(count)").accessibilityIdentifier(identifier)
+    private func revealCompactReview(_ target: String) {
+        compactReviewTarget = target; compactReviewReveal += 1
     }
     private func resizeDivider(label: String, identifier: String, action: @escaping (Double, Bool) -> Void) -> some View {
         Color.clear.frame(width: 16).overlay { Rectangle().fill(EditorPalette.rail).frame(width: 1) }
@@ -550,17 +540,7 @@ struct EditorWorkspace: View {
                         }
                     }.frame(maxWidth: .infinity, maxHeight: .infinity).padding(16)
                 }
-                if score.enabled && draft.renderScoreOverlay {
-                    GeometryReader { geometry in
-                        let sourceSize = player.currentItem?.presentationSize ?? .zero
-                        let aspect = sourceSize.width > 0 && sourceSize.height > 0 ? sourceSize.width / sourceSize.height : 16.0 / 9.0
-                        let width = min(geometry.size.width, geometry.size.height * aspect)
-                        let height = width / aspect
-                        ScoreOverlayPreview(prepared: preparedOverlay, sourceTimestampMs: playheadMs, renderTimeline: draft.renderScoreTimeline, fadeScoreOverlay: fadeScoreOverlay)
-                            .frame(width: width, height: height)
-                            .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
-                    }.allowsHitTesting(false)
-                }
+                videoScoreOverlay
             }.frame(height: height)
             VStack(spacing: 8) {
             if !phoneLandscape { videoResizeHandle(height: height, preferredHeight: preferredHeight, desktop: desktop, availableHeight: availableHeight, phoneLandscape: false) }
@@ -641,7 +621,7 @@ struct EditorWorkspace: View {
                 timeline(range: .init(startMs: bounds.startMs, endMs: midpoint), identifier: "gameTimelineFirst", trackHeight: trackHeight).guidedTourTarget("editor-overview")
                 timeline(range: .init(startMs: midpoint, endMs: bounds.endMs), identifier: "gameTimelineSecond", trackHeight: trackHeight)
             } else { timeline(range: bounds, identifier: "gameTimeline", trackHeight: trackHeight).guidedTourTarget("editor-overview") }
-            TimelineLegend(modelName: ProjectArchive.rallyModel(project.feedback).displayName).accessibilityIdentifier("timelineLegend")
+            TimelineLegend().accessibilityIdentifier("timelineLegend")
         }
     }
     private func timeline(range: TimeRange, identifier: String, trackHeight: CGFloat = 60) -> some View {
@@ -661,7 +641,20 @@ struct EditorWorkspace: View {
     }
     private func currentClipControls(desktop: Bool) -> some View {
         VStack(alignment: .leading, spacing: isPhone ? 6 : 10) {
-            HStack { sectionHeading("CURRENT RALLY", color: EditorPalette.green); Spacer(); Text(currentCut?.id ?? "—").font(.system(size: 11, weight: .bold, design: .monospaced)).foregroundStyle(EditorPalette.orange) }
+            HStack {
+                sectionHeading("CURRENT RALLY", color: EditorPalette.green)
+                Spacer(minLength: 4)
+                if isPhone && !desktop {
+                    Button("‹") { navigateRally(-1) }.disabled(currentGroupIndex <= 0)
+                        .accessibilityLabel("Previous rally").accessibilityIdentifier("previousRally")
+                    Text("\(max(0, currentGroupIndex + 1))/\(rallyGroups.count)").font(.caption.monospaced())
+                    Button("›") { navigateRally(1) }.disabled(currentGroupIndex < 0 || currentGroupIndex >= rallyGroups.count - 1)
+                        .accessibilityLabel("Next rally").accessibilityIdentifier("nextRally")
+                } else {
+                    Text(currentCut?.id ?? "—").font(.system(size: 11, weight: .bold, design: .monospaced)).foregroundStyle(EditorPalette.orange)
+                }
+            }.buttonStyle(EditorActionButtonStyle(background: EditorPalette.paper, foreground: EditorPalette.ink))
+            if desktop || !isPhone {
             HStack(spacing: isPhone ? 4 : 8) {
                 if isPhone && desktop {
                     Text(currentCut.map { "\(time($0.keepStartMs, precise: true))–\(time($0.keepEndMs, precise: true))" } ?? "—")
@@ -676,12 +669,13 @@ struct EditorWorkspace: View {
                 }
                 Button(desktop ? "›" : "Next") { navigateRally(1) }.disabled(currentGroupIndex < 0 || currentGroupIndex >= rallyGroups.count - 1).accessibilityLabel("Next rally").accessibilityIdentifier("nextRally")
             }.buttonStyle(EditorActionButtonStyle(background: EditorPalette.paper, foreground: EditorPalette.ink)).font(isPhone ? .system(size: 11) : .caption)
+            }
             if let cleanup = selectedCleanup { cleanupControls(cleanup) }
             if let cut = currentCut {
                 if desktop && !isPhone {
                     Text("\(time(cut.keepStartMs, precise: true))–\(time(cut.keepEndMs, precise: true))")
                         .font(.system(.caption, design: .monospaced)).accessibilityIdentifier("currentRallyRange")
-                } else if !desktop {
+                } else if !desktop && !isPhone {
                     Text("\(time(cut.coreStartMs, precise: true)) – \(time(cut.coreEndMs, precise: true)) · \(Int(cut.confidence * 100))%")
                         .font(.system(.caption, design: .monospaced)).accessibilityIdentifier("currentRallyRange")
                 }
@@ -698,7 +692,7 @@ struct EditorWorkspace: View {
                     Button(desktop ? "Set start" : "Set rally start here") { trim(cut, start: playheadMs, end: cut.coreEndMs) }.disabled(playheadMs > cut.coreEndMs - 100).accessibilityIdentifier("setRallyStart")
                     Button(desktop ? "Set end" : "Set rally end here") { trim(cut, start: cut.coreStartMs, end: playheadMs) }.disabled(playheadMs < cut.coreStartMs + 100).accessibilityIdentifier("setRallyEnd")
                 }.buttonStyle(EditorActionButtonStyle(background: EditorPalette.paper, foreground: EditorPalette.ink, expand: true))
-                if !desktop {
+                if !desktop && !isPhone {
                 HStack {
                     Button("Start −0.1") { trim(cut, start: cut.coreStartMs - 100, end: cut.coreEndMs) }.accessibilityIdentifier("nudgeStartEarlier")
                     Button("Start +0.1") { trim(cut, start: cut.coreStartMs + 100, end: cut.coreEndMs) }.accessibilityIdentifier("nudgeStartLater")
@@ -714,15 +708,9 @@ struct EditorWorkspace: View {
                         split.reviewedCutIds.remove(member.id); replaceDraft(split)
                     }
                 }.buttonStyle(EditorActionButtonStyle(background: EditorPalette.green, foreground: .white, expand: true)).disabled(!(currentGroup?.cuts.contains { playheadMs >= $0.coreStartMs + 100 && playheadMs <= $0.coreEndMs - 100 } ?? false)).accessibilityIdentifier("splitRally")
-                if !desktop {
-                Button("Preview rally") { previewRally(cut) }.buttonStyle(EditorActionButtonStyle(background: EditorPalette.paper, foreground: EditorPalette.ink)).disabled(player.currentItem == nil).accessibilityIdentifier("previewRally")
-                if cut.origin == .inferred {
-                    Button("Reset extra time") { replaceDraft(EditorMath.resetExtraTime(draft, cutIds: currentGroup?.cutIds ?? [cut.id], bounds: bounds)) }
-                        .buttonStyle(EditorActionButtonStyle(background: EditorPalette.paper, foreground: EditorPalette.ink)).accessibilityIdentifier("resetExtraTime")
-                } else {
+                if !desktop && cut.origin == .manual {
                     Button("Delete manual rally", role: .destructive) { replaceDraft(EditorMath.deleteManualCuts(draft, cutIds: currentGroup?.cutIds ?? [cut.id])) }
                         .buttonStyle(EditorActionButtonStyle(background: EditorPalette.paper, foreground: EditorPalette.ink)).accessibilityIdentifier("deleteManualRally")
-                }
                 }
             } else if selectedCleanup == nil { Text("No rallies. Add a clip below.").font(.callout) }
         }
@@ -749,15 +737,18 @@ struct EditorWorkspace: View {
     }
     private func focusedTimeline(_ cut: EditableCut, desktop: Bool) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Rally core").font(.system(size: 11, weight: .semibold)).foregroundStyle(EditorPalette.muted)
+            if desktop || !isPhone { Text("Rally core").font(.system(size: 11, weight: .semibold)).foregroundStyle(EditorPalette.muted) }
             CoreTrimSurface(core: .init(startMs: cut.coreStartMs, endMs: cut.coreEndMs),
                 kept: .init(startMs: cut.keepStartMs, endMs: cut.keepEndMs), bounds: bounds, playhead: playheadMs,
                 startLabel: "Rally core start", endLabel: "Rally core end", startIdentifier: "trimStartHandle", endIdentifier: "trimEndHandle",
-                color: EditorPalette.ink, onTrim: { start, value in
+                color: EditorPalette.ink,
+                contextWindow: isPhone && !desktop ? TimeRange(startMs: max(bounds.startMs, cut.keepStartMs - 2_000), endMs: min(bounds.endMs, cut.keepEndMs + 2_000)) : nil,
+                onPaddingTrim: isPhone && !desktop && cut.origin == .inferred ? { start, value in setPaddingEdge(isStart: start, value: value) } : nil,
+                onTrim: { start, value in
                     trim(cut, start: start ? value : cut.coreStartMs, end: start ? cut.coreEndMs : value)
                 }, track: { scale in focusedTrack(cut, window: scale.window) })
                 .id(currentGroup?.cutIds.sorted() ?? [cut.id])
-            if cut.origin == .inferred {
+            if cut.origin == .inferred && (desktop || !isPhone) {
                 Text("Extra time").font(.system(size: 11, weight: .semibold)).foregroundStyle(EditorPalette.muted)
                 CoreTrimSurface(core: .init(startMs: cut.keepStartMs, endMs: cut.keepEndMs),
                     kept: .init(startMs: cut.keepStartMs, endMs: cut.keepEndMs), bounds: bounds, playhead: playheadMs,
@@ -825,11 +816,27 @@ struct EditorWorkspace: View {
         onSave()
         onExportVideo()
     }
+    @ViewBuilder private var videoScoreOverlay: some View {
+        if score.enabled && draft.renderScoreOverlay {
+            GeometryReader { geometry in
+                let sourceSize = player.currentItem?.presentationSize ?? .zero
+                let aspect = sourceSize.width > 0 && sourceSize.height > 0 ? sourceSize.width / sourceSize.height : 16.0 / 9.0
+                let width = min(geometry.size.width, geometry.size.height * aspect)
+                ScoreOverlayPreview(prepared: preparedOverlay, sourceTimestampMs: playheadMs, renderTimeline: draft.renderScoreTimeline, fadeScoreOverlay: fadeScoreOverlay)
+                    .frame(width: width, height: width / aspect)
+                    .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
+            }.allowsHitTesting(false).accessibilityIdentifier("videoScoreOverlay")
+        }
+    }
+    private var finalCutPreview: some View {
+        Toggle("Play only final video", isOn: Binding(get: { draft.finalPreviewEnabled }, set: { value in
+            edit { $0.finalPreviewEnabled = value }; lastPreviewSeek = -1
+        })).accessibilityIdentifier("finalCutPreview")
+    }
     private var playbackOptions: some View {
         VStack(alignment: .leading, spacing: 10) {
             sectionHeading("PLAYBACK")
-            Toggle("Play only final cut", isOn: Binding(get: { draft.finalPreviewEnabled }, set: { value in edit { $0.finalPreviewEnabled = value }; lastPreviewSeek = -1 }))
-                .accessibilityIdentifier("finalCutPreview")
+            finalCutPreview
             Divider().padding(.vertical, 6)
             sectionHeading("VIDEO OVERLAY")
             Toggle("Render scores", isOn: Binding(get: { draft.renderScoreOverlay }, set: { value in edit { $0.renderScoreOverlay = value; if !value { $0.renderScoreTimeline = false } } }))
@@ -939,7 +946,7 @@ struct EditorWorkspace: View {
                     Button("⇄ Add team switch") { editScore { $0 = ScoreReducer.addSideSwitch($0, timestampMs: playheadMs) } }
                         .buttonStyle(EditorActionButtonStyle(background: EditorPalette.green, foreground: .white, expand: true)).accessibilityIdentifier("addSideSwitch")
                 }.font(isPhone ? .system(size: 11) : .caption)
-                if derivedScore.reviewPointCount > 0 { Text("\(derivedScore.reviewPointCount) points need review").font(.caption.bold()).foregroundStyle(EditorPalette.warning) }
+                if derivedScore.reviewPointCount > 0 && (desktop || !isPhone) { Text("\(derivedScore.reviewPointCount) points need review").font(.caption.bold()).foregroundStyle(EditorPalette.warning) }
             }
         }
     }
@@ -1212,11 +1219,6 @@ struct EditorWorkspace: View {
         guard rallyGroups.indices.contains(target) else { return }
         seek(rallyGroups[target].keepStartMs)
     }
-    private func previewRally(_ cut: EditableCut) {
-        edit { $0.finalPreviewEnabled = false }
-        seek(cut.keepStartMs); previewEndMs = cut.keepEndMs
-        player.playImmediately(atRate: draft.playbackRate); playing = true
-    }
     private func nextReview() {
         let remaining = reviewCuts.filter { $0.id != currentCut?.id }
         guard let next = remaining.first(where: { $0.keepStartMs >= playheadMs }) ?? remaining.first ?? reviewCuts.first,
@@ -1417,12 +1419,10 @@ private struct SidebarMarkerList: View {
 }
 
 private struct TimelineLegend: View {
-    var modelName: String
     @State private var contentHeight: CGFloat = 28
     var body: some View {
         ScrollView(.horizontal) {
             HStack(spacing: 14) {
-                Text(modelName).font(.system(size: 10, weight: .semibold)).foregroundStyle(EditorPalette.muted)
                 item("Rally core") { block(EditorPalette.green) }
                 item("Padding") { block(EditorPalette.rail) }
                 item("Needs review") { block(EditorPalette.orange) }

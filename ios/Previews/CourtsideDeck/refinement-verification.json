@@ -1,0 +1,310 @@
+{
+  "validationDate": "2026-10-24",
+  "ios": {
+    "version": "1.0.0",
+    "build": 3,
+    "debugInstalled": true,
+    "portableXCTest": {
+      "passed": 207,
+      "failed": 0
+    },
+    "nativeRuntime": "Physical iPad, iPadOS 26.6.2; WDA-driven native controls",
+    "targetedChecksPassed": 32,
+    "workspaceChecks": {
+      "phone-portrait": [
+        {
+          "check": "Rallies displays video score overlay; Queue strip removed",
+          "result": "passed"
+        },
+        {
+          "check": "Phone score strip is 30pt and above the video",
+          "result": "passed"
+        },
+        {
+          "check": "Full-width top review buttons have complete labels, equal widths and no duplicates; playback option in Now reviewing",
+          "result": "passed"
+        },
+        {
+          "check": "Compact current-rally heading and one combined trim track; redundant metadata, nudges and retired actions absent",
+          "result": "passed"
+        },
+        {
+          "check": "Combined core handle drag persists to Rallies",
+          "result": "passed"
+        },
+        {
+          "check": "Combined padding handle drag edits retained edge independently",
+          "result": "passed"
+        },
+        {
+          "check": "Selected rally kept matches Editor timeline fill",
+          "result": "passed",
+          "pixel": [
+            47,
+            104,
+            85
+          ]
+        },
+        {
+          "check": "Selected rally removed matches Editor timeline fill",
+          "result": "passed",
+          "pixel": [
+            101,
+            118,
+            111
+          ]
+        },
+        {
+          "check": "Selected rally kept-again matches Editor timeline fill",
+          "result": "passed",
+          "pixel": [
+            47,
+            104,
+            85
+          ]
+        },
+        {
+          "check": "Export scores-off hides Rallies video overlay",
+          "result": "passed"
+        },
+        {
+          "check": "Export scores-on restores Rallies video overlay",
+          "result": "passed"
+        },
+        {
+          "check": "Layout remains usable after workspace changes and overlay toggles",
+          "result": "passed"
+        }
+      ],
+      "ipad-landscape": [
+        {
+          "check": "Rallies displays video score overlay; Queue strip removed",
+          "result": "passed"
+        },
+        {
+          "check": "Landscape metrics and three multiline review buttons sit right of pills and left of Settings",
+          "result": "passed"
+        },
+        {
+          "check": "Video separator drags and increases video width",
+          "result": "passed",
+          "before": 56,
+          "after": 64
+        },
+        {
+          "check": "Resizable divider also works in browser and preserves player and edit control",
+          "result": "passed"
+        },
+        {
+          "check": "Export scores-off hides Rallies video overlay",
+          "result": "passed"
+        },
+        {
+          "check": "Export scores-on restores Rallies video overlay",
+          "result": "passed"
+        },
+        {
+          "check": "Layout remains usable after workspace changes and overlay toggles",
+          "result": "passed"
+        }
+      ],
+      "ipad-portrait": [
+        {
+          "check": "Rallies displays video score overlay; Queue strip removed",
+          "result": "passed"
+        },
+        {
+          "check": "Layout remains usable after workspace changes and overlay toggles",
+          "result": "passed"
+        }
+      ]
+    },
+    "phonePresetChecks": [
+      {
+        "check": "iPhone SE (3rd gen) viewport and Editor/Rallies controls in portrait",
+        "result": "passed",
+        "points": "375 \u00d7 667"
+      },
+      {
+        "check": "iPhone SE (3rd gen) viewport and Editor/Rallies controls in landscape",
+        "result": "passed",
+        "points": "667 \u00d7 375"
+      },
+      {
+        "check": "iPhone 13 / 14 viewport and Editor/Rallies controls in portrait",
+        "result": "passed",
+        "points": "390 \u00d7 844"
+      },
+      {
+        "check": "iPhone 13 / 14 viewport and Editor/Rallies controls in landscape",
+        "result": "passed",
+        "points": "844 \u00d7 390"
+      },
+      {
+        "check": "iPhone 16 Pro viewport and Editor/Rallies controls in portrait",
+        "result": "passed",
+        "points": "402 \u00d7 874"
+      },
+      {
+        "check": "iPhone 16 Pro viewport and Editor/Rallies controls in landscape",
+        "result": "passed",
+        "points": "874 \u00d7 402"
+      },
+      {
+        "check": "iPhone 16 Pro Max viewport and Editor/Rallies controls in portrait",
+        "result": "passed",
+        "points": "440 \u00d7 956"
+      },
+      {
+        "check": "iPhone 16 Pro Max viewport and Editor/Rallies controls in landscape",
+        "result": "passed",
+        "points": "956 \u00d7 440"
+      },
+      {
+        "check": "Default phone preset restored; normal iPad layout restored",
+        "result": "passed"
+      }
+    ],
+    "smallScreenControls": [
+      {
+        "check": "Smallest preset scrolls Keep and Far into view and applies both actions",
+        "result": "passed",
+        "orientation": "portrait"
+      },
+      {
+        "check": "Smallest preset scrolls Keep and Far into view and applies both actions",
+        "result": "passed",
+        "orientation": "landscape"
+      }
+    ],
+    "releaseGuard": {
+      "version": "1.0.0",
+      "build": 3,
+      "debugPositiveControl": {
+        "debug.testAsIPhone": true,
+        "debug.phoneTestDevice": true,
+        "--device-ui-fixture": true,
+        "Test as iPhone": true,
+        "Developer testing": true,
+        "DebugTouchCapture": false,
+        "debug.trimProbe": false
+      },
+      "releaseStringsPresent": {
+        "debug.testAsIPhone": false,
+        "debug.phoneTestDevice": false,
+        "--device-ui-fixture": false,
+        "Test as iPhone": false,
+        "Developer testing": false,
+        "DebugTouchCapture": false,
+        "debug.trimProbe": false
+      },
+      "releaseGuardPassed": true,
+      "deviceFamilies": [
+        1,
+        2
+      ],
+      "iPadOrientations": [
+        "UIInterfaceOrientationPortrait",
+        "UIInterfaceOrientationPortraitUpsideDown",
+        "UIInterfaceOrientationLandscapeLeft",
+        "UIInterfaceOrientationLandscapeRight"
+      ],
+      "iPadRequiresFullScreen": false,
+      "releaseInstall": false
+    }
+  },
+  "android": {
+    "version": "0.10.33-debug",
+    "versionCode": 47,
+    "jvmTests": {
+      "passed": 250,
+      "failed": 0
+    },
+    "physicalPixelChecks": {
+      "passed": 2,
+      "tests": [
+        "Video timelines seek and render the expected frames; selected rally opens for editing",
+        "Rallies score overlay follows Export options; portrait Editor omits Preview rally and Reset extra time"
+      ]
+    },
+    "pixelDebugInstalled": true,
+    "emulator": "Video-seek check failed with MediaCodec queue/flush errors and black frames; playback qualification uses the physical Pixel."
+  },
+  "phoneViewports": [
+    {
+      "model": "iPhone SE (3rd gen)",
+      "portraitPoints": [
+        375,
+        667
+      ],
+      "landscapePoints": [
+        667,
+        375
+      ]
+    },
+    {
+      "model": "iPhone 13 / 14",
+      "portraitPoints": [
+        390,
+        844
+      ],
+      "landscapePoints": [
+        844,
+        390
+      ]
+    },
+    {
+      "model": "iPhone 16 Pro",
+      "portraitPoints": [
+        402,
+        874
+      ],
+      "landscapePoints": [
+        874,
+        402
+      ]
+    },
+    {
+      "model": "iPhone 16 Pro Max",
+      "portraitPoints": [
+        440,
+        956
+      ],
+      "landscapePoints": [
+        956,
+        440
+      ]
+    }
+  ],
+  "statePreservation": {
+    "priorSessionBackupFiles": 5,
+    "projectFilesCompared": 3,
+    "projectsByteIdenticalToPriorSessionBackup": 2,
+    "projectWithEditsPredatingInstallation": 1,
+    "matchingDraftJournalPreserved": true,
+    "journalDraftMatchesSavedProject": true,
+    "allFourDocumentFilesStableDuringFinalVerification": true,
+    "restoredFromOldBackup": false,
+    "preferencesChangedExpected": true,
+    "scope": "The backup predates this turn. The newer project edit timestamp predates the first installation; the current project and matching journal were preserved, then final hashes were checked for stability."
+  },
+  "finalDeviceState": {
+    "phoneTesting": false,
+    "phonePreset": "iPhone 13 / 14",
+    "orientation": "landscape",
+    "parkingForeground": true,
+    "idleTimerDisabledVerified": true
+  },
+  "limits": [
+    "These are iPad-hosted phone viewports, not actual iPhone hardware or OS emulation. Safe areas are approximate; system dialogs and keyboards remain iPadOS.",
+    "Shorter viewports scroll review controls; smallest preset decisions and serve controls were exercised in both orientations.",
+    "Only completed feature assertions are counted. Automation required transport, selector and scroll retries.",
+    "Synthetic 20-second media; no qualification of long recordings, audio, production exports, VoiceOver or Dynamic Type.",
+    "Hosted Apple integration/UI suites were not executed.",
+    "No Mac VM, Simulator or release installation used."
+  ],
+  "privacy": {
+    "genericChangedFileChecks": "pass",
+    "ledgerAwareAudit": "not run; ledger configuration unset"
+  }
+}

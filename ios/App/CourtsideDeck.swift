@@ -23,7 +23,15 @@ struct CourtsideWorkspaceBar<ProjectItems: View>: View {
             if wrapped {
                 HStack(spacing: 6) { projectControl; Spacer(minLength: 0); settings }
                 HStack { Spacer(minLength: 0); pills; Spacer(minLength: 0) }
-                if stage != .rallies { metrics }
+                if stage != .rallies {
+                    HStack(spacing: 4) {
+                        stat("\(included)", "clips included", expanded: true)
+                        stat(duration, "total time", expanded: true)
+                            .accessibilityIdentifier("exportSummary").accessibilityValue(layoutDescription)
+                    }
+                    HStack(spacing: 4) { reviewCounters(expanded: true) }
+                        .guidedTourTarget("editor-review-queues")
+                }
             } else {
                 let pillWidth: CGFloat = 198
                 let side = max(0, (width - 16 - pillWidth) / 2)
@@ -31,6 +39,7 @@ struct CourtsideWorkspaceBar<ProjectItems: View>: View {
                     projectControl.frame(width: side, alignment: .leading).clipped()
                     pills.frame(width: pillWidth)
                     HStack(spacing: 2) {
+                        Spacer(minLength: 0)
                         if stage != .rallies { metrics }
                         settings
                     }.frame(width: side, alignment: .trailing)
@@ -76,21 +85,28 @@ struct CourtsideWorkspaceBar<ProjectItems: View>: View {
             HStack(spacing: 4) {
                 stat("\(included)", "clips included")
                 stat(duration, "total time").accessibilityIdentifier("exportSummary").accessibilityValue(layoutDescription)
-                counter(cleanup, "cleanup", onCleanup)
-                counter(clips, "clips", onClips)
-                counter(serves, "serves", onServes)
-            }.frame(maxWidth: .infinity, alignment: .trailing)
-        }.defaultScrollAnchor(.trailing).guidedTourTarget("editor-review-queues")
+                reviewCounters(expanded: false)
+            }.fixedSize(horizontal: true, vertical: false)
+        }.frame(maxWidth: 314).defaultScrollAnchor(.trailing).guidedTourTarget("editor-review-queues")
     }
-    private func stat(_ value: String, _ label: String) -> some View {
+    @ViewBuilder private func reviewCounters(expanded: Bool) -> some View {
+        counter(cleanup, "cleanup", expanded: expanded, onCleanup)
+        counter(clips, "clips", expanded: expanded, onClips)
+        counter(serves, "serves", expanded: expanded, onServes)
+    }
+    private func stat(_ value: String, _ label: String, expanded: Bool = false) -> some View {
         VStack(spacing: 1) { Text(value).fontWeight(.semibold).monospacedDigit(); Text(label).font(.system(size: 11)).lineLimit(2) }
-            .font(.system(size: 12)).multilineTextAlignment(.center).frame(width: 57, height: 44)
+            .font(.system(size: 12)).multilineTextAlignment(.center)
+            .frame(width: expanded ? nil : 57, height: 44).frame(maxWidth: expanded ? .infinity : nil)
             .accessibilityElement(children: .combine)
     }
-    private func counter(_ count: Int, _ label: String, _ action: @escaping () -> Void) -> some View {
+    private func counter(_ count: Int, _ label: String, expanded: Bool, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            VStack(spacing: 0) { Text("\(count)").fontWeight(.semibold); Text("Review\n\(label)").font(.system(size: 11)) }
-                .multilineTextAlignment(.center).frame(width: 51, height: 44)
+            VStack(spacing: 0) {
+                Text("\(count)").font(.system(size: 12, weight: .semibold))
+                Text("Review\n\(label)").font(.system(size: 11)).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+            }.multilineTextAlignment(.center).frame(width: expanded ? nil : 60, height: 48)
+                .frame(maxWidth: expanded ? .infinity : nil)
                 .background(count > 0 ? EditorPalette.acid : CourtsidePalette.raised, in: RoundedRectangle(cornerRadius: 5))
         }.buttonStyle(.plain).disabled(count == 0).accessibilityLabel("Review \(label), \(count)")
             .accessibilityIdentifier("review\(label.capitalized)")
@@ -126,7 +142,10 @@ struct CourtsideDeckWorkspace<Video: View>: View {
     @State private var firstTeam = true
     @State private var teamName = ""
     @State private var listCenters: [String: CGFloat] = [:]
+    @State private var splitDragStart: Double?
+    @AppStorage("courtside.videoFraction") private var videoFraction = 0.56
     @Environment(\.compactPhoneEditor) private var phone
+    @Environment(\.interfaceScale) private var interfaceScale
     @AppStorage(GuidedTourStore.key) private var tourState = ""
     private var rallies: [EditableRallyGroup] { presentation.groups }
     private var rally: EditableRallyGroup? { rallies.first { $0.id == navigation.selectedId } }
@@ -146,15 +165,19 @@ struct CourtsideDeckWorkspace<Video: View>: View {
             VStack(spacing: 0) {
                 progress
                 if landscape {
-                    HStack(spacing: 8) {
-                        playerPane.frame(width: max(240, geometry.size.width * 0.56)).contentShape(Rectangle()).clipped()
+                    let available = max(1, geometry.size.width - (phone ? 8 : 24))
+                    let playerWidth = max(240, min(available - 300, available * videoFraction))
+                    HStack(spacing: 0) {
+                        playerPane(compactScores: false).frame(width: phone ? max(240, geometry.size.width * 0.56) : playerWidth).contentShape(Rectangle()).clipped()
+                        if !phone { videoDivider(available: available, current: playerWidth) }
+                        else { Color.clear.frame(width: 8) }
                         detailPane.frame(maxWidth: .infinity).contentShape(Rectangle()).clipped()
                     }
                 } else {
                     let playerHeight = phone || geometry.size.width < 600
                         ? min(360, max(170, geometry.size.height * 0.40))
                         : max(170, min(geometry.size.height * 0.62, geometry.size.height - 280))
-                    playerPane.frame(height: playerHeight).contentShape(Rectangle()).clipped()
+                    playerPane(compactScores: phone).frame(height: playerHeight).contentShape(Rectangle()).clipped()
                     detailPane.frame(maxHeight: .infinity)
                 }
             }
@@ -185,20 +208,23 @@ struct CourtsideDeckWorkspace<Video: View>: View {
             ProgressView(value: total == 0 ? 1 : Double(checked) / Double(total)).tint(CourtsidePalette.accent)
         }.padding(.horizontal, 12).padding(.bottom, 6).guidedTourTarget("deck-progress")
     }
-    private var playerPane: some View {
+    private func videoDivider(available: CGFloat, current: CGFloat) -> some View {
+        Color.clear.frame(width: 24).overlay { Capsule().fill(CourtsidePalette.control).frame(width: 4, height: 44) }
+            .contentShape(Rectangle()).gesture(DragGesture(coordinateSpace: .global).onChanged { event in
+                if splitDragStart == nil { splitDragStart = current }
+                videoFraction = min(available - 300, max(240, (splitDragStart ?? current) + event.translation.width / interfaceScale)) / available
+            }.onEnded { _ in splitDragStart = nil })
+            .accessibilityElement().accessibilityLabel("Resize rally video").accessibilityIdentifier("deckVideoDivider")
+            .accessibilityValue("\(Int(videoFraction * 100)) percent")
+            .accessibilityAdjustableAction { direction in
+                videoFraction = min((available - 300) / available, max(240 / available, videoFraction + (direction == .increment ? 0.05 : -0.05)))
+            }
+    }
+    private func playerPane(compactScores: Bool) -> some View {
         VStack(spacing: 0) {
+            if score.enabled { scoreBar(compact: compactScores) }
             ZStack(alignment: .top) {
                 video().frame(maxWidth: .infinity, maxHeight: .infinity)
-                if score.enabled {
-                    let snapshot = overlay.snapshot(at: playhead).score
-                    HStack {
-                        teamButton(score.team1Name, first: true)
-                        Spacer(minLength: 4)
-                        Text("\(snapshot.team1Score) : \(snapshot.team2Score)").font(.system(size: 20, weight: .semibold)).monospacedDigit()
-                        Spacer(minLength: 4)
-                        teamButton(score.team2Name, first: false)
-                    }.padding(10).foregroundStyle(.white).background(Color(white: 0.08), in: RoundedRectangle(cornerRadius: 6)).padding(10)
-                }
             }.background(.black).guidedTourTarget("deck-video")
             HStack(spacing: 10) {
                 CourtsideActionButton(title: playing ? "Pause video" : "Play video",
@@ -218,8 +244,17 @@ struct CourtsideDeckWorkspace<Video: View>: View {
             }.padding(.horizontal, 10).foregroundStyle(.white).background(Color(white: 0.09))
         }
     }
-    private func teamButton(_ name: String, first: Bool) -> some View {
-        Button { firstTeam = first; teamName = name; teamEditing = true } label: { Text(name).font(.system(size: 13)).lineLimit(2).frame(minHeight: 44) }
+    private func scoreBar(compact: Bool) -> some View {
+        let snapshot = overlay.snapshot(at: playhead).score
+        return HStack(spacing: 6) {
+            teamButton(score.team1Name, first: true, compact: compact).frame(maxWidth: .infinity, alignment: .leading)
+            Text("\(snapshot.team1Score) : \(snapshot.team2Score)").font(.system(size: compact ? 14 : 20, weight: .semibold)).monospacedDigit()
+            teamButton(score.team2Name, first: false, compact: compact).frame(maxWidth: .infinity, alignment: .trailing)
+        }.padding(.horizontal, 10).padding(.vertical, compact ? 0 : 10).foregroundStyle(.white)
+            .background(Color(white: 0.08)).accessibilityIdentifier("deckScoreBar")
+    }
+    private func teamButton(_ name: String, first: Bool, compact: Bool) -> some View {
+        Button { firstTeam = first; teamName = name; teamEditing = true } label: { Text(name).font(.system(size: compact ? 12 : 13)).lineLimit(compact ? 1 : 2).frame(minHeight: compact ? 30 : 44).contentShape(Rectangle()) }
             .buttonStyle(.plain).accessibilityLabel("Edit \(name)")
     }
     @ViewBuilder private var detailPane: some View {
@@ -250,7 +285,8 @@ struct CourtsideDeckWorkspace<Video: View>: View {
                     Spacer(minLength: 0)
                     nudgeControls(start: false, value: rally.coreEndMs)
                 }
-                CourtsideTimeline(rallies: rallies, effectiveIds: presentation.keptIds, ignored: draft.ignoredIntervals,
+                CourtsideTimeline(rallies: rallies, effectiveIds: presentation.keptIds,
+                    reviewIds: presentation.pendingConfidenceIds, removedIds: presentation.userRemovedCleanupCutIds, ignored: draft.ignoredIntervals,
                     bounds: bounds, playhead: playhead, selected: rally, onSeek: onSeek, onTrim: onTrim)
                 HStack { Text("Start \(deckTime(rally.coreStartMs))"); Spacer(); Text("End \(deckTime(rally.coreEndMs))") }
                     .font(.system(size: 12)).monospacedDigit().foregroundStyle(CourtsidePalette.muted)
@@ -413,6 +449,8 @@ private struct RallyListInteraction: ViewModifier {
 struct CourtsideTimeline: View {
     let rallies: [EditableRallyGroup]
     let effectiveIds: Set<String>
+    var reviewIds: Set<String> = []
+    var removedIds: Set<String> = []
     let ignored: [IgnoredSourceInterval]
     let bounds: TimeRange
     let playhead: Int64
@@ -451,10 +489,23 @@ struct CourtsideTimeline: View {
                 $0.id == RallyReview.neighbor(of: selected, direction: -1, rallies: rallies, effectiveIds: effectiveIds)?.id ||
                 $0.id == RallyReview.neighbor(of: selected, direction: 1, rallies: rallies, effectiveIds: effectiveIds)?.id }, id: \.id) { rally in
                 let active = rally.id == selected.id
-                let retained = RallyReview.retained(rally, effectiveIds: effectiveIds)
-                RoundedRectangle(cornerRadius: 4).fill(active ? EditorPalette.orange : retained ? EditorPalette.green.opacity(0.5) : EditorPalette.danger.opacity(0.25))
-                    .frame(width: max(0, scale.x(min(window.endMs, rally.coreEndMs)) - scale.x(max(window.startMs, rally.coreStartMs))), height: active ? 36 : 24)
-                    .offset(x: scale.x(max(window.startMs, rally.coreStartMs)), y: active ? 18 : 24).allowsHitTesting(false)
+                ForEach(rally.cuts, id: \.id) { cut in
+                    let removed = !cut.included || removedIds.contains(cut.id)
+                    let review = reviewIds.contains(cut.id)
+                    let padding = removed ? EditorPalette.muted.opacity(0.55) : !effectiveIds.contains(cut.id) ? EditorPalette.danger.opacity(0.65) : review ? EditorPalette.warning : EditorPalette.rail
+                    let core = removed ? EditorPalette.muted : review ? EditorPalette.orange : EditorPalette.green
+                    RoundedRectangle(cornerRadius: 4).fill(padding)
+                        .frame(width: max(0, scale.x(min(window.endMs, cut.keepEndMs)) - scale.x(max(window.startMs, cut.keepStartMs))), height: 30)
+                        .offset(x: scale.x(max(window.startMs, cut.keepStartMs)), y: 18).allowsHitTesting(false)
+                    RoundedRectangle(cornerRadius: 4).fill(core)
+                        .frame(width: max(0, scale.x(min(window.endMs, cut.coreEndMs)) - scale.x(max(window.startMs, cut.coreStartMs))), height: 30)
+                        .offset(x: scale.x(max(window.startMs, cut.coreStartMs)), y: 18).allowsHitTesting(false)
+                }
+                if active {
+                    RoundedRectangle(cornerRadius: 4).stroke(EditorPalette.orange, lineWidth: 2)
+                        .frame(width: max(1, scale.x(min(window.endMs, rally.keepEndMs)) - scale.x(max(window.startMs, rally.keepStartMs))), height: 36)
+                        .offset(x: scale.x(max(window.startMs, rally.keepStartMs)), y: 15).allowsHitTesting(false)
+                }
             }
             ForEach(ignored) { span in
                 if span.startMs < window.endMs && window.startMs < span.endMs {

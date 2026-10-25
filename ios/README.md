@@ -15,11 +15,21 @@ through the Editor pill; all workspace tabs share the same draft and AVPlayer.
 ## Testing phone layouts on iPad
 
 In a Debug build, open the Settings cogwheel and enable **Test as iPhone** under
-Developer testing. The app uses a centered 390 × 844-point phone viewport with
-phone safe-area spacing and compact layout rules. Rotate the iPad to test the
-844 × 390-point landscape layout. Disable the toggle to return to the normal
+Developer testing, then choose **iPhone model**:
+
+| Model | Portrait size (points) |
+| --- | --- |
+| iPhone SE (3rd gen) | 375 × 667 |
+| iPhone 13 / 14 (default) | 390 × 844 |
+| iPhone 16 Pro | 402 × 874 |
+| iPhone 16 Pro Max | 440 × 956 |
+
+The app uses a centered viewport with approximate safe-area spacing and phone
+layout rules. Rotate the iPad to swap width and height for landscape testing.
+Disable the toggle to return to the normal
 iPad workspace. Switching preserves the project, edits, selected pill and player.
-The toggle is also available from setup Settings and persists across launches.
+The toggle and selected model are also available from setup Settings and persist
+across launches. Changing models keeps the same project, edits, pill and player.
 
 This runs the native controls and AVPlayer on the iPad. Modal presentation,
 keyboards, alerts and file/share pickers still belong to iPadOS; it does not emulate iPhone hardware,

@@ -164,7 +164,6 @@ internal fun RallyReviewWorkspace(
     effectiveIds: Set<String>,
     scoreOverlay: PreparedScoreOverlay,
     tracking: ScoreTracking,
-    renderScores: Boolean,
     ignored: List<IgnoredSourceInterval>,
     positionMs: Long,
     playing: Boolean,
@@ -422,25 +421,19 @@ internal fun RallyReviewWorkspace(
                             if (!sourceAvailable) TextButton(onClick = onRelink) { Text("Re-link video") }
                         }
                     }
-                    Box(Modifier.weight(1f).fillMaxWidth().background(Color(0xFF17191A))
-                        .clickable(enabled = sourceAvailable, role = Role.Button,
-                            onClickLabel = if (playing) "Pause" else "Play") {
-                            onPlay(if (sourcePlayback) seed.gameStartMs else start, if (sourcePlayback) seed.gameEndMs else end)
-                        }.testTag("rally-review-player")) {
-                        player()
-                        if (renderScores && tracking.enabled) {
+                        if (tracking.enabled) {
                             val score = ScoreReducer.deriveAt(scoreOverlay.tracking, ScoreReducer.scoreBoundaryTimestamp(
                                 positionMs, scoreOverlay.rallyRanges, scoreOverlay.tracking, scoreOverlay.mergedRanges))
-                            Row(Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(14.dp)
+                            Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp)
                                 .clip(RoundedCornerShape(6.dp)).background(Color(0xFF141718)).padding(horizontal = 12.dp, vertical = 2.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Box(Modifier.weight(1f).heightIn(min = 44.dp)
+                                Box(Modifier.weight(1f).heightIn(min = 32.dp)
                                     .clickable(role = Role.Button) { editingTeam = 1 }
                                     .semantics { contentDescription = "Edit Team 1 name" }, contentAlignment = Alignment.CenterStart) {
                                     Text(tracking.team1Name, color = Color.White, fontSize = 12.sp)
                                 }
-                                Text("" + score.team1Score + "  :  " + score.team2Score, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Medium)
-                                Box(Modifier.weight(1f).heightIn(min = 44.dp)
+                                Text("" + score.team1Score + "  :  " + score.team2Score, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                Box(Modifier.weight(1f).heightIn(min = 32.dp)
                                     .clickable(role = Role.Button) { editingTeam = 2 }
                                     .semantics { contentDescription = "Edit Team 2 name" }, contentAlignment = Alignment.CenterEnd) {
                                     Text(tracking.team2Name, color = Color.White, fontSize = 12.sp,
@@ -448,6 +441,12 @@ internal fun RallyReviewWorkspace(
                                 }
                             }
                         }
+                    Box(Modifier.weight(1f).fillMaxWidth().background(Color(0xFF17191A))
+                        .clickable(enabled = sourceAvailable, role = Role.Button,
+                            onClickLabel = if (playing) "Pause" else "Play") {
+                            onPlay(if (sourcePlayback) seed.gameStartMs else start, if (sourcePlayback) seed.gameEndMs else end)
+                        }.testTag("rally-review-player")) {
+                        player()
                         if (stackedTransport) {
                             Text(preciseTime(positionMs), color = Color.White, fontSize = 14.sp,
                                 modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp)

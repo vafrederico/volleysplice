@@ -16,9 +16,11 @@ struct CoreTrimSurface<Track: View>: View {
     let startIdentifier: String, endIdentifier: String
     var color = EditorPalette.green
     var contextWindow: TimeRange? = nil
+    var onPaddingTrim: ((Bool, Int64) -> Void)? = nil
     let onTrim: (Bool, Int64) -> Void
     @ViewBuilder var track: (RallyTrimScale) -> Track
     @State private var drag: RallyTrimDrag?
+    @State private var draggingPadding = false
     @State private var contentHeight: CGFloat = 100
     var body: some View {
         GeometryReader { geometry in
@@ -32,6 +34,12 @@ struct CoreTrimSurface<Track: View>: View {
                 }.font(.system(size: 11)).monospacedDigit().foregroundStyle(EditorPalette.muted)
                 ZStack(alignment: .topLeading) {
                     track(scale).frame(height: 64).clipped()
+                    if onPaddingTrim != nil {
+                        ForEach([true, false], id: \.self) { start in
+                            let value = start ? kept.startMs : kept.endMs
+                            trimHandle(start: start, value: value, x: scale.x(value), scale: scale, padding: true)
+                        }
+                    }
                     if handles.spreadForTouch {
                         Canvas { context, _ in
                             for (time, target) in [(core.startMs, handles.startX), (core.endMs, handles.endX)] {
@@ -45,18 +53,7 @@ struct CoreTrimSurface<Track: View>: View {
                     }
                     ForEach([true, false], id: \.self) { start in
                         let value = start ? core.startMs : core.endMs
-                        RoundedRectangle(cornerRadius: 4).fill(color).frame(width: 10, height: 44)
-                            .overlay { RoundedRectangle(cornerRadius: 4).stroke(.white, lineWidth: 2) }
-                            .frame(width: RallyTrimScale.handleWidth, height: 64).contentShape(Rectangle())
-                            .offset(x: (start ? handles.startX : handles.endX) - scale.inset)
-                            .highPriorityGesture(DragGesture(minimumDistance: 0, coordinateSpace: .named("coreTrimSurface")).onChanged { gesture in
-                                if drag == nil { drag = .init(scale: scale, initialValueMs: value, isStart: start) }
-                                if let drag { onTrim(drag.isStart, drag.value(translationX: gesture.translation.width)) }
-                            }.onEnded { _ in drag = nil })
-                            .accessibilityElement().accessibilityLabel(start ? startLabel : endLabel)
-                            .accessibilityIdentifier(start ? startIdentifier : endIdentifier)
-                            .accessibilityValue(String(format: "%.3f seconds", Double(value) / 1_000))
-                            .accessibilityAdjustableAction { direction in onTrim(start, value + (direction == .increment ? 100 : -100)) }
+                        trimHandle(start: start, value: value, x: start ? handles.startX : handles.endX, scale: scale, padding: false)
                     }
                 }.frame(height: 64).coordinateSpace(name: "coreTrimSurface")
                 if handles.spreadForTouch {
@@ -77,6 +74,26 @@ struct CoreTrimSurface<Track: View>: View {
             .onPreferenceChange(CoreTrimHeight.self) { value in
                 if value > 0, abs(value - contentHeight) > 0.5 { contentHeight = value }
             }
+    }
+    private func trimHandle(start: Bool, value: Int64, x: Double, scale: RallyTrimScale, padding: Bool) -> some View {
+        let combined = onPaddingTrim != nil
+        let action = padding ? (onPaddingTrim ?? onTrim) : onTrim
+        return RoundedRectangle(cornerRadius: 4).fill(padding ? EditorPalette.warning : color)
+            .frame(width: 10, height: combined ? 28 : 44)
+            .overlay { RoundedRectangle(cornerRadius: 4).stroke(.white, lineWidth: 2) }
+            .frame(width: RallyTrimScale.handleWidth, height: combined ? 32 : 64).contentShape(Rectangle())
+            .offset(x: x - scale.inset, y: combined && !padding ? 32 : 0)
+            .highPriorityGesture(DragGesture(minimumDistance: 0, coordinateSpace: .named("coreTrimSurface")).onChanged { gesture in
+                if drag == nil { drag = .init(scale: scale, initialValueMs: value, isStart: start); draggingPadding = padding }
+                if let drag {
+                    let callback = draggingPadding ? (onPaddingTrim ?? onTrim) : onTrim
+                    callback(drag.isStart, drag.value(translationX: gesture.translation.width))
+                }
+            }.onEnded { _ in drag = nil })
+            .accessibilityElement().accessibilityLabel(padding ? (start ? "Extra time start" : "Extra time end") : (start ? startLabel : endLabel))
+            .accessibilityIdentifier(padding ? (start ? "paddingStartHandle" : "paddingEndHandle") : (start ? startIdentifier : endIdentifier))
+            .accessibilityValue(String(format: "%.3f seconds", Double(value) / 1_000))
+            .accessibilityAdjustableAction { direction in action(start, value + (direction == .increment ? 100 : -100)) }
     }
     private func note(_ text: String) -> some View {
         Text(text).font(.system(size: 11)).foregroundStyle(EditorPalette.muted)

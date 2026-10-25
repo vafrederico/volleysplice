@@ -497,8 +497,6 @@ struct WorkspaceView: View {
             NewProjectWorkspace(model: model, chooseVideo: { choosingReconnectSource = false; choosingVideoSource = true }, openSaved: { pickerKind = .project; importing = true })
         }
         }
-        ProcessingQueueBar(queue: model.queue) { model.showQueue = true }
-            .background(paper).foregroundStyle(ink).tint(Color(red: 47 / 255, green: 104 / 255, blue: 85 / 255))
         }
         .guidedTour(stage: model.showEditor ? .editor : .setup, sourceReady: model.media != nil,
                     scoreTrackingEnabled: model.project?.draft.scoreTracking["enabled"]?.bool ?? false)

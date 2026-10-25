@@ -3872,7 +3872,6 @@ private fun EditorScreen(
                         effectiveIds = effectiveIds,
                         scoreOverlay = preparedScoreOverlay,
                         tracking = draft.scoreTracking,
-                        renderScores = draft.renderScoreOverlay,
                         ignored = visibleIgnoredIntervals,
                         positionMs = playbackPositionMs,
                         playing = isPlaying,
@@ -3992,9 +3991,25 @@ private fun EditorScreen(
                         onExport = { player.pause(); desktopTab = DesktopEditorTab.EXPORT; showRallyExport = true },
                         guidedTourTargets = guidedTourTargets,
                         player = {
-                            Box(Modifier.fillMaxSize()) {
+                            BoxWithConstraints(Modifier.fillMaxSize()) {
                                 if (!BuildConfig.BLACK_VIDEO_PREVIEW && sourceAvailable != false) {
                                     ContentFrame(player = player, modifier = Modifier.fillMaxSize(), surfaceType = SURFACE_TYPE_TEXTURE_VIEW)
+                                }
+                                if (draft.renderScoreOverlay && draft.scoreTracking.enabled) {
+                                    val (displayWidth, displayHeight) = scoreOverlayDisplaySize(seed.width, seed.height, seed.rotation)
+                                    val aspect = displayWidth.toFloat() / displayHeight.coerceAtLeast(1)
+                                    val videoModifier = if (maxWidth.value / maxHeight.value.coerceAtLeast(.001f) > aspect) {
+                                        Modifier.height(maxHeight).width(maxHeight * aspect)
+                                    } else {
+                                        Modifier.width(maxWidth).height(maxWidth / aspect)
+                                    }
+                                    ScoreOverlayPreview(
+                                        snapshot = ScoreOverlay.snapshot(preparedScoreOverlay, playbackPositionMs),
+                                        timeline = ScoreOverlay.pointTimelineSnapshot(preparedScoreOverlay, playbackPositionMs),
+                                        renderTimeline = draft.renderScoreTimeline,
+                                        fadeScoreOverlay = draft.fadeScoreOverlay,
+                                        modifier = videoModifier.align(Alignment.Center).testTag("rally-score-overlay"),
+                                    )
                                 }
                             }
                         },
@@ -5074,23 +5089,6 @@ private fun EditorScreen(
                         onClick = ::splitSelectedAtPlayhead,
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text("Split at playhead") }
-                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = {
-                            updateDraft { it.copy(finalPreviewEnabled = false) }
-                            seekTo(selected.keepStartMs)
-                            previewEndMs = selected.keepEndMs
-                            player.play()
-                        }) { Text("Preview rally") }
-                        if (selected.origin == CutOrigin.INFERRED) {
-                            OutlinedButton(onClick = {
-                                updateRallyCuts(selectedRally.cutIds) { cut -> cut.copy(
-                                    keepStartMs = (cut.coreStartMs - draft.beforePaddingMs)
-                                        .coerceAtLeast(seed.gameStartMs),
-                                    keepEndMs = (cut.coreEndMs + draft.afterPaddingMs)
-                                        .coerceAtMost(seed.gameEndMs),
-                                ) }
-                            }) { Text("Reset extra time") }
-                        }
                         if (selected.origin == CutOrigin.MANUAL) {
                             OutlinedButton(onClick = {
                                 val remaining = editableRallies.filterNot { it.id == selectedRally.id }
@@ -5101,7 +5099,6 @@ private fun EditorScreen(
                                 selectedId = remaining.getOrNull((selectedIndex - 1).coerceAtLeast(0))?.id.orEmpty()
                             }) { Text("Delete", color = Danger) }
                         }
-                    }
                     }
                 }
             }

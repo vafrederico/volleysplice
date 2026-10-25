@@ -78,7 +78,7 @@ for name in ['Debug', 'Release']:
     settings = {
         'PRODUCT_NAME': 'VolleySplice', 'PRODUCT_BUNDLE_IDENTIFIER': 'com.volleysplice.VolleySplice',
         'CODE_SIGN_STYLE': 'Automatic', 'CODE_SIGN_IDENTITY': 'Apple Development',
-        'CURRENT_PROJECT_VERSION': '2', 'MARKETING_VERSION': '1.0.0', 'IPHONEOS_DEPLOYMENT_TARGET': '17.0',
+        'CURRENT_PROJECT_VERSION': '3', 'MARKETING_VERSION': '1.0.0', 'IPHONEOS_DEPLOYMENT_TARGET': '17.0',
         'SDKROOT': 'iphoneos', 'TARGETED_DEVICE_FAMILY': '1,2', 'SUPPORTED_PLATFORMS': 'iphoneos iphonesimulator',
         'ASSETCATALOG_COMPILER_APPICON_NAME': 'AppIconDebug' if name == 'Debug' else 'AppIcon',
         'SWIFT_VERSION': '5.0', 'SWIFT_OPTIMIZATION_LEVEL': '-O', 'ENABLE_TESTABILITY': 'YES' if name == 'Debug' else 'NO',

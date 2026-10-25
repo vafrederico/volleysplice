@@ -29,17 +29,24 @@ native system sans typography. The full Editor retains its established palette.
   Not a serve uses the existing removal/tombstone reducer.
 - The shared top bar centers its pills between equal side lanes. The project
   selector, adjacent arrow/trash and trailing settings stay within the existing
-  horizontal safe-area policy. Metrics scroll within the trailing lane. Narrow
-  portrait wraps the same bar and allows the project name two lines. Saved
+  horizontal safe-area policy. Landscape metrics sit immediately left of Settings,
+  with review labels on separate lines. Narrow portrait has a full-width summary
+  row and three equal review buttons, with no duplicate row above Game timeline.
+  The project name can use two lines. Saved
   projects show ready/queue/processing/attention status.
 - Both team names edit shared score state. Rate changes update the persisted
   draft and the running player. Previous rally, Next review and Next rally retain
   paused/playing/waiting-to-play intent and replace the preview stop boundary.
   Navigation stays below the scrolling review controls. Native buttons provide
-  full touch targets even when the landscape interface is scaled down. The queue
-  strip has a bounded native target so it cannot intercept the transport above it.
+  full touch targets even when the landscape interface is scaled down. Queue opens
+  from Settings; there is no persistent bottom queue strip.
   Tablet portrait gives the player most of the available height while reserving
-  space for review controls.
+  space for review controls. Tablet landscape has a draggable video/detail divider,
+  shared by focus and browser, with an adjustable accessibility action. The phone
+  portrait team strip is 30 points high and sits above the video.
+- Both Rallies and Editor preview the same configured score overlay, point history
+  and fade behavior inside the video's fitted bounds. Selection uses an outline;
+  the rally fill retains the Editor's pending, kept or removed state colors.
 - Trimming pauses for inspection. Drag handles and one-second nudges retain the
   current frame within the **updated padded/retained range**, clamping only an
   excluded frame. Rally-bound serve timestamps follow existing editor math.
@@ -47,7 +54,8 @@ native system sans typography. The full Editor retains its established palette.
   padding and both nearest retained neighbors. Real gaps keep their proportional
   width. It never compresses gaps or zooms automatically to enlarge short cores;
   the one-second buttons remain available for those. The full Editor retains its
-  existing core detail scale. Drag translation uses the original boundary and a
+  core detail scale on wide layouts. Phone portrait Editor uses one track with
+  core handles below the padding handles on a shared linear scale. Drag translation uses the original boundary and a
   frozen scale, so touching away from the center cannot jump the edge.
 - Trim writes reconcile the current presentation before resolving the selected
   group's retained range. Joining a previous or next rally preserves a frame in
@@ -69,6 +77,11 @@ native system sans typography. The full Editor retains its established palette.
   and project saving. Settings contains project options, processing/storage,
   version, model reanalysis and tutorial replay. The full Editor still exposes its
   score, cleanup, padding, ignored-time, clip and iPad resize tools.
+- Phone portrait Editor keeps Play only final video inside Now reviewing. Its
+  Current rally heading contains previous/number/next navigation. Preview rally,
+  Reset extra time, tenth-second nudge buttons and redundant confidence/timestamps
+  are absent from that compact section. Manual deletion and exact handle editing
+  remain available. Android portrait also omits Preview rally and Reset extra time.
 - The persistent tutorial points at actual deck controls and opens the appropriate
   workspace/browser. Advancing it changes navigation only. Completed/dismissed
   progress stays dismissed; unfinished legacy editor steps migrate to the new tour.
@@ -80,7 +93,24 @@ portrait and landscape with the toggle off.
 
 ## Available validation
 
-The Windows/WSL lab passed **206 portable core XCTest cases** and **76 native
+Build **1.0.0 (3)** passed **207 portable core XCTest cases** and **32 targeted
+native checks** on the physical iPad. The [refinement receipt](Previews/CourtsideDeck/refinement-verification.json)
+records the compact Editor, shared trim edits and state colors, landscape metrics,
+video resizing in focus/browser, score-overlay settings and the four named phone
+presets in both orientations. The smallest preset's scrollable review controls
+were exercised in portrait and landscape. Normal iPad layouts were checked in
+both orientations. Debug was installed; Release was built/signed with `-NoInstall`
+and checked to exclude both debug preference keys and the testing controls.
+
+Android **0.10.33-debug** passed **250 JVM tests** and two physical Pixel checks
+covering rendered video seeking, the shared score overlay, and removal of the
+retired portrait actions. The emulator's video check hit MediaCodec errors;
+playback qualification uses the physical Pixel. Earlier user edits and their
+matching draft journal were preserved; no older backup was restored.
+
+### Earlier regression baseline
+
+The preceding build passed **206 portable core XCTest cases** and **76 native
 workflow checks** on the physical iPad. The [device receipt](Previews/CourtsideDeck/device-verification.json)
 records nineteen checks in each of four layouts: the phone viewport in portrait
 and landscape, then the normal iPad workspace in portrait and landscape.
