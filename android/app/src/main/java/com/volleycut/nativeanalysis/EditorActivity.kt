@@ -5928,12 +5928,6 @@ internal fun ScoreTrackingPanel(
                         modifier = Modifier.weight(1f),
                     ) { Text("⇄ Add team switch", fontSize = 11.sp) }
                 }
-                Text(
-                    "At ${preciseTime(currentTimestampMs)}",
-                    color = Muted,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 10.sp,
-                )
             }
     }
     if (desktop) {
