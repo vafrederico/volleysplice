@@ -27,7 +27,6 @@ import {
   materializeFinalCutIntervals,
   MIN_CUT_SECONDS,
   nextFinalCutTime,
-  newManualCut,
   parseCutDraft,
   playbackFocusCut,
   PLAYBACK_RATES,
@@ -37,7 +36,6 @@ import {
   suppressionSuggestionState,
   setCutCoreEnd,
   setCutCoreStart,
-  setCutKeepBoundary,
   splitCutAt,
   splitCutValidationMessage,
   type CutDraft,
@@ -1008,7 +1006,34 @@ export function CutEditor({
   }
 
   function setKeepBoundary(id: string, side: BoundarySide, value: number) {
-    updateDraft((current) => setCutKeepBoundary(current, id, value, side === "start"));
+    updateCut(id, (cut) => {
+      if (cut.origin === "manual") {
+        if (side === "start") {
+          const start = roundTime(
+            Math.max(analysisStart, Math.min(cut.keepEnd - MIN_CUT_SECONDS, value)),
+          );
+          return { ...cut, coreStart: start, keepStart: start };
+        }
+        const end = roundTime(
+          Math.max(cut.keepStart + MIN_CUT_SECONDS, Math.min(analysisEnd, value)),
+        );
+        return { ...cut, coreEnd: end, keepEnd: end };
+      }
+      if (side === "start") {
+        return {
+          ...cut,
+          keepStart: roundTime(
+            Math.max(analysisStart, Math.min(cut.coreStart, value)),
+          ),
+        };
+      }
+      return {
+        ...cut,
+        keepEnd: roundTime(
+          Math.max(cut.coreEnd, Math.min(analysisEnd, value)),
+        ),
+      };
+    });
   }
 
   function setCoreBoundary(id: string, side: BoundarySide, value: number) {
@@ -1161,12 +1186,23 @@ export function CutEditor({
       setEditorMessage("A manual cut must be at least 0.1 seconds long.");
       return;
     }
-    const cut = newManualCut(draft, start, end);
-    const { id } = cut;
+    const id = nextId("M", draft.cuts.map((cut) => cut.id));
     updateDraft((current) => ({
       ...current,
       pendingManualStart: null,
-      cuts: [...current.cuts, cut],
+      cuts: [
+        ...current.cuts,
+        {
+          id,
+          coreStart: roundTime(start),
+          coreEnd: roundTime(end),
+          keepStart: roundTime(start),
+          keepEnd: roundTime(end),
+          confidence: 1,
+          included: true,
+          origin: "manual",
+        },
+      ],
     }));
     setSelectedId(id);
     setEditorMessage(`Added ${id} from ${preciseTime(start)} to ${preciseTime(end)}.`);
@@ -2532,7 +2568,7 @@ export function CutEditor({
                   </small>
                 </span>
               )}
-              {!selectedSuppression && <button
+              {!selectedSuppression && selected.origin === "cached-label" && <button
                 type="button"
                 className={`${styles.boundaryHandle} ${styles.startHandle}`}
                 style={{
@@ -2547,7 +2583,7 @@ export function CutEditor({
               >
                 <i />
               </button>}
-              {!selectedSuppression && <button
+              {!selectedSuppression && selected.origin === "cached-label" && <button
                 type="button"
                 className={`${styles.boundaryHandle} ${styles.endHandle}`}
                 style={{
@@ -2644,7 +2680,7 @@ export function CutEditor({
                 </div>
               </div>
 
-              <div className={styles.outputEdgeEditor}>
+              {selected.origin === "cached-label" && <div className={styles.outputEdgeEditor}>
                 <p>EXTRA TIME AROUND THIS RALLY</p>
                 <div className={styles.boundaryControls}>
                   <fieldset>
@@ -2668,7 +2704,7 @@ export function CutEditor({
                     </div>
                   </fieldset>
                 </div>
-              </div>
+              </div>}
             </>}
 
             <div className={styles.focusActions}>

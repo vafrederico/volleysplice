@@ -305,11 +305,15 @@ export function applyPaddingToCachedCuts(
     ...draft,
     beforePaddingSeconds: before,
     afterPaddingSeconds: after,
-    cuts: draft.cuts.map((cut) => ({
-      ...cut,
-      keepStart: roundTime(clamp(cut.coreStart - before, 0, duration)),
-      keepEnd: roundTime(clamp(cut.coreEnd + after, 0, duration)),
-    })),
+    cuts: draft.cuts.map((cut) =>
+      cut.origin === "cached-label"
+        ? {
+            ...cut,
+            keepStart: roundTime(clamp(cut.coreStart - before, 0, duration)),
+            keepEnd: roundTime(clamp(cut.coreEnd + after, 0, duration)),
+          }
+        : cut,
+    ),
   };
 }
 

@@ -598,43 +598,16 @@ export function applyPaddingToCachedCuts(
     ...draft,
     beforePaddingSeconds: before,
     afterPaddingSeconds: after,
-    cuts: draft.cuts.map((cut) => ({
-      ...cut,
-      keepStart: roundTimeWithin(cut.coreStart - before, analysisStart, cut.coreStart),
-      keepEnd: roundTimeWithin(cut.coreEnd + after, cut.coreEnd, analysisEnd),
-    })),
+    cuts: draft.cuts.map((cut) =>
+      cut.origin === "cached-label"
+        ? {
+            ...cut,
+            keepStart: roundTimeWithin(cut.coreStart - before, analysisStart, cut.coreStart),
+            keepEnd: roundTimeWithin(cut.coreEnd + after, cut.coreEnd, analysisEnd),
+          }
+        : cut,
+    ),
   };
-}
-
-export function newManualCut(draft: CutDraft, start: number, end: number): EditableCut {
-  const coreStart = roundTime(start);
-  const coreEnd = roundTime(end);
-  return {
-    id: nextCutId("M", draft),
-    coreStart,
-    coreEnd,
-    keepStart: roundTimeWithin(coreStart - draft.beforePaddingSeconds, draft.analysisStart, coreStart),
-    keepEnd: roundTimeWithin(coreEnd + draft.afterPaddingSeconds, coreEnd, draft.analysisEnd),
-    confidence: 1,
-    included: true,
-    origin: "manual",
-  };
-}
-
-export function setCutKeepBoundary(
-  draft: CutDraft,
-  cutId: string,
-  value: number,
-  isStart: boolean,
-): CutDraft {
-  if (!Number.isFinite(value)) return draft;
-  const cuts = draft.cuts.map((cut) => {
-    if (cut.id !== cutId) return cut;
-    return isStart
-      ? { ...cut, keepStart: roundTimeWithin(value, draft.analysisStart, cut.coreStart) }
-      : { ...cut, keepEnd: roundTimeWithin(value, cut.coreEnd, draft.analysisEnd) };
-  });
-  return withTouchedCachedCuts({ ...draft, cuts }, [cutId]);
 }
 
 export function setCutCoreStart(
