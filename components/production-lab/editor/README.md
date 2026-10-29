@@ -24,4 +24,6 @@ The NAS video URL supports playback without loading the entire source as a brows
 
 `node scripts/snapshot-production-lab-editor.mjs` refreshes the snapshot and the two
 logo assets. This overwrites copied files, so update its adaptations when changing
-the lab editor itself. It never changes production files.
+the lab editor itself. Dependency discovery follows the adapted type-only contracts
+and removes stale files owned by the previous snapshot. It never changes production
+files.

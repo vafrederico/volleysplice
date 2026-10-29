@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -8,6 +8,9 @@ import { fileURLToPath } from "node:url";
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const sourceRoot = path.join(repository, "prod/src");
 const destinationRoot = path.join(repository, "components/production-lab/editor");
+const manifestPath = path.join(destinationRoot, "snapshot.json");
+const previousFiles = existsSync(manifestPath)
+  ? JSON.parse(readFileSync(manifestPath, "utf8")).files : [];
 const pending = [path.join(sourceRoot, "designs/taste/index.tsx")];
 const files = new Map();
 const importPattern = /(?:from\s+|import\s*\(\s*|import\s+)["']([^"']+)["']/g;
@@ -156,6 +159,27 @@ const sourceReviewPlayback = `
   }, [sourceRange, stage, videoUrl, finalPreview]);
 `;
 
+function typeOnlyAdapter(relative, source) {
+  if (relative === "designs/useDesignReview.ts") {
+    return (`// Lab adapter contract copied from production. No project-store hook or writes.\n`
+      + `import type { CutDraft, CutDraftSeed } from "../lib/cut-draft";\n`
+      + `import type { VolleySpliceProject } from "../lib/project-store";\n`
+      + `import type { OnDeviceSuppression } from "../lib/on-device/types";\n`
+      + `import type { ExportInterval, ScoreOverlayOptions } from "../lib/on-device/export";\n`
+      + `import type { ProductAnalysis } from "../lib/product-analysis";\n\n`
+      + source.slice(source.indexOf("export type DesignProjectOption"), source.indexOf("\nfunction ")))
+      .replace('export type ReadyDesignReview = {\n  state: "ready";', 'export type ReadyDesignReview = {\n  /** Recorded-model UX trial; no production inference or project persistence. */\n  labMode?: boolean;\n  state: "ready";');
+  }
+  if (relative === "lib/project-store.ts") {
+    return `// Type-only production shapes. The lab never opens the production project database.\n`
+      + `import type { AnalysisWindow } from "./on-device/analysis-window";\n`
+      + `import type { NormalizedRoi, OnDeviceAnalysis, OnDeviceMediaInfo } from "./on-device/types";\n`
+      + `import type { CutDraft } from "./cut-draft";\n\n`
+      + source.slice(source.indexOf("export type ProjectSource"), source.indexOf("\nfunction "));
+  }
+  return source;
+}
+
 function resolveImport(importer, specifier) {
   const base = specifier.startsWith("@/")
     ? path.join(sourceRoot, specifier.slice(2))
@@ -176,7 +200,9 @@ while (pending.length) {
   const source = readFileSync(filename, "utf8").replace(/\r\n/g, "\n");
   files.set(filename, source);
   if (!/\.tsx?$/.test(filename)) continue;
-  for (const [, specifier] of source.matchAll(importPattern)) {
+  // Follow the lab's adapted contracts, excluding dependencies of discarded hooks.
+  const relative = path.relative(sourceRoot, filename).replaceAll("\\", "/");
+  for (const [, specifier] of typeOnlyAdapter(relative, source).matchAll(importPattern)) {
     const resolved = resolveImport(filename, specifier);
     if (resolved) pending.push(resolved);
   }
@@ -185,7 +211,7 @@ while (pending.length) {
 const manifest = [];
 for (const [filename, source] of [...files].sort(([a], [b]) => a.localeCompare(b))) {
   const relative = path.relative(sourceRoot, filename).replaceAll("\\", "/");
-  let output = source.replace(/(["'])@\/([^"']+)\1/g, (_match, quote, specifier) => {
+  let output = typeOnlyAdapter(relative, source).replace(/(["'])@\/([^"']+)\1/g, (_match, quote, specifier) => {
     let target = path.relative(path.dirname(filename), path.join(sourceRoot, specifier)).replaceAll("\\", "/");
     if (!target.startsWith(".")) target = `./${target}`;
     return `${quote}${target}${quote}`;
@@ -194,23 +220,6 @@ for (const [filename, source] of [...files].sort(([a], [b]) => a.localeCompare(b
   output = output.replaceAll("volleycut:", "volleycut:production-lab:")
     .replaceAll("volleysplice:", "volleycut:production-lab:");
 
-  if (relative === "designs/useDesignReview.ts") {
-    output = `// Lab adapter contract copied from production. No project-store hook or writes.\n`
-      + `import type { CutDraft, CutDraftSeed } from "../lib/cut-draft";\n`
-      + `import type { VolleySpliceProject } from "../lib/project-store";\n`
-      + `import type { OnDeviceSuppression } from "../lib/on-device/types";\n`
-      + `import type { ExportInterval, ScoreOverlayOptions } from "../lib/on-device/export";\n`
-      + `import type { ProductAnalysis } from "../lib/product-analysis";\n\n`
-      + source.slice(source.indexOf("export type DesignProjectOption"), source.indexOf("function reloadSelectedProject"));
-    output = output.replace('export type ReadyDesignReview = {\n  state: "ready";', 'export type ReadyDesignReview = {\n  /** Recorded-model UX trial; no production inference or project persistence. */\n  labMode?: boolean;\n  state: "ready";');
-  }
-  if (relative === "lib/project-store.ts") {
-    output = `// Type-only production shapes. The lab never opens the production project database.\n`
-      + `import type { AnalysisWindow } from "./on-device/analysis-window";\n`
-      + `import type { NormalizedRoi, OnDeviceAnalysis, OnDeviceMediaInfo } from "./on-device/types";\n`
-      + `import type { CutDraft } from "./cut-draft";\n\n`
-      + source.slice(source.indexOf("export type ProjectSource"), source.indexOf("function requestResult"));
-  }
   if (relative === "lib/runtime-assets.ts") {
     output = output.slice(0, output.indexOf("export function runtimeAssetUrl"))
       + `export function runtimeAssetUrl(asset: RuntimeAsset): string {\n`
@@ -308,7 +317,18 @@ mkdirSync(assetRoot, { recursive: true });
 for (const asset of ["volleysplice-logo.png", "volleysplice-icon-transparent.png"]) {
   copyFileSync(path.join(repository, "prod/public/runtime", asset), path.join(assetRoot, asset));
 }
-writeFileSync(path.join(destinationRoot, "snapshot.json"), JSON.stringify({
+// Remove only files owned by an earlier snapshot that no longer have an importer.
+const destinations = new Set(manifest.map(entry => entry.destination));
+for (const { destination } of previousFiles) {
+  if (destinations.has(destination)) continue;
+  const filename = path.resolve(repository, destination);
+  const relative = path.relative(destinationRoot, filename);
+  if (relative.startsWith("..") || path.isAbsolute(relative) || !relative) {
+    throw new Error(`Snapshot destination escaped the editor directory: ${destination}`);
+  }
+  if (existsSync(filename)) unlinkSync(filename);
+}
+writeFileSync(manifestPath, JSON.stringify({
   schemaVersion: 1,
   hashEncoding: "UTF-8 with LF-normalized line endings",
   sourceEntry: "prod/src/designs/taste/index.tsx",
