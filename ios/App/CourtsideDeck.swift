@@ -133,11 +133,12 @@ struct CourtsideDeckWorkspace<Video: View>: View {
     let onTrim: (Bool, Int64) -> Void
     let onNeighbor: (Int) -> Void
     let onReview: () -> Void
+    let onResumeReview: () -> Void
     let onSelect: (EditableRallyGroup) -> Void
     let onAdd: (TimeRange) -> Void
     @ViewBuilder var video: () -> Video
-    @State private var adding = false
     @State private var listCenters: [String: CGFloat] = [:]
+    @State private var listInteractionObserved = false
     @State private var splitDragStart: Double?
     @AppStorage("courtside.videoFraction") private var videoFraction = 0.56
     @Environment(\.compactPhoneEditor) private var phone
@@ -146,6 +147,7 @@ struct CourtsideDeckWorkspace<Video: View>: View {
     private var rallies: [EditableRallyGroup] { presentation.groups }
     private var rally: EditableRallyGroup? { rallies.first { $0.id == navigation.selectedId } }
     private var index: Int { rallies.firstIndex { $0.id == rally?.id } ?? -1 }
+    private var mode: RallyDeckMode { navigation.mode(selected: rally, queue: queue) }
     private var score: ScoreTracking { presentation.score }
     private var activeServes: [ServeMarker] {
         if let rally { return RallyReview.serves(for: rally, in: presentation.visibleScore.serveMarkers) }
@@ -159,13 +161,18 @@ struct CourtsideDeckWorkspace<Video: View>: View {
         GeometryReader { geometry in
             let landscape = geometry.size.width > geometry.size.height && geometry.size.width >= 560
             VStack(spacing: 0) {
-                progress
+                reviewHeader
                 if landscape {
                     let available = max(1, geometry.size.width - (phone ? 8 : 24))
                     let playerWidth = max(240, min(available - 300, available * videoFraction))
                     HStack(spacing: 0) {
                         playerPane.frame(width: phone ? max(240, geometry.size.width * 0.56) : playerWidth).contentShape(Rectangle()).clipped()
-                        if !phone { videoDivider(available: available, current: playerWidth) }
+                        if !phone {
+                            videoDivider(available: available, current: playerWidth)
+                                .opacity(navigation.addingMissing ? 0 : 1)
+                                .allowsHitTesting(!navigation.addingMissing)
+                                .accessibilityHidden(navigation.addingMissing)
+                        }
                         else { Color.clear.frame(width: 8) }
                         detailPane.frame(maxWidth: .infinity).contentShape(Rectangle()).clipped()
                     }
@@ -178,26 +185,35 @@ struct CourtsideDeckWorkspace<Video: View>: View {
                 }
             }
         }.background(CourtsidePalette.ground).foregroundStyle(CourtsidePalette.ink)
-            .sheet(isPresented: $adding) {
-                MissingRallySheet(selection: .init(positionMs: playhead, bounds: bounds, occupied: occupied), bounds: bounds,
-                    occupied: occupied, onSeek: onSeek, onCancel: { adding = false }, onAdd: { onAdd($0); adding = false })
-                    .presentationDetents([.medium, .large]).interfaceScaled()
-            }
     }
-    private var progress: some View {
-        let pending = Set(queue.map(\.id))
-        let total = navigation.initialReviewKeys.union(pending).count
-        let checked = max(0, total - pending.count)
-        return VStack(spacing: 5) {
-            HStack {
-                Text(queue.isEmpty ? "Review complete" : "\(queue.count) need review")
-                Spacer()
-                Text("\(checked) / \(total) checked").monospacedDigit()
-                Button(navigation.browsing ? "Review" : "All \(rallies.count)") { navigation.browsing.toggle() }
-                    .frame(minWidth: 60, minHeight: 44).accessibilityIdentifier("deckBrowse")
-            }.font(.system(size: 13)).foregroundStyle(CourtsidePalette.muted)
-            ProgressView(value: total == 0 ? 1 : Double(checked) / Double(total)).tint(CourtsidePalette.accent)
-        }.padding(.horizontal, 12).padding(.bottom, 6).guidedTourTarget("deck-progress")
+    private var reviewHeader: some View {
+        HStack {
+            Text(headerTitle).font(.system(size: 16, weight: .semibold)).monospacedDigit()
+                .accessibilityIdentifier("deckReviewCount")
+            Spacer(minLength: 8)
+            Button {
+                if mode == .review {
+                    navigation.browsing = true; navigation.editingRally = false
+                    navigation.follow(time: playhead, rallies: rallies)
+                }
+                else { onResumeReview() }
+            } label: {
+                HStack(spacing: 6) {
+                    if mode != .review { Image(systemName: "arrow.left") }
+                    Text(mode == .review ? "All rallies (\(rallies.count))" : "Review rallies")
+                    if mode == .review { Image(systemName: "arrow.right") }
+                }.frame(minHeight: 44)
+            }.buttonStyle(.plain).foregroundStyle(CourtsidePalette.accent).accessibilityIdentifier("deckBrowse")
+        }.font(.system(size: 13)).foregroundStyle(CourtsidePalette.muted)
+            .padding(.horizontal, 12).guidedTourTarget("deck-progress")
+    }
+    private var headerTitle: String {
+        switch mode {
+        case .adding: return "Add missing rally"
+        case .allRallies: return "All rallies"
+        case .editing: return "Editing rally \(index + 1)"
+        case .review: return "Reviewing \(queue.count) \(queue.count == 1 ? "rally" : "rallies")"
+        }
     }
     private func videoDivider(available: CGFloat, current: CGFloat) -> some View {
         Color.clear.frame(width: 24).overlay { Capsule().fill(CourtsidePalette.control).frame(width: 4, height: 44) }
@@ -226,13 +242,14 @@ struct CourtsideDeckWorkspace<Video: View>: View {
                 enabled: sourceAvailable, selected: false, bordered: false, action: onPlay)
                 .frame(width: 44, height: 44)
             Text(deckTime(playhead)).monospacedDigit().font(.system(size: 13))
+                .accessibilityIdentifier("deckPlayhead")
             Spacer(minLength: 0)
             Text(playbackDuration).font(.system(size: 11)).foregroundStyle(.white.opacity(0.7)).lineLimit(1)
             playbackSpeed
         }.padding(.horizontal, 10).foregroundStyle(.white).background(Color(white: 0.09))
     }
     private var playbackDuration: String {
-        if navigation.browsing { return "\(deckTime(bounds.endMs)) source" }
+        if navigation.browsing || navigation.addingMissing { return "\(deckTime(bounds.endMs)) source" }
         let start = rally?.coreStartMs ?? navigation.focus?.startMs ?? 0
         let end = rally?.coreEndMs ?? navigation.focus?.endMs ?? 0
         let seconds = Double(end - start) / 1_000
@@ -250,7 +267,12 @@ struct CourtsideDeckWorkspace<Video: View>: View {
         .accessibilityLabel("Playback speed, \(draft.playbackRate.formatted()) times").accessibilityIdentifier("deckSpeed")
     }
     @ViewBuilder private var detailPane: some View {
-        if navigation.browsing { browser.guidedTourTarget("deck-list") }
+        if navigation.addingMissing {
+            MissingRallyPane(selection: $navigation.missingSelection, rallies: rallies, effectiveIds: presentation.keptIds,
+                reviewIds: presentation.pendingConfidenceIds, ignored: draft.ignoredIntervals,
+                bounds: bounds, occupied: occupied, playhead: playhead, onSeek: onSeek,
+                onCancel: { navigation.addingMissing = false }, onAdd: onAdd)
+        } else if navigation.browsing { browser.guidedTourTarget("deck-list") }
         else {
             ScrollViewReader { proxy in
                 VStack(spacing: 0) {
@@ -337,36 +359,40 @@ struct CourtsideDeckWorkspace<Video: View>: View {
     private var browser: some View {
         VStack(spacing: 4) {
             HStack {
-                Text("\(rallies.count) rallies").font(.system(size: 16, weight: .semibold))
-                Spacer()
-                Button(navigation.showTimeline ? "Hide timeline" : "Show timeline") { navigation.showTimeline.toggle() }.frame(minHeight: 44)
-            }.font(.system(size: 12))
-            HStack {
-                Text(RallyReview.at(playhead, in: rallies) == nil ? "Between rallies · \(deckTime(playhead))" : "Rally \((rallies.firstIndex { $0.id == navigation.selectedId } ?? 0) + 1) · \(deckTime(playhead))")
-                    .lineLimit(1).frame(width: 125, alignment: .leading)
-                Slider(value: Binding(get: { Double(playhead) }, set: { onSeek(Int64($0)) }),
-                    in: Double(bounds.startMs)...Double(max(bounds.startMs + 1, bounds.endMs)))
-                    .frame(minWidth: 60).tint(CourtsidePalette.accent)
-                    .accessibilityLabel("Seek source video").accessibilityValue(deckTime(playhead)).accessibilityIdentifier("deckSourceSeek")
-                Button("Follow video") { navigation.follow(time: playhead, rallies: rallies) }.disabled(navigation.following)
-            }.font(.system(size: 11)).foregroundStyle(CourtsidePalette.muted)
+                Text(RallyReview.at(playhead, in: rallies) == nil ? "Between rallies \u{00B7} \(deckTime(playhead))" : "Rally \((rallies.firstIndex { $0.id == navigation.selectedId } ?? 0) + 1) \u{00B7} \(deckTime(playhead))")
+                    .lineLimit(1).accessibilityIdentifier("deckSourceStatus")
+                Spacer(minLength: 8)
+                Button(navigation.showTimeline ? "Hide timeline" : "Show timeline") { navigation.showTimeline.toggle() }
+                    .frame(minHeight: 44).accessibilityIdentifier("deckToggleSourceTimeline")
+            }.font(.system(size: 12)).foregroundStyle(CourtsidePalette.muted)
             HStack(spacing: 8) {
                 if navigation.showTimeline {
-                    VStack(spacing: 2) {
-                        Text(deckTime(bounds.startMs)).font(.system(size: 11))
-                        CourtsideSourceRail(rallies: rallies, effectiveIds: presentation.keptIds, bounds: bounds, playhead: playhead,
-                            listCenter: rallies.first { $0.id == navigation.listCenterId }?.coreStartMs, onSeek: onSeek)
-                        Text(deckTime(bounds.endMs)).font(.system(size: 11))
-                    }.frame(width: 62).accessibilityIdentifier("deckSourceTimeline")
+                    CourtsideSourceRail(rallies: rallies, effectiveIds: presentation.keptIds, bounds: bounds, playhead: playhead,
+                        listCenter: rallies.first { $0.id == navigation.listCenterId }?.coreStartMs, onSeek: onSeek)
+                        .frame(width: 96)
                 }
-                rallyList
+                VStack(spacing: 4) {
+                    HStack {
+                        Label("Play", systemImage: "circle.fill").foregroundStyle(CourtsidePalette.accent)
+                        Spacer(minLength: 8)
+                        HStack(spacing: 6) {
+                            RallyListMarker()
+                            Text(rallies.firstIndex { $0.id == navigation.listCenterId }.map { "List \u{00B7} \($0 + 1)" } ?? "List —")
+                        }.foregroundStyle(CourtsidePalette.muted)
+                    }.font(.system(size: 12)).accessibilityIdentifier("deckListLegend")
+                    rallyList
+                }
             }.frame(maxHeight: .infinity)
             HStack(spacing: 8) {
                 CourtsideActionButton(title: index >= 0 ? "Edit rally \(index + 1)" : "Edit selected rally",
-                    identifier: "deckEditSelected", enabled: rally != nil, selected: false) { navigation.browsing = false }
+                    identifier: "deckEditSelected", enabled: rally != nil, selected: false) {
+                        if let rally { navigation.edit(rally, queue: queue) }
+                    }
                     .frame(maxWidth: .infinity).frame(height: 44)
                 CourtsideActionButton(title: "+ Add missing rally", identifier: "deckAddMissing",
-                    enabled: true, selected: missing != nil) { adding = true }
+                    enabled: true, selected: missing != nil) {
+                        navigation.missingSelection.reset(); navigation.addingMissing = true; onSeek(playhead)
+                    }
                     .frame(maxWidth: .infinity).frame(height: 44).guidedTourTarget("deck-add")
             }
         }.padding(10).background(.white)
@@ -377,10 +403,20 @@ struct CourtsideDeckWorkspace<Video: View>: View {
                 ScrollView {
                     LazyVStack(spacing: 3) {
                         ForEach(Array(rallies.enumerated()), id: \.element.id) { rowIndex, value in
-                            Button { onSelect(value) } label: {
+                            Button {
+                                if value.id == navigation.selectedId { navigation.edit(value, queue: queue) }
+                                else { onSelect(value) }
+                            } label: {
                                 let snapshot = overlay.snapshot(at: value.coreStartMs).score
                                 VStack(spacing: 6) {
-                                    HStack { Text("Rally \(rowIndex + 1)").fontWeight(.semibold); Spacer(); Text(score.enabled ? "\(snapshot.team1Score) : \(snapshot.team2Score)" : "—") }
+                                    HStack {
+                                        HStack(spacing: 6) {
+                                            Text("Rally \(rowIndex + 1)").fontWeight(.semibold)
+                                            if value.id == navigation.listCenterId { RallyListMarker() }
+                                        }
+                                        Spacer()
+                                        Text(score.enabled ? "\(snapshot.team1Score) : \(snapshot.team2Score)" : "—")
+                                    }
                                     HStack {
                                         Text("\(deckTime(value.coreStartMs)) – \(deckTime(value.coreEndMs))")
                                         Spacer()
@@ -391,18 +427,21 @@ struct CourtsideDeckWorkspace<Video: View>: View {
                                     .background(value.id == navigation.selectedId ? CourtsidePalette.control.opacity(0.3) : Color.clear, in: RoundedRectangle(cornerRadius: 6))
                                     .contentShape(Rectangle())
                             }.buttonStyle(.plain).id(value.id)
+                                .accessibilityIdentifier("deckRallyRow-\(value.id)")
                                 .accessibilityAddTraits(value.id == navigation.selectedId ? .isSelected : [])
+                                .accessibilityValue(value.id == navigation.listCenterId ? "List center" : "")
                                 .background { GeometryReader { row in Color.clear.preference(key: RallyRowCenters.self, value: [value.id: row.frame(in: .named("deck-list-scroll")).midY]) } }
                         }
                     }
                 }.coordinateSpace(name: "deck-list-scroll")
                     .modifier(RallyListInteraction {
+                        listInteractionObserved = true
                         navigation.following = false
                         navigation.listCenterId = listCenters.min { abs($0.value - geometry.size.height / 2) < abs($1.value - geometry.size.height / 2) }?.key
                     })
                     .onPreferenceChange(RallyRowCenters.self) { centers in
                         listCenters = centers
-                        guard !navigation.following else { return }
+                        guard !navigation.following, listInteractionObserved else { return }
                         let id = centers.min { abs($0.value - geometry.size.height / 2) < abs($1.value - geometry.size.height / 2) }?.key
                         if id != navigation.listCenterId { navigation.listCenterId = id }
                     }
@@ -410,10 +449,16 @@ struct CourtsideDeckWorkspace<Video: View>: View {
                         if let id = navigation.listCenterId { proxy.scrollTo(id, anchor: .center) }
                     }
                     .onChange(of: playhead) { _, value in
+                        if let active = RallyReview.at(value, in: rallies) { navigation.selectedId = active.id }
                         guard navigation.following, let next = RallyReview.nearest(value, in: rallies), next.id != navigation.listCenterId else { return }
                         navigation.listCenterId = next.id; proxy.scrollTo(next.id, anchor: .center)
                     }
-                    .onAppear { if let id = navigation.listCenterId ?? navigation.selectedId { proxy.scrollTo(id, anchor: .center) } }
+                    .onAppear {
+                        listInteractionObserved = false
+                        if navigation.following { navigation.follow(time: playhead, rallies: rallies) }
+                        if let id = navigation.listCenterId ?? navigation.selectedId { proxy.scrollTo(id, anchor: .center) }
+                    }
+                    .onDisappear { listInteractionObserved = false }
             }
         }
     }
@@ -514,6 +559,22 @@ struct CourtsideTimeline: View {
     }
 }
 
+private struct RallyListMarker: View {
+    var body: some View {
+        Canvas { context, size in
+            let x = size.width / 2, y = size.height / 2
+            var diamond = Path()
+            diamond.move(to: .init(x: x, y: y - 5))
+            diamond.addLine(to: .init(x: x + 5, y: y))
+            diamond.addLine(to: .init(x: x, y: y + 5))
+            diamond.addLine(to: .init(x: x - 5, y: y))
+            diamond.closeSubpath()
+            context.fill(diamond, with: .color(.white))
+            context.stroke(diamond, with: .color(CourtsidePalette.ink), lineWidth: 2)
+        }.frame(width: 14, height: 14).accessibilityHidden(true)
+    }
+}
+
 private struct CourtsideSourceRail: View {
     let rallies: [EditableRallyGroup]
     let effectiveIds: Set<String>
@@ -522,74 +583,204 @@ private struct CourtsideSourceRail: View {
     let listCenter: Int64?
     let onSeek: (Int64) -> Void
     var body: some View {
+        let columns = SourceTimelineColumns(bounds: bounds)
+        HStack(spacing: 8) {
+            ForEach(0..<2, id: \.self) { index in
+                let window = columns.ranges[index]
+                VStack(spacing: 2) {
+                    Text(deckTime(window.startMs))
+                    rail(window: window, index: index, columns: columns)
+                    Text(deckTime(window.endMs))
+                }.font(.system(size: 11)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
+                    .frame(width: 44)
+            }
+        }
+    }
+    private func rail(window: TimeRange, index: Int, columns: SourceTimelineColumns) -> some View {
         GeometryReader { geometry in
             let height = max(1, geometry.size.height - 16)
-            let duration = Double(max(1, bounds.endMs - bounds.startMs))
-            let y: (Int64) -> CGFloat = { 8 + CGFloat(min(1, max(0, Double($0 - bounds.startMs) / duration))) * height }
+            let duration = Double(max(1, window.endMs - window.startMs))
+            let y: (Int64) -> CGFloat = { 8 + CGFloat(min(1, max(0, Double($0 - window.startMs) / duration))) * height }
             ZStack(alignment: .topLeading) {
-                Capsule().fill(CourtsidePalette.control).frame(width: 3, height: height).offset(x: 25, y: 8)
-                ForEach(rallies, id: \.id) { rally in
+                Capsule().fill(CourtsidePalette.control).frame(width: 3, height: height).offset(x: 20.5, y: 8)
+                ForEach(rallies.filter { $0.keepStartMs < window.endMs && window.startMs < $0.keepEndMs }, id: \.id) { rally in
                     Rectangle().fill(RallyReview.retained(rally, effectiveIds: effectiveIds) ? EditorPalette.green : EditorPalette.danger)
-                        .frame(width: 18, height: max(3, y(rally.keepEndMs) - y(rally.keepStartMs))).offset(x: 18, y: y(rally.keepStartMs))
+                        .frame(width: 18, height: max(3, y(min(window.endMs, rally.keepEndMs)) - y(max(window.startMs, rally.keepStartMs))))
+                        .offset(x: 13, y: y(max(window.startMs, rally.keepStartMs)))
+                        .accessibilityIdentifier("deckSourceRally-\(index)-\(rally.id)")
                 }
-                Image(systemName: "circle.fill").font(.system(size: 9)).foregroundStyle(CourtsidePalette.accent).offset(x: 1, y: y(playhead) - 5)
-                Rectangle().fill(CourtsidePalette.accent).frame(width: 26, height: 2).offset(y: y(playhead))
-                if let listCenter {
-                    Image(systemName: "diamond").font(.system(size: 12, weight: .bold)).offset(x: 40, y: y(listCenter) - 6)
+                if columns.column(at: playhead) == index {
+                    Image(systemName: "circle.fill").font(.system(size: 8)).foregroundStyle(CourtsidePalette.accent)
+                        .offset(x: 0, y: y(playhead) - 4)
+                    Rectangle().fill(CourtsidePalette.accent).frame(width: 22, height: 2).offset(y: y(playhead))
+                }
+                if let listCenter, columns.column(at: listCenter) == index {
+                    RallyListMarker().offset(x: 29, y: y(listCenter) - 7)
                 }
             }.frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
-                .contentShape(Rectangle()).coordinateSpace(name: "deck-source-rail")
-                .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .named("deck-source-rail")).onChanged { gesture in
-                onSeek(bounds.startMs + Int64(min(1, max(0, Double(gesture.location.y - 8) / Double(height))) * duration))
-            })
-        }.accessibilityElement().accessibilityLabel("Source timeline. Circle: video. Diamond: list center.")
+                .contentShape(Rectangle())
+                .gesture(DragGesture(minimumDistance: 1)
+                    .onChanged { onSeek(columns.time(in: index, fraction: Double(($0.location.y - 8) / height))) }
+                    .onEnded { onSeek(columns.time(in: index, fraction: Double(($0.location.y - 8) / height))) }
+                    .exclusively(before: SpatialTapGesture().onEnded {
+                        onSeek(columns.time(in: index, fraction: Double(($0.location.y - 8) / height)))
+                    }))
+        }.accessibilityElement().accessibilityLabel("Source timeline column \(index + 1), \(deckTime(window.startMs)) to \(deckTime(window.endMs)). Circle: video. Diamond: list center.")
+            .accessibilityIdentifier("deckSourceTimelineColumn-\(index)")
             .accessibilityValue("Video \(deckTime(playhead))" + (listCenter.map { "; List center \(deckTime($0))" } ?? ""))
-            .accessibilityAdjustableAction { direction in onSeek(playhead + (direction == .increment ? 1_000 : -1_000)) }
+            .accessibilityAdjustableAction { direction in
+                onSeek(min(window.endMs, max(window.startMs, playhead + (direction == .increment ? 1_000 : -1_000))))
+            }
     }
 }
 
-private struct MissingRallySheet: View {
-    @State var selection: MissingRallySelection
+private struct MissingRallyPane: View {
+    @Binding var selection: MissingRallySelection
+    let rallies: [EditableRallyGroup]
+    let effectiveIds: Set<String>
+    let reviewIds: Set<String>
+    let ignored: [IgnoredSourceInterval]
     let bounds: TimeRange
     let occupied: [TimeRange]
+    let playhead: Int64
     let onSeek: (Int64) -> Void
     let onCancel: () -> Void
     let onAdd: (TimeRange) -> Void
-    private var valid: Bool {
-        guard let range = selection.range else { return false }
-        return range.endMs - range.startMs >= RallyReview.minimumDurationMs &&
-            !occupied.contains { $0.startMs < range.endMs && range.startMs < $0.endMs }
+    private var range: TimeRange? { selection.range(endingAt: playhead, bounds: bounds, occupied: occupied) }
+    private var canMark: Bool { selection.canMarkStart(at: playhead, bounds: bounds, occupied: occupied) }
+    private var instruction: String {
+        if let start = selection.startMs {
+            if playhead < start + RallyReview.minimumDurationMs { return "Seek at least 0.5 seconds after the start." }
+            if range == nil { return "Choose an end before the next rally or ignored footage." }
+            return "Seek to the rally end, then mark and add it below."
+        }
+        return canMark ? "Seek to the rally start, then mark it below." : "Choose a start in the empty footage between rallies."
     }
     var body: some View {
-        NavigationStack {
-            Form {
-                Section("Source video") {
-                    Text(deckTime(selection.positionMs)).monospacedDigit()
-                    Slider(value: Binding(get: { Double(selection.positionMs) }, set: { value in
-                        selection.seek(to: Int64(value), bounds: bounds, occupied: occupied)
-                        onSeek(selection.positionMs)
-                    }), in: Double(bounds.startMs)...Double(max(bounds.startMs + 1, bounds.endMs)))
-                        .accessibilityLabel("Seek source video").accessibilityValue(deckTime(selection.positionMs))
-                        .accessibilityIdentifier("deckAddSourceSeek")
-                    Text("Seek to a gap, check the range, then confirm Add rally.").font(.callout)
+        GeometryReader { _ in
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text(instruction).font(.system(size: 14)).fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 8)
+                    Button("Cancel", action: onCancel).frame(minHeight: 44).accessibilityIdentifier("deckAddCancel")
                 }
-                Section("New rally") {
-                    if let range = selection.range {
-                    Text("Start \(deckTime(range.startMs))").monospacedDigit()
-                    Slider(value: Binding(get: { Double(selection.range?.startMs ?? range.startMs) }, set: { selection.range?.startMs = Int64($0) }), in: Double(bounds.startMs)...Double(max(bounds.startMs + 1, range.endMs - 500)), step: 100)
-                        .accessibilityLabel("New rally start").accessibilityValue(deckTime(range.startMs))
-                    Text("End \(deckTime(range.endMs))").monospacedDigit()
-                    Slider(value: Binding(get: { Double(selection.range?.endMs ?? range.endMs) }, set: { selection.range?.endMs = Int64($0) }), in: Double(min(bounds.endMs - 1, range.startMs + 500))...Double(bounds.endMs), step: 100)
-                        .accessibilityLabel("New rally end").accessibilityValue(deckTime(range.endMs))
-                    }
-                    if !valid { Text("Choose a gap outside existing rallies and ignored footage.").foregroundStyle(EditorPalette.danger) }
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text(selection.startMs.map { "Start \(deckTime($0))" } ?? "Start —")
+                                .accessibilityIdentifier("deckAddStartTime")
+                            Spacer(minLength: 8)
+                            Text(selection.startMs == nil ? "End —" : "End \(deckTime(playhead))")
+                                .accessibilityIdentifier("deckAddPosition")
+                            Spacer(minLength: 8)
+                            Button("Reset") { selection.reset() }.disabled(selection.startMs == nil)
+                                .frame(minWidth: 44, minHeight: 44).accessibilityIdentifier("deckAddReset")
+                        }.font(.system(size: 14, weight: .medium)).monospacedDigit().foregroundStyle(CourtsidePalette.accent)
+                        MissingRallyTimeline(rallies: rallies, effectiveIds: effectiveIds, reviewIds: reviewIds,
+                            ignored: ignored, bounds: bounds, playhead: playhead, startMs: selection.startMs,
+                            valid: range != nil, onSeek: onSeek)
+                            .frame(height: 204)
+                    }.padding(.bottom, 12)
                 }
-            }.navigationTitle("Add missing rally").navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: onCancel) }
-                    ToolbarItem(placement: .confirmationAction) { Button("Add rally") { if let range = selection.range { onAdd(range) } }.disabled(!valid) }
+                CourtsideActionButton(title: selection.startMs == nil ? "Mark start at \(deckTime(playhead))" : "Mark end & add rally", identifier: "deckAddMark",
+                    enabled: selection.startMs == nil ? canMark : range != nil, selected: true) {
+                    if selection.startMs == nil { selection.markStart(at: playhead, bounds: bounds, occupied: occupied) }
+                    else if let range { onSeek(playhead); onAdd(range) }
+                }.frame(maxWidth: .infinity).frame(height: 44)
+            }.padding(10)
+        }.background(.white)
+    }
+}
+
+/// Consecutive rows share a linear source-time scale. Playback and dragging
+/// update the marker from the player's position without a separate seek state.
+private struct MissingRallyTimeline: View {
+    let rallies: [EditableRallyGroup]
+    let effectiveIds: Set<String>
+    let reviewIds: Set<String>
+    let ignored: [IgnoredSourceInterval]
+    let bounds: TimeRange
+    let playhead: Int64
+    let startMs: Int64?
+    let valid: Bool
+    let onSeek: (Int64) -> Void
+    @GestureState private var horizontalScrub: Bool?
+    var body: some View {
+        GeometryReader { _ in
+            let rows = 3
+            VStack(spacing: 6) {
+                ForEach(0..<rows, id: \.self) { index in
+                    let duration = bounds.endMs - bounds.startMs
+                    let window = TimeRange(startMs: bounds.startMs + duration * Int64(index) / Int64(rows),
+                        endMs: bounds.startMs + duration * Int64(index + 1) / Int64(rows))
+                    VStack(spacing: 2) {
+                        HStack { Text(deckTime(window.startMs)); Spacer(); Text(deckTime(window.endMs)) }
+                            .font(.system(size: 11)).monospacedDigit().foregroundStyle(CourtsidePalette.muted)
+                        timelineRow(window, last: index == rows - 1)
+                            .accessibilityIdentifier("deckAddTimelineRow-\(index)")
+                    }.frame(maxHeight: .infinity)
                 }
+            }
         }
+    }
+    private func timelineRow(_ window: TimeRange, last: Bool) -> some View {
+        Canvas { context, size in
+            func x(_ time: Int64) -> CGFloat {
+                CGFloat(Double(time - window.startMs) / Double(max(1, window.endMs - window.startMs))) * size.width
+            }
+            func bar(_ range: TimeRange, color: Color, y: CGFloat = 6, height: CGFloat? = nil) {
+                let left = max(window.startMs, range.startMs), right = min(window.endMs, range.endMs)
+                guard right > left else { return }
+                let rect = CGRect(x: x(left), y: y, width: max(1, x(right) - x(left)), height: height ?? max(1, size.height - 12))
+                context.fill(Path(roundedRect: rect, cornerRadius: 3), with: .color(color))
+            }
+            for rally in rallies {
+                for cut in rally.cuts {
+                    let kept = cut.included && effectiveIds.contains(cut.id)
+                    let color = !kept ? CourtsidePalette.muted : reviewIds.contains(cut.id) ? EditorPalette.orange : EditorPalette.green
+                    bar(.init(startMs: cut.keepStartMs, endMs: cut.keepEndMs), color: color.opacity(0.25))
+                    bar(.init(startMs: cut.coreStartMs, endMs: cut.coreEndMs), color: color)
+                }
+            }
+            for span in ignored { bar(.init(startMs: span.startMs, endMs: span.endMs), color: CourtsidePalette.control, y: 0, height: size.height) }
+            if let startMs, playhead > startMs {
+                bar(.init(startMs: startMs, endMs: playhead), color: (valid ? CourtsidePalette.accent : EditorPalette.danger).opacity(0.25), y: 0, height: size.height)
+            }
+            if let startMs, startMs >= window.startMs, startMs < window.endMs || last && startMs == window.endMs {
+                let position = min(size.width - 2, max(0, x(startMs)))
+                context.fill(Path(CGRect(x: position, y: 0, width: 2, height: size.height)), with: .color(CourtsidePalette.ink))
+                context.fill(Path(CGRect(x: position, y: 0, width: min(9, size.width - position), height: 5)), with: .color(CourtsidePalette.ink))
+            }
+            if playhead >= window.startMs, playhead < window.endMs || last && playhead == window.endMs {
+                let position = min(size.width - 2, max(0, x(playhead)))
+                context.fill(Path(CGRect(x: position, y: 0, width: 2, height: size.height)), with: .color(CourtsidePalette.accent))
+                context.fill(Path(ellipseIn: CGRect(x: position - 3, y: 0, width: 8, height: 8)), with: .color(CourtsidePalette.accent))
+            }
+        }.frame(minHeight: 44).background(CourtsidePalette.raised, in: RoundedRectangle(cornerRadius: 5))
+            .overlay {
+                GeometryReader { geometry in
+                    let seek: (CGFloat) -> Void = { x in
+                        let fraction = min(1, max(0, x / max(1, geometry.size.width)))
+                        onSeek(window.startMs + Int64((fraction * Double(window.endMs - window.startMs)).rounded()))
+                    }
+                    Color.clear.contentShape(Rectangle())
+                        .gesture(SpatialTapGesture().onEnded { seek($0.location.x) })
+                        .simultaneousGesture(DragGesture(minimumDistance: 8)
+                            .updating($horizontalScrub) { value, horizontal, _ in
+                                if horizontal == nil { horizontal = abs(value.translation.width) > abs(value.translation.height) }
+                            }
+                            .onChanged { value in
+                                if horizontalScrub ?? (abs(value.translation.width) > abs(value.translation.height)) {
+                                    seek(value.location.x)
+                                }
+                            })
+                }
+            }
+            .accessibilityElement().accessibilityLabel("Source timeline, \(deckTime(window.startMs)) to \(deckTime(window.endMs))")
+            .accessibilityValue("Video \(deckTime(playhead))")
+            .accessibilityAdjustableAction { direction in
+                onSeek(min(window.endMs, max(window.startMs, playhead + (direction == .increment ? 1_000 : -1_000))))
+            }
     }
 }
 

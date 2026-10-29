@@ -157,7 +157,7 @@ struct EditorWorkspace: View {
     }
     private var currentCut: EditableCut? { currentGroup?.asEditableCut() }
     private var deckPlaybackRange: TimeRange {
-        RallyReview.playbackRange(rally: currentGroup, review: deck.focus, bounds: bounds)
+        deck.playbackRange(rally: currentGroup, bounds: bounds)
     }
     private var currentGroupIndex: Int { rallyGroups.firstIndex { $0.id == currentGroup?.id } ?? -1 }
     private var keptRallyCount: Int { rallyGroups.filter { !$0.cutIds.isDisjoint(with: keptIds) }.count }
@@ -233,7 +233,6 @@ struct EditorWorkspace: View {
             synchronizePreferencesOnOpen()
             allSuggestions = (try? project.feedback.map(ProjectArchive.suppressionRegions)) ?? []
             refreshPresentation(); pollPlayback()
-            deck.initialReviewKeys = Set(deckQueue.map(\.id))
             if let first = deckQueue.first { visitReview(first) }
             else { deck.selectedId = rallyGroups.first?.id; deck.browsing = true }
             fadeScoreOverlay = draft.fadeScoreOverlay ?? fadeScoreOverlay
@@ -298,8 +297,9 @@ struct EditorWorkspace: View {
                 }
                 replaceDraft(RallyReview.decide(draft, rally: currentGroup, cleanup: cleanup, keep: keep))
             }, onServe: deckServe, onTrim: deckTrim, onNeighbor: deckNeighbor, onReview: deckNextReview,
+            onResumeReview: deckResumeReview,
             onSelect: { rally in
-                navigateDeck(to: rally.keepStartMs, end: rally.keepEndMs)
+                navigateDeck(to: rally.keepStartMs, end: deck.browsing ? bounds.endMs : rally.keepEndMs)
                 deck.selectedId = rally.id; deck.focus = nil
                 deck.follow(time: rally.coreStartMs, rallies: rallyGroups)
             }, onAdd: { range in
@@ -309,8 +309,9 @@ struct EditorWorkspace: View {
                       !occupied.contains(where: { $0.startMs < range.endMs && range.startMs < $0.endMs }) else { return }
                 let updated = EditorMath.addManual(draft, startMs: range.startMs, endMs: range.endMs, bounds: bounds)
                 replaceDraft(updated); refreshPresentation()
-                deck.selectedId = rallyGroups.first { $0.cutIds.contains(updated.cuts.last?.id ?? "") }?.id
-                deck.focus = nil; deck.browsing = false
+                if let added = rallyGroups.first(where: { $0.cutIds.contains(updated.cuts.last?.id ?? "") }) {
+                    deck.edit(added, queue: deckQueue)
+                }
                 navigateDeck(to: range.startMs, end: range.endMs)
             }, video: {
                 ZStack {
@@ -342,11 +343,17 @@ struct EditorWorkspace: View {
                 deckQueue.first(where: { $0.id != deck.focus?.id }) ?? deckQueue.first else { return }
         stage = .rallies; visitReview(next)
     }
+    private func deckResumeReview() {
+        deck.addingMissing = false; deck.browsing = false; deck.editingRally = false
+        deck.missingSelection.reset()
+        if let stop = deckQueue.first(where: { $0.id == deck.focus?.id }) ?? deckQueue.first { visitReview(stop) }
+        else { deck.focus = nil }
+    }
     private func deckNeighbor(_ direction: Int) {
         guard let group = currentGroup,
               let next = RallyReview.neighbor(of: group, direction: direction, rallies: rallyGroups, effectiveIds: keptIds) else { return }
         navigateDeck(to: next.keepStartMs, end: next.keepEndMs)
-        deck.selectedId = next.id; deck.focus = deckQueue.first { $0.rallyId == next.id }
+        deck.edit(next, queue: deckQueue)
     }
     private func deckTrim(_ start: Bool, _ time: Int64) {
         guard let group = currentGroup else { return }
@@ -1197,10 +1204,14 @@ struct EditorWorkspace: View {
         let updated = reconciled ?? EditorPresentation(draft: source, suggestions: allSuggestions, bounds: bounds, durationMs: project.durationMs)
         presentation = updated
         deckQueue = RallyReview.queue(presentation: updated, ignored: source.ignoredIntervals)
-        deck.initialReviewKeys.formUnion(deckQueue.map(\.id))
         if let selected = deck.selectedId, !updated.groups.contains(where: { $0.id == selected }) {
             deck.selectedId = updated.groups.first { $0.cutIds.contains(selected) }?.id
         }
+        if let center = deck.listCenterId, !updated.groups.contains(where: { $0.id == center }) {
+            deck.listCenterId = updated.groups.first { $0.cutIds.contains(center) }?.id ??
+                RallyReview.nearest(playheadMs, in: updated.groups)?.id
+        }
+        deck.reconcileReview(selected: updated.groups.first { $0.id == deck.selectedId }, queue: deckQueue)
         preparedOverlay = PreparedScoreOverlay(tracking: updated.visibleScore, rallyRanges: updated.scoreRallyRanges,
             mergedRanges: updated.intervals.map { .init(startMs: $0.startMs, endMs: $0.endMs) })
     }

@@ -22,6 +22,10 @@ public struct RallyReviewStop: Equatable, Identifiable, Sendable {
 public enum RallyReview {
     public static let minimumDurationMs: Int64 = 500
 
+    public static func pending(for rally: EditableRallyGroup, queue: [RallyReviewStop]) -> RallyReviewStop? {
+        queue.first { $0.rallyId.map(rally.cutIds.contains) == true }
+    }
+
     /// A review remains pending until its clip, cleanup and serve decisions are
     /// resolved. Match the selected group's current membership as well as the
     /// visited stop, so opening a rally from the browser cannot bypass the gate.
@@ -222,17 +226,43 @@ public struct RallyTrimDrag: Sendable {
     }
 }
 
-/// Opening or seeking in Add only proposes a range. Confirmation is a separate
-/// draft operation, and existing/ignored footage remains seekable but not addable.
+/// Marking a start is temporary view state. Only an explicit end confirmation
+/// creates a rally; source seeking and playback never change the marked start.
 public struct MissingRallySelection: Equatable, Sendable {
-    public private(set) var positionMs: Int64
-    public var range: TimeRange?
-    public init(positionMs: Int64, bounds: TimeRange, occupied: [TimeRange]) {
-        self.positionMs = min(max(positionMs, bounds.startMs), bounds.endMs)
-        range = RallyReview.missingRange(at: self.positionMs, bounds: bounds, occupied: occupied)
+    public private(set) var startMs: Int64?
+    public init() {}
+    public func canMarkStart(at time: Int64, bounds: TimeRange, occupied: [TimeRange]) -> Bool {
+        guard time >= bounds.startMs, time <= bounds.endMs - RallyReview.minimumDurationMs else { return false }
+        return !occupied.contains { $0.startMs < time + RallyReview.minimumDurationMs && time < $0.endMs }
     }
-    public mutating func seek(to positionMs: Int64, bounds: TimeRange, occupied: [TimeRange]) {
-        self = .init(positionMs: positionMs, bounds: bounds, occupied: occupied)
+    @discardableResult public mutating func markStart(at time: Int64, bounds: TimeRange, occupied: [TimeRange]) -> Bool {
+        guard canMarkStart(at: time, bounds: bounds, occupied: occupied) else { return false }
+        startMs = time
+        return true
+    }
+    public func range(endingAt end: Int64, bounds: TimeRange, occupied: [TimeRange]) -> TimeRange? {
+        guard let start = startMs, start >= bounds.startMs, end <= bounds.endMs,
+              end >= start + RallyReview.minimumDurationMs,
+              !occupied.contains(where: { $0.startMs < end && start < $0.endMs }) else { return nil }
+        return .init(startMs: start, endMs: end)
+    }
+    public mutating func reset() { startMs = nil }
+}
+
+public enum RallyDeckMode: Equatable, Sendable { case review, allRallies, adding, editing }
+
+/// The two vertical columns cover consecutive halves of the same source window.
+public struct SourceTimelineColumns: Equatable, Sendable {
+    public let ranges: [TimeRange]
+    public init(bounds: TimeRange) {
+        let middle = bounds.startMs + max(0, bounds.endMs - bounds.startMs) / 2
+        ranges = [.init(startMs: bounds.startMs, endMs: middle), .init(startMs: middle, endMs: bounds.endMs)]
+    }
+    public func column(at time: Int64) -> Int { time < ranges[1].startMs ? 0 : 1 }
+    public func time(in column: Int, fraction: Double) -> Int64 {
+        let range = ranges[min(1, max(0, column))]
+        let fraction = fraction.isFinite ? min(1, max(0, fraction)) : 0
+        return range.startMs + Int64((fraction * Double(max(0, range.endMs - range.startMs))).rounded())
     }
 }
 
@@ -241,15 +271,34 @@ public struct RallyDeckNavigation: Equatable, Sendable {
     public var selectedId: String?
     public var focus: RallyReviewStop?
     public var browsing = false
+    public var addingMissing = false
+    public var editingRally = false
+    public var missingSelection = MissingRallySelection()
     public var showTimeline = true
     public var following = true
     public var listCenterId: String?
     public var followRequest = 0
-    public var initialReviewKeys: Set<String> = []
     public init() {}
+    public func mode(selected: EditableRallyGroup?, queue: [RallyReviewStop]) -> RallyDeckMode {
+        if addingMissing { return .adding }
+        if browsing { return .allRallies }
+        if editingRally, let selected, RallyReview.pending(for: selected, queue: queue) == nil { return .editing }
+        return .review
+    }
+    public mutating func edit(_ rally: EditableRallyGroup, queue: [RallyReviewStop]) {
+        selectedId = rally.id; focus = RallyReview.pending(for: rally, queue: queue)
+        editingRally = focus == nil; browsing = false; addingMissing = false
+    }
+    public mutating func reconcileReview(selected: EditableRallyGroup?, queue: [RallyReviewStop]) {
+        guard !browsing, !addingMissing, let selected, let pending = RallyReview.pending(for: selected, queue: queue) else { return }
+        focus = pending; editingRally = false
+    }
     /// Inspecting context footage must not retarget the rally being trimmed.
     public mutating func sourceSeek(time: Int64, rallies: [EditableRallyGroup]) {
-        if browsing { follow(time: time, rallies: rallies) }
+        if browsing && !addingMissing { follow(time: time, rallies: rallies) }
+    }
+    public func playbackRange(rally: EditableRallyGroup?, bounds: TimeRange) -> TimeRange {
+        addingMissing || browsing ? bounds : RallyReview.playbackRange(rally: rally, review: focus, bounds: bounds)
     }
     public mutating func follow(time: Int64, rallies: [EditableRallyGroup]) {
         if let rally = RallyReview.at(time, in: rallies) { selectedId = rally.id }
@@ -257,6 +306,6 @@ public struct RallyDeckNavigation: Equatable, Sendable {
         following = true; followRequest += 1
     }
     public mutating func visit(_ stop: RallyReviewStop) {
-        focus = stop; selectedId = stop.rallyId; browsing = false
+        focus = stop; selectedId = stop.rallyId; browsing = false; addingMissing = false; editingRally = false
     }
 }

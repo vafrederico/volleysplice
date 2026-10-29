@@ -212,17 +212,121 @@ final class RallyReviewTests: XCTestCase {
             XCTAssertEqual(window.startMs + window.endMs, selected.coreStartMs + selected.coreEndMs)
         }
     }
-    func testAccessibleAddSourceSeekingCanLeaveExistingFootageWithoutCreatingARally() {
+    func testMissingRallyRequiresExplicitStartAndValidEndWithoutChangingTheDraft() {
         let draft = EditorDraft(sourceRevision: "synthetic", cuts: [cut("a", 10_000, 15_000)])
-        let occupied = draft.cuts.map { TimeRange(startMs: $0.keepStartMs, endMs: $0.keepEndMs) }
-        var selection = MissingRallySelection(positionMs: 12_000, bounds: bounds, occupied: occupied)
-        XCTAssertNil(selection.range)
-        selection.seek(to: 20_000, bounds: bounds, occupied: occupied)
-        XCTAssertEqual(selection.positionMs, 20_000)
-        XCTAssertEqual(selection.range, .init(startMs: 17_000, endMs: 25_000))
-        selection.seek(to: 11_000, bounds: bounds, occupied: occupied)
-        XCTAssertNil(selection.range)
+        let occupied = [TimeRange(startMs: 10_000, endMs: 15_000)]
+        var selection = MissingRallySelection()
+        XCTAssertNil(selection.range(endingAt: 20_000, bounds: bounds, occupied: occupied))
+        XCTAssertFalse(selection.markStart(at: 12_000, bounds: bounds, occupied: occupied))
+        XCTAssertNil(selection.startMs)
+        XCTAssertTrue(selection.markStart(at: 20_000, bounds: bounds, occupied: occupied))
+        XCTAssertNil(selection.range(endingAt: 19_000, bounds: bounds, occupied: occupied))
+        XCTAssertNil(selection.range(endingAt: 20_499, bounds: bounds, occupied: occupied))
+        XCTAssertEqual(selection.range(endingAt: 20_500, bounds: bounds, occupied: occupied), .init(startMs: 20_000, endMs: 20_500))
+        XCTAssertEqual(selection.range(endingAt: 24_000, bounds: bounds, occupied: occupied), .init(startMs: 20_000, endMs: 24_000))
+        XCTAssertEqual(selection.startMs, 20_000, "Seeking or playback must leave the start anchored")
         XCTAssertEqual(draft.cuts.count, 1)
         XCTAssertTrue(draft.userTouchedCutIds.isEmpty)
+        selection.reset()
+        XCTAssertNil(selection.startMs)
+        XCTAssertNil(selection.range(endingAt: 24_000, bounds: bounds, occupied: occupied))
     }
+    func testMissingRallyCannotCrossRalliesOrIgnoredFootageAndCanTouchTheirEdges() {
+        let occupied = [TimeRange(startMs: 10_000, endMs: 15_000), TimeRange(startMs: 25_000, endMs: 28_000)]
+        var selection = MissingRallySelection()
+        XCTAssertFalse(selection.markStart(at: 9_600, bounds: bounds, occupied: occupied))
+        XCTAssertTrue(selection.markStart(at: 15_000, bounds: bounds, occupied: occupied))
+        XCTAssertEqual(selection.range(endingAt: 25_000, bounds: bounds, occupied: occupied), .init(startMs: 15_000, endMs: 25_000))
+        XCTAssertNil(selection.range(endingAt: 26_000, bounds: bounds, occupied: occupied))
+        XCTAssertNil(selection.range(endingAt: 30_000, bounds: bounds, occupied: occupied), "An end in another gap cannot cross ignored footage")
+        XCTAssertEqual(selection.startMs, 15_000)
+        XCTAssertEqual(selection.range(endingAt: 20_000, bounds: bounds, occupied: occupied), .init(startMs: 15_000, endMs: 20_000))
+    }
+    func testMissingRallyUsesGameBoundsAndAllowsAnEndAtTheSourceBoundary() {
+        let window = TimeRange(startMs: 5_000, endMs: 50_000)
+        var selection = MissingRallySelection()
+        XCTAssertFalse(selection.markStart(at: 4_999, bounds: window, occupied: []))
+        XCTAssertFalse(selection.markStart(at: 49_501, bounds: window, occupied: []))
+        XCTAssertTrue(selection.markStart(at: 49_500, bounds: window, occupied: []))
+        XCTAssertEqual(selection.range(endingAt: 50_000, bounds: window, occupied: []), .init(startMs: 49_500, endMs: 50_000))
+        XCTAssertNil(selection.range(endingAt: 50_001, bounds: window, occupied: []))
+        XCTAssertNil(selection.range(endingAt: 50_000, bounds: window, occupied: [.init(startMs: 49_750, endMs: 50_000)]), "Revalidate against current occupancy at confirmation")
+    }
+    func testAddModePlaysFullSourceAndPreservesTheRallySelectionUntilCancelled() {
+        let groups = [cut("a", 10_000, 15_000), cut("b", 30_000, 35_000)].map { EditableRallyGroup(cuts: [$0]) }
+        var navigation = RallyDeckNavigation()
+        navigation.selectedId = "a"; navigation.browsing = true; navigation.addingMissing = true
+        navigation.missingSelection.markStart(at: 24_000, bounds: bounds,
+            occupied: groups.map { .init(startMs: $0.keepStartMs, endMs: $0.keepEndMs) })
+        navigation.sourceSeek(time: 32_000, rallies: groups)
+        XCTAssertEqual(navigation.selectedId, "a")
+        XCTAssertEqual(navigation.missingSelection.startMs, 24_000)
+        XCTAssertEqual(navigation.playbackRange(rally: groups[0], bounds: bounds), bounds)
+        XCTAssertEqual(RallyReview.focusedPlayback(frameMs: 24_000, retained: navigation.playbackRange(rally: groups[0], bounds: bounds)).positionMs, 24_000)
+        navigation.addingMissing = false
+        XCTAssertEqual(navigation.playbackRange(rally: groups[0], bounds: bounds), bounds)
+        navigation.sourceSeek(time: 32_000, rallies: groups)
+        XCTAssertEqual(navigation.selectedId, "b")
+        navigation.browsing = false
+        XCTAssertEqual(navigation.playbackRange(rally: groups[1], bounds: bounds), .init(startMs: 30_000, endMs: 35_000))
+    }
+    func testOpeningPendingRallyReturnsToReviewAndReadyRallyOpensEditing() {
+        let draft = EditorDraft(sourceRevision: "synthetic", cuts: [cut("a", 10_000, 15_000), cut("b", 30_000, 35_000)])
+        let p = presentation(draft), queue = RallyReview.queue(presentation: p, ignored: [])
+        var navigation = RallyDeckNavigation()
+        navigation.browsing = true
+        navigation.edit(p.groups[0], queue: queue)
+        XCTAssertEqual(navigation.mode(selected: p.groups[0], queue: queue), .review)
+        XCTAssertFalse(navigation.editingRally)
+        XCTAssertEqual(navigation.focus?.rallyId, "a")
+        let remaining = queue.filter { $0.rallyId != "a" }
+        navigation.edit(p.groups[0], queue: remaining)
+        XCTAssertEqual(navigation.mode(selected: p.groups[0], queue: remaining), .editing)
+        navigation.browsing = true
+        XCTAssertEqual(navigation.mode(selected: p.groups[0], queue: remaining), .allRallies)
+        navigation.addingMissing = true
+        XCTAssertEqual(navigation.mode(selected: p.groups[0], queue: remaining), .adding)
+        navigation.visit(queue[1])
+        XCTAssertEqual(navigation.mode(selected: p.groups[1], queue: queue), .review)
+    }
+    func testPendingMemberPreventsMergedRallyFromOpeningAsCompletedEditing() {
+        let group = EditableRallyGroup(cuts: [cut("a", 10_000, 15_000), cut("b", 16_000, 20_000)])
+        let pending = RallyReviewStop(id: "rally-b", rallyId: "b", startMs: 16_000, endMs: 20_000, clipReview: true)
+        var navigation = RallyDeckNavigation()
+        navigation.edit(group, queue: [pending])
+        XCTAssertEqual(navigation.mode(selected: group, queue: [pending]), .review)
+        XCTAssertEqual(navigation.focus, pending)
+    }
+    func testNewPendingWorkReturnsEditingToReviewWithoutLeavingBrowserOrAdd() {
+        let group = EditableRallyGroup(cuts: [cut("a", 10_000, 15_000)])
+        let pending = RallyReviewStop(id: "rally-a", rallyId: "a", startMs: 10_000, endMs: 15_000, clipReview: true)
+        var navigation = RallyDeckNavigation()
+        navigation.edit(group, queue: [])
+        navigation.reconcileReview(selected: group, queue: [pending])
+        XCTAssertEqual(navigation.mode(selected: group, queue: [pending]), .review)
+        XCTAssertEqual(navigation.mode(selected: group, queue: []), .review, "Resolving work stays in the review flow")
+        navigation.browsing = true
+        navigation.reconcileReview(selected: group, queue: [pending])
+        XCTAssertEqual(navigation.mode(selected: group, queue: [pending]), .allRallies)
+        navigation.addingMissing = true
+        navigation.reconcileReview(selected: group, queue: [pending])
+        XCTAssertEqual(navigation.mode(selected: group, queue: [pending]), .adding)
+    }
+    func testSourceColumnsPreserveSourceBoundsAndHaveOneOwnerAtTheMidpoint() {
+        let columns = SourceTimelineColumns(bounds: .init(startMs: 4_000, endMs: 24_001))
+        XCTAssertEqual(columns.ranges, [.init(startMs: 4_000, endMs: 14_000), .init(startMs: 14_000, endMs: 24_001)])
+        XCTAssertEqual(columns.column(at: 4_000), 0)
+        XCTAssertEqual(columns.column(at: 13_999), 0)
+        XCTAssertEqual(columns.column(at: 14_000), 1)
+        XCTAssertEqual(columns.column(at: 24_001), 1)
+        XCTAssertEqual(columns.time(in: 0, fraction: 0.5), 9_000)
+        XCTAssertEqual(columns.time(in: 0, fraction: 1), 14_000)
+        XCTAssertEqual(columns.time(in: 1, fraction: 0), 14_000)
+        XCTAssertEqual(columns.time(in: 1, fraction: 0.5), 19_001)
+        XCTAssertEqual(columns.time(in: 1, fraction: 1), 24_001)
+        XCTAssertEqual(columns.time(in: 0, fraction: -1), 4_000)
+        XCTAssertEqual(columns.time(in: 1, fraction: 2), 24_001)
+        XCTAssertEqual(columns.time(in: 1, fraction: .nan), 14_000)
+    }
+
 }
