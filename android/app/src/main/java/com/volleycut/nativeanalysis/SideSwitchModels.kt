@@ -4,9 +4,7 @@ import android.content.Context
 import org.json.JSONObject
 import java.io.InputStream
 import kotlin.math.abs
-import kotlin.math.ceil
 import kotlin.math.exp
-import kotlin.math.floor
 import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.min

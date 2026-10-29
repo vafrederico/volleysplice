@@ -15,6 +15,25 @@ final class FeatureMath {
 
     private FeatureMath() {}
 
+    static float[] combineBase(float[] visual, float[] temporal, float[] audio, int rows) {
+        int frameColumns = FeatureSchema.FRAME.size();
+        int temporalColumns = FeatureSchema.TEMPORAL.size();
+        int audioColumns = FeatureSchema.AUDIO.size();
+        if (visual.length != rows * frameColumns
+                || temporal.length != rows * temporalColumns
+                || audio.length != rows * audioColumns) {
+            throw new IllegalArgumentException("Base feature components do not align");
+        }
+        float[] output = new float[rows * FeatureSchema.BASE.size()];
+        for (int row = 0; row < rows; row++) {
+            int target = row * FeatureSchema.BASE.size();
+            System.arraycopy(visual, row * frameColumns, output, target, frameColumns);
+            System.arraycopy(temporal, row * temporalColumns, output, target + frameColumns, temporalColumns);
+            System.arraycopy(audio, row * audioColumns, output, target + frameColumns + temporalColumns, audioColumns);
+        }
+        return output;
+    }
+
     static double mean(float[] values) {
         if (values.length == 0) return 0;
         double total = 0;

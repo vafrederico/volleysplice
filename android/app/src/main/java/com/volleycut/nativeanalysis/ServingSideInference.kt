@@ -1,7 +1,6 @@
 package com.volleycut.nativeanalysis
 
 import android.content.Context
-import android.net.Uri
 
 internal object ServingSideInference {
     internal data class FramePlan(
@@ -32,28 +31,6 @@ internal object ServingSideInference {
         }
         val candidates = ServingSideModelRunner.candidates(seeds)
         return FramePlan(candidates, requestedTimestamps(candidates, duration))
-    }
-
-    fun run(
-        context: Context,
-        uri: Uri,
-        media: AnalysisTypes.MediaInfo,
-        roi: AnalysisTypes.Roi,
-        ranges: List<AnalysisTypes.Interval>,
-        serveOutputs: AnalysisTypes.ProductionServeOutputs,
-        progress: AnalysisTypes.ProgressListener,
-        cancelled: () -> Boolean,
-    ): ServingSideOutput {
-        val duration = media.durationSeconds()
-        val plan = framePlan(ranges, duration)
-        if (plan.candidates.isEmpty()) return emptyOutput()
-        progress.onProgress("serving-side", 0.0, "Sampling serving-side windows")
-        val sampled = ServingSideFrameDecoder(context).decode(
-            uri, media, roi, plan.requestedTimes, progress, cancelled,
-        )
-        return evaluate(
-            context, duration, plan.candidates, serveOutputs, sampled, progress, cancelled,
-        )
     }
 
     internal fun evaluate(

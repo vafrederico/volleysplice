@@ -74,7 +74,7 @@ class RuntimeHdrDeviceInstrumentedTest {
         var probabilities = floatArrayOf()
         val result = checkNotNull(DistilledRallyModels.open(context, RallyModels.RECALL,
             media, roi, cancelled::get)).use { neural ->
-            val result = AnalysisEngine(context, neural).analyze(uri, true, frameLimit,
+            val result = AnalysisEngine(context, neural).analyze(uri, frameLimit,
                 AnalysisTypes.VideoDecoderOptions.defaults(), NativeFeatureCache.Mode.REFRESH,
                 AnalysisTypes.AnalysisWindow(0.0, seconds), AnalysisTypes.AnalysisStages.all(),
                 AnalysisTypes.AudioDecoderMode.AUTO, cancelled, progress, false, false)
@@ -87,7 +87,7 @@ class RuntimeHdrDeviceInstrumentedTest {
         // neural decoder. Both paths must produce the same model probabilities.
         checkNotNull(DistilledRallyModels.open(context, RallyModels.RECALL,
             media, roi, cancelled::get)).use { neural ->
-            val cached = AnalysisEngine(context, neural).analyze(uri, true, frameLimit,
+            val cached = AnalysisEngine(context, neural).analyze(uri, frameLimit,
                 AnalysisTypes.VideoDecoderOptions.defaults(), NativeFeatureCache.Mode.USE,
                 AnalysisTypes.AnalysisWindow(0.0, seconds), AnalysisTypes.AnalysisStages.all(),
                 AnalysisTypes.AudioDecoderMode.AUTO, cancelled, progress, false, false)

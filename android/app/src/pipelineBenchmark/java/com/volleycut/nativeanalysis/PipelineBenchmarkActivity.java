@@ -96,7 +96,7 @@ public final class PipelineBenchmarkActivity extends Activity {
                     }
                     NeuralRallyPipeline neural=spec.getString("family").equals("production")?null:new NeuralRallyPipeline(this,root,spec);
                     AnalysisTypes.AnalysisResult result=new AnalysisEngine(this,neural).analyze(
-                        getIntent().getData(),true,Integer.MAX_VALUE,new AnalysisTypes.VideoDecoderOptions(240,1),
+                        getIntent().getData(),Integer.MAX_VALUE,new AnalysisTypes.VideoDecoderOptions(240,1),
                         NativeFeatureCache.Mode.BYPASS,new AnalysisTypes.AnalysisWindow(0,spec.getDouble("seconds")),
                         AnalysisTypes.AnalysisStages.all(),AnalysisTypes.AudioDecoderMode.AUTO,new AtomicBoolean(),
                         new AnalysisTypes.ProgressListener() {

@@ -8,7 +8,6 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.provider.Settings;
 import android.text.method.ScrollingMovementMethod;
 import android.util.Log;
 import android.view.Gravity;
@@ -115,15 +114,8 @@ public final class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
         ));
         scroll.setOnApplyWindowInsetsListener((view, insets) -> {
-            int top;
-            int bottom;
-            if (Build.VERSION.SDK_INT >= 30) {
-                top = insets.getInsets(WindowInsets.Type.statusBars()).top;
-                bottom = insets.getInsets(WindowInsets.Type.navigationBars()).bottom;
-            } else {
-                top = insets.getSystemWindowInsetTop();
-                bottom = insets.getSystemWindowInsetBottom();
-            }
+            int top = insets.getInsets(WindowInsets.Type.statusBars()).top;
+            int bottom = insets.getInsets(WindowInsets.Type.navigationBars()).bottom;
             root.setPadding(dp(20), dp(20) + top, dp(20), dp(32) + bottom);
             return insets;
         });
@@ -345,7 +337,6 @@ public final class MainActivity extends Activity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         try { getWindow().setSustainedPerformanceMode(true); } catch (RuntimeException ignored) {}
         Uri uri = selectedUri;
-        boolean useFullFrame = true;
         boolean writeAutomationOutput = automatedRun;
         String runId = automatedRunId;
         int requestedSourceFrameLimit = automatedRun
@@ -373,7 +364,6 @@ public final class MainActivity extends Activity {
             try {
                 AnalysisTypes.AnalysisResult result = new AnalysisEngine(this).analyze(
                         uri,
-                        useFullFrame,
                         requestedSourceFrameLimit,
                         requestedDecoderOptions,
                         requestedCacheMode,

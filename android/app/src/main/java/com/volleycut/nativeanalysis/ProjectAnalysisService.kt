@@ -395,7 +395,6 @@ class ProjectAnalysisService : Service() {
             val neural = DistilledRallyModels.open(this, project.modelId, project.media, project.roi, cancelled::get)
             val result = neural.use { AnalysisEngine(this, it).analyze(
                 Uri.parse(project.source.uri),
-                true,
                 FeatureSchema.FULL_SOURCE_FRAME_LIMIT,
                 AnalysisTypes.VideoDecoderOptions.defaults(),
                 NativeFeatureCache.Mode.fromWireName(project.cacheMode),

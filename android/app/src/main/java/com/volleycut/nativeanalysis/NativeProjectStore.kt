@@ -477,7 +477,7 @@ internal object NativeProjectStore {
     fun newQueued(
         source: ProjectSource,
         media: AnalysisTypes.MediaInfo,
-        roi: AnalysisTypes.Roi = AnalysisEngine.inferRoi(source.name),
+        roi: AnalysisTypes.Roi = AnalysisTypes.Roi.fullFrame(),
         requestedWindow: AnalysisTypes.AnalysisWindow = AnalysisTypes.AnalysisWindow.full(media.durationSeconds()),
         analyzeServingSide: Boolean = true,
         sideSwitchEnabled: Boolean = false,
@@ -600,7 +600,7 @@ internal object NativeProjectStore {
             analysisWindow = analysisWindow,
             // A missing legacy ROI is unknown, not evidence that inference used today's default.
             // Full-frame geometry remains the fallback for explicitly requested future work.
-            roi = seed.analysisRoi ?: AnalysisEngine.inferRoi(seed.displayName),
+            roi = seed.analysisRoi ?: AnalysisTypes.Roi.fullFrame(),
             analysisRoiKnown = seed.analysisRoi != null,
             audioExtractorVersion = seed.audioExtractorVersion,
             visualExtractorVersion = seed.visualExtractorVersion,

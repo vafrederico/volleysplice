@@ -12,7 +12,6 @@ import android.provider.OpenableColumns;
 import org.json.JSONException;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -22,7 +21,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 final class AnalysisEngine {
     private final Context context;
     interface RallyOverride {
-        default boolean supportsEnsembleSuppression() { return true; }
         default SharedVideoFrameConsumer prepareSharedVideo(AnalysisTypes.MediaInfo media,
                 AnalysisTypes.Roi roi, AnalysisTypes.AnalysisWindow window,
                 int sourceFrameLimit, java.util.function.BooleanSupplier cancelled) throws IOException {
@@ -49,58 +47,6 @@ final class AnalysisEngine {
 
     AnalysisTypes.AnalysisResult analyze(
             Uri uri,
-            boolean fullFrame,
-            int sourceFrameLimit,
-            AnalysisTypes.VideoDecoderOptions decoderOptions,
-            NativeFeatureCache.Mode cacheMode,
-            AtomicBoolean cancelled,
-            AnalysisTypes.ProgressListener progress
-    ) throws IOException, JSONException {
-        return analyze(
-                uri, fullFrame, sourceFrameLimit, decoderOptions, cacheMode, null,
-                AnalysisTypes.AnalysisStages.all(), AnalysisTypes.AudioDecoderMode.AUTO,
-                cancelled, progress
-        );
-    }
-
-    AnalysisTypes.AnalysisResult analyze(
-            Uri uri,
-            boolean fullFrame,
-            int sourceFrameLimit,
-            AnalysisTypes.VideoDecoderOptions decoderOptions,
-            NativeFeatureCache.Mode cacheMode,
-            AnalysisTypes.AnalysisWindow requestedWindow,
-            AtomicBoolean cancelled,
-            AnalysisTypes.ProgressListener progress
-    ) throws IOException, JSONException {
-        return analyze(
-                uri, fullFrame, sourceFrameLimit, decoderOptions, cacheMode, requestedWindow,
-                AnalysisTypes.AnalysisStages.all(), AnalysisTypes.AudioDecoderMode.AUTO,
-                cancelled, progress, true
-        );
-    }
-
-    AnalysisTypes.AnalysisResult analyze(
-            Uri uri,
-            boolean fullFrame,
-            int sourceFrameLimit,
-            AnalysisTypes.VideoDecoderOptions decoderOptions,
-            NativeFeatureCache.Mode cacheMode,
-            AnalysisTypes.AnalysisWindow requestedWindow,
-            AtomicBoolean cancelled,
-            AnalysisTypes.ProgressListener progress,
-            boolean includeServingSide
-    ) throws IOException, JSONException {
-        return analyze(
-                uri, fullFrame, sourceFrameLimit, decoderOptions, cacheMode, requestedWindow,
-                AnalysisTypes.AnalysisStages.all(), AnalysisTypes.AudioDecoderMode.AUTO,
-                cancelled, progress, includeServingSide
-        );
-    }
-
-    AnalysisTypes.AnalysisResult analyze(
-            Uri uri,
-            boolean fullFrame,
             int sourceFrameLimit,
             AnalysisTypes.VideoDecoderOptions decoderOptions,
             NativeFeatureCache.Mode cacheMode,
@@ -111,7 +57,7 @@ final class AnalysisEngine {
             boolean includeSideSwitch
     ) throws IOException, JSONException {
         return analyze(
-                uri, fullFrame, sourceFrameLimit, decoderOptions, cacheMode, requestedWindow,
+                uri, sourceFrameLimit, decoderOptions, cacheMode, requestedWindow,
                 AnalysisTypes.AnalysisStages.all(), AnalysisTypes.AudioDecoderMode.AUTO,
                 cancelled, progress, includeServingSide, includeSideSwitch
         );
@@ -119,7 +65,6 @@ final class AnalysisEngine {
 
     AnalysisTypes.AnalysisResult analyze(
             Uri uri,
-            boolean fullFrame,
             int sourceFrameLimit,
             AnalysisTypes.VideoDecoderOptions decoderOptions,
             NativeFeatureCache.Mode cacheMode,
@@ -130,33 +75,13 @@ final class AnalysisEngine {
             AnalysisTypes.ProgressListener progress
     ) throws IOException, JSONException {
         return analyze(
-                uri, fullFrame, sourceFrameLimit, decoderOptions, cacheMode, requestedWindow,
-                stages, audioDecoderMode, cancelled, progress, true
+                uri, sourceFrameLimit, decoderOptions, cacheMode, requestedWindow,
+                stages, audioDecoderMode, cancelled, progress, true, true
         );
     }
 
     AnalysisTypes.AnalysisResult analyze(
             Uri uri,
-            boolean fullFrame,
-            int sourceFrameLimit,
-            AnalysisTypes.VideoDecoderOptions decoderOptions,
-            NativeFeatureCache.Mode cacheMode,
-            AnalysisTypes.AnalysisWindow requestedWindow,
-            AnalysisTypes.AnalysisStages stages,
-            AnalysisTypes.AudioDecoderMode audioDecoderMode,
-            AtomicBoolean cancelled,
-            AnalysisTypes.ProgressListener progress,
-            boolean includeServingSide
-    ) throws IOException, JSONException {
-        return analyze(
-                uri, fullFrame, sourceFrameLimit, decoderOptions, cacheMode, requestedWindow,
-                stages, audioDecoderMode, cancelled, progress, includeServingSide, includeServingSide
-        );
-    }
-
-    AnalysisTypes.AnalysisResult analyze(
-            Uri uri,
-            boolean fullFrame,
             int sourceFrameLimit,
             AnalysisTypes.VideoDecoderOptions decoderOptions,
             NativeFeatureCache.Mode cacheMode,
@@ -181,9 +106,7 @@ final class AnalysisEngine {
         progress.onProgress("opening", 0, "Opening the video and checking saved analysis");
         String displayName = displayName(uri);
         AnalysisTypes.MediaInfo media = probe(uri);
-        AnalysisTypes.Roi roi = fullFrame
-                ? new AnalysisTypes.Roi(0, 0, 1, 1, "Full frame")
-                : inferRoi(displayName);
+        AnalysisTypes.Roi roi = AnalysisTypes.Roi.fullFrame();
         AnalysisTypes.AnalysisWindow analysisWindow = AnalysisTypes.AnalysisWindow.normalize(
                 requestedWindow, media.durationSeconds()
         );
@@ -317,7 +240,7 @@ final class AnalysisEngine {
             float[] temporal = FeatureMath.temporalVisualFeatures(video.values(), times.length);
             profile.put("context/temporal_visual_features", elapsedMilliseconds(operation));
             operation = System.nanoTime();
-            float[] base = combine(video.values(), temporal, audio.features(), times.length);
+            float[] base = FeatureMath.combineBase(video.values(), temporal, audio.features(), times.length);
             profile.put("context/base_matrix_combine", elapsedMilliseconds(operation));
             progress.onProgress("normalizing", 0, "Game-window percentile ranks + ±2 s context");
             FeatureMath.ContextResult contextResult = FeatureMath.contextualizeProfiled(
@@ -404,37 +327,35 @@ final class AnalysisEngine {
                             previousResult.deadStateProbabilities().clone()
                     )
             );
-            operation = System.nanoTime();
-            SuppressionModelRunner.Result suppressionResult =
-                    new SuppressionModelRunner(context).run(
-                            times, contextual, analyzedDurationSeconds
-                    );
-            suppression = SuppressionPolicyEngine.build(
-                    allLabelsRaw,
-                    previousRaw,
-                    suppressionResult.probabilities(),
-                    clipIntervals(
-                            suppressionResult.decodedIntervals(),
-                            analysisWindow.start(),
-                            analyzedDurationSeconds
-                    ),
-                    analyzedDurationSeconds
-            );
-            profile.put("inference/suppression", elapsedMilliseconds(operation));
-            operation = System.nanoTime();
-            ranges = ProductionEnsemble.merge(
-                    allLabelsRaw, previousRaw
-            );
-            profile.put("inference/ensemble_merge", elapsedMilliseconds(operation));
+            if (rallyOverride == null) {
+                operation = System.nanoTime();
+                SuppressionModelRunner.Result suppressionResult =
+                        new SuppressionModelRunner(context).run(
+                                times, contextual, analyzedDurationSeconds
+                        );
+                suppression = SuppressionPolicyEngine.build(
+                        allLabelsRaw,
+                        previousRaw,
+                        suppressionResult.probabilities(),
+                        clipIntervals(
+                                suppressionResult.decodedIntervals(),
+                                analysisWindow.start(),
+                                analyzedDurationSeconds
+                        ),
+                        analyzedDurationSeconds
+                );
+                profile.put("inference/suppression", elapsedMilliseconds(operation));
+            }
             if (rallyOverride != null) {
                 // Production signals remain available to the frozen score specialists.
                 // The override alone determines the selected rally boundaries.
                 progress.onProgress("inference", .65, "Running the selected neural rally model");
                 ranges = clipIntervals(rallyOverride.run(uri, roi, times, contextual, analyzedDurationSeconds, profile, progress),
                         analysisWindow.start(), analyzedDurationSeconds);
-                // The legacy cleanup suggestions address ensemble regions. They
-                // must never suppress a different model's independently decoded rallies.
-                if (!rallyOverride.supportsEnsembleSuppression()) suppression = null;
+            } else {
+                operation = System.nanoTime();
+                ranges = ProductionEnsemble.merge(allLabelsRaw, previousRaw);
+                profile.put("inference/ensemble_merge", elapsedMilliseconds(operation));
             }
             operation = System.nanoTime();
             if (includeServingSide) {
@@ -673,31 +594,6 @@ final class AnalysisEngine {
             provisional[count++] = timestamp;
         }
         return java.util.Arrays.copyOf(provisional, count);
-    }
-
-    private static float[] combine(float[] visual, float[] temporal, float[] audio, int rows) {
-        int frameColumns = FeatureSchema.FRAME.size();
-        int temporalColumns = FeatureSchema.TEMPORAL.size();
-        int audioColumns = FeatureSchema.AUDIO.size();
-        if (visual.length != rows * frameColumns
-                || temporal.length != rows * temporalColumns
-                || audio.length != rows * audioColumns) {
-            throw new IllegalArgumentException("Base feature components do not align");
-        }
-        float[] output = new float[rows * FeatureSchema.BASE.size()];
-        for (int row = 0; row < rows; row++) {
-            int target = row * FeatureSchema.BASE.size();
-            System.arraycopy(visual, row * frameColumns, output, target, frameColumns);
-            System.arraycopy(temporal, row * temporalColumns, output, target + frameColumns, temporalColumns);
-            System.arraycopy(audio, row * audioColumns, output, target + frameColumns + temporalColumns, audioColumns);
-        }
-        return output;
-    }
-
-    static AnalysisTypes.Roi inferRoi(String filename) {
-        // New analysis uses the same full-frame input as the production web app.
-        // A recording's name must never change which players or ball pixels we retain.
-        return new AnalysisTypes.Roi(0, 0, 1, 1, "Full frame");
     }
 
     private static long elapsedMs(long startedNanos) {

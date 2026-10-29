@@ -393,22 +393,6 @@ final class NativeFeatureCache {
         deleteRecursively(new File(context.getFilesDir(), CACHE_VERSION));
     }
 
-    static void clearEntry(
-            Context context,
-            Uri uri,
-            String displayName,
-            AnalysisTypes.MediaInfo media,
-            AnalysisTypes.Roi roi,
-            int sourceFrameLimit,
-            AnalysisTypes.AnalysisWindow analysisWindow
-    ) {
-        String key = buildKey(
-                context.getApplicationContext(), uri, displayName, media, roi, sourceFrameLimit,
-                analysisWindow
-        );
-        deleteRecursively(new File(new File(context.getFilesDir(), CACHE_VERSION), key));
-    }
-
     static void clearEntryWithSourceMetadata(
             Context context,
             Uri uri,

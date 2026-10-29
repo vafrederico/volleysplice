@@ -96,7 +96,7 @@ class NativeProjectStoreTest {
             "match.mp4", "recording-044.mp4", "beach-source-01.mp4",
             "beach-source-02.mp4", "indoor-source-07.mp4", "",
         )) {
-            val inferred = AnalysisEngine.inferRoi(filename)
+            val inferred = AnalysisTypes.Roi.fullFrame()
             val project = NativeProjectStore.newQueued(source.copy(name = filename), media)
             assertEquals(AnalysisTypes.Roi(0.0, 0.0, 1.0, 1.0, "Full frame"), inferred)
             assertEquals(inferred, project.roi)
@@ -162,7 +162,7 @@ class NativeProjectStoreTest {
     @Test
     fun newRecoverySeedsPreserveCroppedAndFullFrameGeometry() {
         val saved = readyProject()
-        for (roi in listOf(saved.roi, AnalysisEngine.inferRoi(saved.source.name))) {
+        for (roi in listOf(saved.roi, AnalysisTypes.Roi.fullFrame())) {
             val seed = requireNotNull(saved.copy(roi = roi).editorSeed())
             val recovered = NativeProjectStore.fromSeed(seed, saved.source, saved.media)
             val candidate = NativeProjectStore.newQueued(saved.source, saved.media, roi, rallyModelId = saved.modelId)
