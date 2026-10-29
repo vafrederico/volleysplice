@@ -1,7 +1,5 @@
 import type { Mat } from "@techstark/opencv-js";
 
-import type { OpenedMedia } from "./media.ts";
-import { sampleSpecialistFramesSequentially } from "./specialist-frame-sampling.ts";
 import {
   decodeSideSwitchCandidates,
   emptySideSwitchOutput,
@@ -17,7 +15,7 @@ import {
   sideSwitchCandidateSampleTimes,
   sideSwitchStateFeatures,
 } from "./side-switch-model.ts";
-import type { NormalizedRoi, OnDeviceSideSwitchOutput } from "./types.ts";
+import type { OnDeviceSideSwitchOutput } from "./types.ts";
 import { loadOpenCv, phaseCorrelate } from "./visual-features.ts";
 import { awaitWithAbort } from "./abortable.ts";
 
@@ -1100,54 +1098,4 @@ export async function evaluateSideSwitchFrames(
     sampled,
     onProgress,
   );
-}
-
-export async function inferSideSwitches(
-  media: OpenedMedia,
-  roi: NormalizedRoi,
-  analysis: SideSwitchAnalysisInput,
-  onProgress?: (progress: SideSwitchProgress) => void,
-): Promise<OnDeviceSideSwitchOutput> {
-  onProgress?.({
-    stage: "loading",
-    completed: 0,
-    total: 1,
-    detail: "Getting side-switch markers ready",
-  });
-  const plan = await sideSwitchFramePlan(analysis, media.info.duration);
-  if (plan.candidateCount === 0) {
-    return emptySideSwitchOutput(await loadSideSwitchRuntime());
-  }
-  const sampled = await sampleSpecialistFramesSequentially(
-    media,
-    roi,
-    { sideSwitchTimes: plan.requestedTimes },
-    (completed, total) =>
-      onProgress?.({
-        stage: "frames",
-        completed,
-        total,
-        detail: `Looking for team side switches · ${completed}/${total}`,
-      }),
-  );
-  const evaluated = await evaluateSideSwitchFrames(
-    media.info.duration,
-    analysis,
-    null,
-    sampled.sideSwitch,
-    (completed, total) =>
-      onProgress?.({
-        stage: "features",
-        completed,
-        total,
-        detail: `Checking possible side switches · ${completed}/${total}`,
-      }),
-  );
-  onProgress?.({
-    stage: "complete",
-    completed: evaluated.output.candidates.length,
-    total: evaluated.output.candidates.length,
-    detail: `Side switches ready · ${evaluated.output.candidates.length} found`,
-  });
-  return evaluated.output;
 }

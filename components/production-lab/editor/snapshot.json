@@ -16,7 +16,8 @@
     "lab persistence copy",
     "explicit unavailable export actions",
     "lab-owned cleanup configuration",
-    "hide production project setup and automatic tour in lab mode"
+    "hide production project setup and automatic tour in lab mode",
+    "unused helper pruning"
   ],
   "generatedHelpers": [
     {
@@ -129,25 +130,19 @@
       "source": "prod/src/lib/cut-draft.ts",
       "destination": "components/production-lab/editor/lib/cut-draft.ts",
       "sourceSha256": "9dd7706b2366344b952032d2fc93683c800525ac16a60825d28a683275b69fd0",
-      "snapshotSha256": "bf7c7b4393f0cef6bef916c86660fc7fe97041af49afe46e378f3a890d65705d"
+      "snapshotSha256": "f3079203d5c00bcea2ced72ba46d6a5b837d22f141c5b559d063ffae4a0c3d6f"
     },
     {
       "source": "prod/src/lib/edit-list.ts",
       "destination": "components/production-lab/editor/lib/edit-list.ts",
       "sourceSha256": "379613bad4cfb6534766bfe4dafe76bd8da1e2cea535ccf4e1c9a0ea41e206c4",
-      "snapshotSha256": "379613bad4cfb6534766bfe4dafe76bd8da1e2cea535ccf4e1c9a0ea41e206c4"
+      "snapshotSha256": "caefd1bf04a357641377cdb4fcfd4496a8339cafac9a417771b4dd14625aa6ce"
     },
     {
       "source": "prod/src/lib/model-feedback.ts",
       "destination": "components/production-lab/editor/lib/model-feedback.ts",
       "sourceSha256": "d9354a0f66940f2b6c9c364fa9738d936073e612a3b5ea47f7817d91884383bf",
       "snapshotSha256": "5ee9ad4ef56058681b4cd17f7880495695c56ac08c93d5f9b26f9692075b9764"
-    },
-    {
-      "source": "prod/src/lib/model-review-draft.ts",
-      "destination": "components/production-lab/editor/lib/model-review-draft.ts",
-      "sourceSha256": "911c2c514886055bf8d83c3246d64046069932420fbcc67d2e3d87845274aa74",
-      "snapshotSha256": "d98e3fc949e8c6911c9bf40616c9f1e91e02006365812dfa03e025485fb5f27c"
     },
     {
       "source": "prod/src/lib/on-device/analysis-window.ts",
@@ -165,7 +160,7 @@
       "source": "prod/src/lib/on-device/export-delivery.ts",
       "destination": "components/production-lab/editor/lib/on-device/export-delivery.ts",
       "sourceSha256": "862e757dd91e78d184893d0ac767e7302c41ff01db615fe19a14eed657fe21f0",
-      "snapshotSha256": "862e757dd91e78d184893d0ac767e7302c41ff01db615fe19a14eed657fe21f0"
+      "snapshotSha256": "3f600c0bddad635cb8bdc9a0186f1bcb45250d167684d0e361acbcd403d15fac"
     },
     {
       "source": "prod/src/lib/on-device/export-math.ts",
@@ -192,40 +187,16 @@
       "snapshotSha256": "f532b89f5cb374039295eeeca4c427b791b262b4ba51aea064fb12dd283f6e53"
     },
     {
-      "source": "prod/src/lib/on-device/model.ts",
-      "destination": "components/production-lab/editor/lib/on-device/model.ts",
-      "sourceSha256": "53c5eec543613986c6550695b3d30cc743f3f4f97665e0175f9e721b028212ef",
-      "snapshotSha256": "53c5eec543613986c6550695b3d30cc743f3f4f97665e0175f9e721b028212ef"
-    },
-    {
-      "source": "prod/src/lib/on-device/serving-side-cache.ts",
-      "destination": "components/production-lab/editor/lib/on-device/serving-side-cache.ts",
-      "sourceSha256": "c1421f0781fac9e1a1d4f45c7e0070407973b88fdce57d94b2743e813c1c61a0",
-      "snapshotSha256": "0729657db6b7b2ede8662b71949f31f1a5c676cad2c96de9069fe561f84423d1"
-    },
-    {
-      "source": "prod/src/lib/on-device/side-switch-model.ts",
-      "destination": "components/production-lab/editor/lib/on-device/side-switch-model.ts",
-      "sourceSha256": "d9ef61fb3c40452c92edc62d1d0adea0239c84186d11c1d2a4ff55843ddbf421",
-      "snapshotSha256": "ebd3283a9292d95821f60bca52afd783f0cae960187b9f72a7e50ed3d61fe6b8"
-    },
-    {
       "source": "prod/src/lib/on-device/stream-download.ts",
       "destination": "components/production-lab/editor/lib/on-device/stream-download.ts",
       "sourceSha256": "63cb8d800bda3e4e2a724a143b004b127ec83cf120cf859da579e53170a4d48b",
       "snapshotSha256": "63cb8d800bda3e4e2a724a143b004b127ec83cf120cf859da579e53170a4d48b"
     },
     {
-      "source": "prod/src/lib/on-device/suppression-model.ts",
-      "destination": "components/production-lab/editor/lib/on-device/suppression-model.ts",
-      "sourceSha256": "4d632c382a89f3916eb9588f4616e13b5fefae7bec21332627e3ae9b68c2cebf",
-      "snapshotSha256": "4d632c382a89f3916eb9588f4616e13b5fefae7bec21332627e3ae9b68c2cebf"
-    },
-    {
       "source": "prod/src/lib/on-device/suppression-policy.ts",
       "destination": "components/production-lab/editor/lib/on-device/suppression-policy.ts",
       "sourceSha256": "7bb296428a589a945e19c56c2fa62fbac195aabbf7e799574670a72704e4404b",
-      "snapshotSha256": "7bb296428a589a945e19c56c2fa62fbac195aabbf7e799574670a72704e4404b"
+      "snapshotSha256": "e447e9b41b0f94e7d24e45bff57ff1f0b33fdc52fdcc5ec91a6708e5f83f4f1d"
     },
     {
       "source": "prod/src/lib/on-device/types.ts",
@@ -262,12 +233,6 @@
       "destination": "components/production-lab/editor/lib/score-overlay.ts",
       "sourceSha256": "89fac8cb19fb7a1977f02bcbc0f69832d76f9e92916a4dc125b17c7ecfc26481",
       "snapshotSha256": "89fac8cb19fb7a1977f02bcbc0f69832d76f9e92916a4dc125b17c7ecfc26481"
-    },
-    {
-      "source": "prod/src/lib/score-tracking-inference.ts",
-      "destination": "components/production-lab/editor/lib/score-tracking-inference.ts",
-      "sourceSha256": "e09cc10b222949f44397e4c224829f36fcc900f713669829d279015dc2e54389",
-      "snapshotSha256": "e09cc10b222949f44397e4c224829f36fcc900f713669829d279015dc2e54389"
     },
     {
       "source": "prod/src/lib/score-tracking.ts",

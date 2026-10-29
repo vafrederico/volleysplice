@@ -697,27 +697,6 @@
   cursor: pointer;
 }
 
-.rallyBar { top: 5px; height: 20px; background: var(--label-teal); }
-.selectedRallyBar {
-  z-index: 1;
-  top: 3px;
-  height: 24px;
-  background: var(--label-acid);
-  outline: 2px solid var(--label-ink);
-  outline-offset: -2px;
-}
-.ignoredBar { top: 0; height: 6px; background: var(--label-orange); }
-
-.sideSwitchPoint {
-  z-index: 2;
-  top: -3px;
-  bottom: -3px;
-  width: 4px;
-  margin-left: -2px;
-  background: var(--label-orange);
-  box-shadow: 0 0 0 1px #fff;
-}
-
 .playhead {
   position: absolute;
   z-index: 3;
