@@ -49,8 +49,6 @@ struct VolleySpliceApp: App {
     @Published var busy = false
     @Published var result: AnalysisResult?
     @Published var error: String?
-    @Published var files: [URL] = []
-    @Published var exportURL: URL?
     @Published var project: ProjectDocument?
     @Published var projects: [URL] = []
     var projectStatuses: [URL: String] {
@@ -93,7 +91,6 @@ struct VolleySpliceApp: App {
     let queue: ProcessingQueue
     @Published var showStorage = false
     @Published var showQueue = false
-    @Published var showFileExport = false
     var afterQueueDismiss: (() -> Void)?
     init(documents: URL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0],
          support: URL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]) {
@@ -133,7 +130,6 @@ struct VolleySpliceApp: App {
             let result = await Task.detached(priority: .utility) {
                 let entries = (try? FileManager.default.contentsOfDirectory(at: folder,
                     includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
-                let media = entries.filter { ["mp4", "mov", "m4v"].contains($0.pathExtension.lowercased()) }.sorted { $0.lastPathComponent < $1.lastPathComponent }
                 let saved = entries.filter { $0.lastPathComponent.hasSuffix(".volleyproject.json") }
                 let present = Set(saved)
                 var names = previousNames.filter { present.contains($0.key) }, dates = previousDates.filter { present.contains($0.key) }
@@ -150,17 +146,17 @@ struct VolleySpliceApp: App {
                     dates[url] = metadata.flatMap { $0.updatedAtMs > 0 ? Date(timeIntervalSince1970: Double($0.updatedAtMs) / 1000) : nil } ?? modified
                     revisions[url] = modified
                 }
-                return (media, saved, names, dates, revisions, models)
+                return (saved: saved, names: names, dates: dates, revisions: revisions, models: models)
             }.value
             guard !Task.isCancelled, generation == fileRefreshGeneration else { return }
-            projectModels = result.5
-            files = result.0; projectNames = result.2; projectDates = result.3; projectLabelRevisions = result.4
-            if let project, result.1.contains(projectURL(project)), project.draft.updatedAtMs > 0 {
+            projectModels = result.models
+            projectNames = result.names; projectDates = result.dates; projectLabelRevisions = result.revisions
+            if let project, result.saved.contains(projectURL(project)), project.draft.updatedAtMs > 0 {
                 projectModels[projectURL(project)] = ProjectArchive.rallyModel(project.feedback)
                 projectNames[projectURL(project)] = project.sourceName
                 projectDates[projectURL(project)] = Date(timeIntervalSince1970: Double(project.draft.updatedAtMs) / 1000)
             }
-            projects = result.1.sorted {
+            projects = result.saved.sorted {
                 let first = projectDates[$0] ?? .distantPast, second = projectDates[$1] ?? .distantPast
                 return first == second ? $0.lastPathComponent < $1.lastPathComponent : first > second
             }
@@ -407,7 +403,7 @@ struct VolleySpliceApp: App {
                 project = try ProjectPersistence.publish(staged, current: current)
                 let url = documents.appendingPathComponent("\(snapshot.id).model-feedback.json")
                 try await Task.detached { try bytes.write(to: url, options: .atomic) }.value
-                exportURL = url; shareItems = [url]; showShare = true; busy = false; status = "Project export ready"
+                shareItems = [url]; showShare = true; busy = false; status = "Project export ready"
             } catch { fail(error) }
         }
     }
@@ -451,10 +447,10 @@ struct VolleySpliceApp: App {
         let destination = documents.appendingPathComponent("device-export-check-\(UUID().uuidString.prefix(8)).mp4")
         work = Task {
             do {
-                let output = try await DeviceExportCheck.run(source: source, destination: destination) { fraction, text in
+                _ = try await DeviceExportCheck.run(source: source, destination: destination) { fraction, text in
                     Task { @MainActor in if self.busy { self.progress = fraction; self.status = text } }
                 }
-                exportURL = output.videoURL; status = "PASS: native export 13.500 s, score overlay and chapters"; busy = false
+                status = "PASS: native export 13.500 s, score overlay and chapters"; busy = false
             } catch { fail(error) }
         }
     }
@@ -518,9 +514,6 @@ struct WorkspaceView: View {
             }).interfaceScaled()
         }
         .sheet(isPresented: $model.showStorage) { AppStorageView(model: model).interfaceScaled() }
-        .sheet(isPresented: $model.showFileExport) {
-            DocumentExportPicker(urls: model.shareItems) { model.showFileExport = false }
-        }
         .overlay(alignment: .bottom) {
             if model.showEditor && model.busy {
                 VStack { Text(model.status); ProgressView(value: model.progress); Button("Cancel") { model.cancel() } }

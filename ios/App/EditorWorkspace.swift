@@ -1114,17 +1114,6 @@ struct EditorWorkspace: View {
             }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
         }
     }
-    private func queueCounter(_ label: String, count: Int, identifier: String, condensed: Bool = false, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: 1) {
-                Text("\(count)").font(.system(size: 10, weight: .bold, design: .monospaced))
-                Text(label.replacingOccurrences(of: " ", with: "\n")).font(.system(size: condensed ? 7 : 8)).lineLimit(2).multilineTextAlignment(.center)
-            }.frame(width: condensed ? 68 : 92, height: 44)
-                .foregroundStyle(count > 0 ? EditorPalette.ink : EditorPalette.muted)
-                .background(count > 0 ? EditorPalette.acid : EditorPalette.rail.opacity(0.4), in: RoundedRectangle(cornerRadius: 5))
-        }.buttonStyle(.plain)
-            .disabled(count == 0).accessibilityLabel("\(label) \(count)").accessibilityIdentifier(identifier)
-    }
     private var videoExportPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
                 sectionHeading("FINAL VIDEO")

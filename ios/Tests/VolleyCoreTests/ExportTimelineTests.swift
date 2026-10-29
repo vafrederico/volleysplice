@@ -21,15 +21,16 @@ final class ExportTimelineTests: XCTestCase {
         let ranges: [ScoreRallyRange] = [.init(coreStartMs: 5000, coreEndMs: 12000, keepStartMs: 3000, keepEndMs: 14000),
             .init(coreStartMs: 20000, coreEndMs: 25000, keepStartMs: 16000, keepEndMs: 27000)]
         let timeline = try ExportTimeline(intervals: [.init(startMs: 3000, endMs: 27000)])
-        let spans = timeline.scoreSpans(tracking: tracking, rallyRanges: ranges)
-        for span in spans {
-            for source in [span.source.startMs, span.source.endMs - 1] {
-                let boundary = ScoreReducer.scoreBoundaryTimestamp(source, rallyRanges: ranges, tracking: tracking)
-                XCTAssertEqual(span.score, ScoreReducer.deriveAt(tracking, sourceTimestampMs: boundary))
-            }
+        let overlay = PreparedScoreOverlay(tracking: tracking, rallyRanges: ranges)
+        let samples: [(outputMs: Int64, team2Score: Int)] = [
+            (0, 0), (10999, 0), (11000, 0), (12999, 0),
+            (13000, 1), (16999, 1), (17000, 1), (23999, 1)
+        ]
+        for sample in samples {
+            let source = try XCTUnwrap(timeline.sourceTimestamp(atOutputMs: sample.outputMs))
+            XCTAssertEqual(overlay.snapshot(at: source).score.team2Score, sample.team2Score,
+                           "Incorrect score at output time \(sample.outputMs)")
         }
-        XCTAssertEqual(spans.first { $0.source.startMs == 14000 }?.score.team2Score, 0)
-        XCTAssertEqual(spans.first { $0.source.startMs == 16000 }?.score.team2Score, 1)
         XCTAssertEqual(ExportTimeline.pointRevealTimestamp(20000, tracking: tracking, rallyRanges: ranges), 16000)
     }
     func testPointTimelineFadeMatchesAndroidSourceAge() {

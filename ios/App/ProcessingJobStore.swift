@@ -19,12 +19,6 @@ import Foundation
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
         try encoder.encode(ledger).write(to: folder.appendingPathComponent("queue.json"), options: .atomic)
     }
-    func saveSnapshot(_ project: ProjectDocument, for job: ProcessingJob) throws {
-        try job.validate(); try project.save(to: snapshotURL(job))
-    }
-    func snapshot(_ job: ProcessingJob) throws -> ProjectDocument {
-        try job.validate(); return try ProjectDocument.load(from: snapshotURL(job))
-    }
     /// Remove only queue-owned immutable snapshots, never source videos, projects or exports.
     func discardUnreferencedSnapshots(in ledger: ProcessingJobLedger) throws {
         let retained = Set(ledger.jobs.map { $0.id + ".project.json" })
@@ -35,5 +29,4 @@ import Foundation
             try FileManager.default.removeItem(at: url)
         }
     }
-    private func snapshotURL(_ job: ProcessingJob) -> URL { folder.appendingPathComponent(job.id + ".project.json") }
 }

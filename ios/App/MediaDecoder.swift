@@ -264,10 +264,6 @@ enum MediaDecoder {
         return rgba
     }
 
-    static func sampleEmbeddingRGB(_ buffer: CVPixelBuffer, roi: AnalysisRegion, rotation: Int) throws -> [Float] {
-        try sampleEmbeddingFrame(buffer, roi: roi, rotation: rotation).pixels
-    }
-
     /// Return the exact clean-aperture geometry used to prepare these pixels.
     /// Encoded track dimensions can include padding and must not set pool masks.
     static func sampleEmbeddingFrame(_ buffer: CVPixelBuffer, roi: AnalysisRegion, rotation: Int) throws -> (pixels: [Float], geometry: NeuralImageGeometry) {

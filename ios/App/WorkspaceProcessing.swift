@@ -194,7 +194,7 @@ import Foundation
            currentWindow == TimeRange(startMs: ProjectSession.ms(output.start), endMs: ProjectSession.ms(output.end)),
            rallyModel == settings.rallyModel,
            project == nil && !showEditor && !busy {
-            result = output; exportURL = analysisURL
+            result = output
             project = created; restoreSetup(created)
             showEditor = true
         }
@@ -320,18 +320,4 @@ import Foundation
                      outputNames: [destination.lastPathComponent, chapters.lastPathComponent])
     }
     private struct PhotoDeliveryReceipt: Codable { var completed: Bool; var assetIdentifier: String? }
-    func openJobProject(_ job: ProcessingJob) {
-        guard let filename = job.outputNames.first(where: { $0.hasSuffix(".volleyproject.json") }) else { return }
-        openProject(documents.appendingPathComponent(filename))
-    }
-    func shareJobOutput(_ job: ProcessingJob) {
-        shareItems = job.outputNames.map { documents.appendingPathComponent($0) }.filter { FileManager.default.fileExists(atPath: $0.path) }
-        guard !shareItems.isEmpty else { error = "Export files are no longer available"; return }
-        showShare = true
-    }
-    func saveJobOutput(_ job: ProcessingJob) {
-        shareItems = job.outputNames.map { documents.appendingPathComponent($0) }.filter { FileManager.default.fileExists(atPath: $0.path) }
-        guard !shareItems.isEmpty else { error = "Export files are no longer available"; return }
-        showFileExport = true
-    }
 }
