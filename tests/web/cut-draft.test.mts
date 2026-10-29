@@ -49,7 +49,7 @@ test("createCutDraft seeds clamped per-cut padding from cached labels", () => {
   );
 });
 
-test("global before and after padding update cached cuts and leave manual cuts alone", () => {
+test("global before and after padding update cached and manual cuts", () => {
   const draft = createCutDraft(seed);
   draft.cuts.push({
     id: "M001",
@@ -71,7 +71,7 @@ test("global before and after padding update cached cuts and leave manual cuts a
     [
       { keepStart: 0, keepEnd: 5.5 },
       { keepStart: 15.5, keepEnd: 31.5 },
-      { keepStart: 40, keepEnd: 45 },
+      { keepStart: 35.5, keepEnd: 46.5 },
     ],
   );
 });

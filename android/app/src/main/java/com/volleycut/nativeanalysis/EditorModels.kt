@@ -266,13 +266,46 @@ internal object EditorMath {
             beforePaddingMs = before,
             afterPaddingMs = after,
             cuts = draft.cuts.map { cut ->
-                if (cut.origin == CutOrigin.MANUAL) cut else cut.copy(
+                cut.copy(
                     keepStartMs = (cut.coreStartMs - before).coerceAtLeast(minimumMs),
                     keepEndMs = (cut.coreEndMs + after).coerceAtMost(maximumMs),
                 )
             },
         )
     }
+
+    /** Manual marks describe the play; export keeps the same extra time as inferred cuts. */
+    fun newManualCut(
+        draft: EditorDraft,
+        startMs: Long,
+        endMs: Long,
+        minimumMs: Long,
+        maximumMs: Long,
+    ): EditableCut = EditableCut(
+        id = nextId("M", draft.cuts.map { it.id }),
+        coreStartMs = startMs,
+        coreEndMs = endMs,
+        keepStartMs = (startMs - draft.beforePaddingMs).coerceAtLeast(minimumMs),
+        keepEndMs = (endMs + draft.afterPaddingMs).coerceAtMost(maximumMs),
+        confidence = 1f,
+        included = true,
+        origin = CutOrigin.MANUAL,
+    )
+
+    fun setKeepBoundary(
+        draft: EditorDraft,
+        cutId: String,
+        valueMs: Long,
+        isStart: Boolean,
+        minimumMs: Long,
+        maximumMs: Long,
+    ): EditorDraft = draft.copy(cuts = draft.cuts.map { cut ->
+        if (cut.id != cutId) cut else if (isStart) {
+            cut.copy(keepStartMs = valueMs.coerceIn(minimumMs, cut.coreStartMs))
+        } else {
+            cut.copy(keepEndMs = valueMs.coerceIn(cut.coreEndMs, maximumMs))
+        }
+    })
 
     fun setCoreStart(
         draft: EditorDraft,
