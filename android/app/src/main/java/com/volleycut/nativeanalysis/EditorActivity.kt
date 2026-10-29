@@ -3317,12 +3317,6 @@ private fun EditorScreen(
         if (seeded != draft.scoreTracking) updateDraft { it.copy(scoreTracking = seeded) }
     }
 
-    fun updateCut(id: String, mutate: (EditableCut) -> EditableCut) {
-        updateDraft { current ->
-            current.copy(cuts = current.cuts.map { if (it.id == id) mutate(it) else it })
-        }
-    }
-
     fun updateRallyCuts(ids: Set<String>, mutate: (EditableCut) -> EditableCut) {
         updateDraft { current ->
             current.copy(cuts = current.cuts.map { if (it.id in ids) mutate(it) else it })
