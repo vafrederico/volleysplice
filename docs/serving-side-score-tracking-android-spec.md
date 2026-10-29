@@ -41,8 +41,8 @@ input.
 | Cache identity | `prod/src/lib/on-device/serving-side-cache.ts` |
 | Runtime artifact | `prod/public/runtime/serving-side-85bc3325fbd4.json` |
 | Score schema and reducer | `prod/src/lib/score-tracking.ts` |
-| Editor score controls | `prod/src/components/ScoreTrackingPanel.tsx` |
-| Editor/timeline integration | `prod/src/components/CutEditor.tsx` |
+| Editor score controls | `prod/src/designs/taste/index.tsx` (`ScorePanel`, `RallyDeskEventRail`) |
+| Editor/timeline integration | `prod/src/designs/taste/index.tsx` (`RallyDesk`, `RallyDeskTimeline`) |
 | Overlay snapshot and layout | `prod/src/lib/score-overlay.ts` |
 | Encoded Canvas compositor | `prod/src/lib/on-device/export.ts` |
 | Persistence/migration | `prod/src/lib/cut-draft.ts`, `prod/src/lib/project-store.ts` |
@@ -468,7 +468,7 @@ Suggested native modules:
 - `ServingSideModelRunner`: tied ranks, logistic score, hybrid gate;
 - `ServingSideCache`: atomic raw features/evidence bound to source and candidates;
 - `ScoreTrackingModels` and `ScoreReducer`: persisted state and pure source-time reducer;
-- Compose `ScoreTrackingPanel` and timeline overlay;
+- Compose score controls and timeline overlay;
 - `ScoreOverlayLayout`: platform-independent numeric layout primitives;
 - Compose preview overlay; and
 - Media3 `CanvasOverlay`/`OverlayEffect` connected to `ExportService`.

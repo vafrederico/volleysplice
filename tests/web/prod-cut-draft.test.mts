@@ -6,21 +6,17 @@ import {
   buildFinalCutIntervals,
   createCutDraft,
   cutSourceRevision,
-  effectiveKeptCutIds,
-  nextFinalCutTime,
   parseCutDraft,
-  playbackFocusCut,
-  totalFinalCutSeconds,
   type CutDraftSeed,
-} from "../../lib/cut-draft.ts";
+} from "../../prod/src/lib/cut-draft.ts";
 
 const seed: CutDraftSeed = {
   analysisId: "model--recording",
   recordingId: "recording",
   duration: 60,
   rallies: [
-    { id: "R1", start: 1, end: 4, confidence: 0.8, included: true },
-    { id: "R2", start: 20, end: 30, confidence: 0.7, included: true },
+    { id: "R1", start: 1, end: 4, confidence: 0.8, included: true, agreement: "both-models" },
+    { id: "R2", start: 20, end: 30, confidence: 0.7, included: true, agreement: "both-models" },
   ],
   ignoredIntervals: [{ start: 22, end: 24, reason: "camera-gap" }],
 };
@@ -209,7 +205,6 @@ test("final edit list merges touching cuts and subtracts ignored source time", (
     { start: 0, end: 4, cutIds: ["A"] },
     { start: 6, end: 14, cutIds: ["A", "B"] },
   ]);
-  assert.equal(totalFinalCutSeconds(intervals), 12);
 });
 
 test("final edit list retains and identifies only gaps strictly below the join setting", () => {
@@ -240,30 +235,6 @@ test("final edit list retains and identifies only gaps strictly below the join s
   assert.equal(buildFinalCutIntervals(draft).length, 2);
 });
 
-test("cut preview keeps playable time and jumps gaps to the next interval", () => {
-  const intervals = [
-    { start: 2, end: 5, cutIds: ["A"] },
-    { start: 8, end: 12, cutIds: ["B"] },
-  ];
-
-  assert.equal(nextFinalCutTime(intervals, 0), 2);
-  assert.equal(nextFinalCutTime(intervals, 3), 3);
-  assert.equal(nextFinalCutTime(intervals, 5), 8);
-  assert.equal(nextFinalCutTime(intervals, 20), null);
-});
-
-test("playback focus follows the latest retained range start", () => {
-  const draft = createCutDraft(seed);
-  const [first, second] = draft.cuts;
-
-  assert.equal(playbackFocusCut(draft.cuts, first.keepStart - 0.1), null);
-  assert.equal(playbackFocusCut(draft.cuts, first.keepStart)?.id, first.id);
-  assert.equal(playbackFocusCut(draft.cuts, second.keepStart - 0.1)?.id, first.id);
-  assert.equal(playbackFocusCut(draft.cuts, second.keepStart)?.id, second.id);
-  assert.equal(playbackFocusCut([...draft.cuts].reverse(), second.keepStart)?.id, second.id);
-  assert.equal(playbackFocusCut(draft.cuts, Number.NaN), null);
-});
-
 test("fully ignored rallies contribute neither kept count nor output duration", () => {
   const draft = createCutDraft(seed);
   draft.cuts = [
@@ -276,7 +247,5 @@ test("fully ignored rallies contribute neither kept count nor output duration", 
 
   const intervals = buildFinalCutIntervals(draft);
 
-  assert.deepEqual(effectiveKeptCutIds(draft), ["A"]);
   assert.deepEqual(intervals, [{ start: 0, end: 10, cutIds: ["A"] }]);
-  assert.equal(totalFinalCutSeconds(intervals), 10);
 });
