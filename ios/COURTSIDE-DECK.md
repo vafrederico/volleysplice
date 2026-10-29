@@ -41,9 +41,10 @@ native system sans typography. The full Editor retains its established palette.
   available there. Rate changes update the persisted
   draft and the running player. Previous rally, Next review and Next rally retain
   paused/playing/waiting-to-play intent and replace the preview stop boundary.
-  In both Review and All rallies, playback stops at the selected rally's retained
-  end through AVPlayer's media boundary. Play after a context seek or at the end
-  restarts that rally when needed. Editor and Export release this boundary.
+  Review and focused editing stop playback at the selected rally's retained end
+  through AVPlayer's media boundary. Play after a context seek or at the end restarts
+  that rally when needed. All rallies and Add missing rally use the full source
+  bounds so playback can inspect the recording and gaps. Editor and Export release this boundary.
   Navigation stays below the scrolling review controls. Native buttons provide
   full touch targets even when the landscape interface is scaled down. Queue opens
   from Settings; there is no persistent bottom queue strip.
@@ -74,18 +75,40 @@ native system sans typography. The full Editor retains its established palette.
   group's retained range. Joining a previous or next rally preserves a frame in
   the newly retained footage; serves and unresolved reviews still separate groups.
 - The browser uses scrollable rally/score/source-time rows without thumbnails.
+  An ordinary tap on an unselected row selects and seeks while staying in All
+  rallies. An ordinary tap on the currently selected row opens its controls,
+  regardless of how long it has been selected. Two quick taps naturally select
+  then open; no timed double-tap recognizer or delayed selection is used. The
+  explicit Edit button remains, and opening makes no review or score decision.
   Manual list dragging suspends follow and updates its independent center marker.
   Source seeking follows video, selects intersected rallies and scrolls the list;
   gaps retain the previous selection and emphasize Add missing.
   On iOS 18+, native scroll phases observe interaction without competing with the
-  scroll view's pan gesture. The source rail has a fixed gesture frame, and the
-  source slider reserves stable space for its changing status text.
-- Native source sliders expose adjustable/set-value accessibility in the browser
-  and Add sheet. The vertical source rail also has adjustable actions and distinct
-  circle/video and diamond/list-center markers. Add can open inside existing
-  footage; source seeking then proposes a valid gap. Only Add rally commits it.
-  Overlap with existing or ignored footage fails validation; cancellation edits
-  nothing.
+  scroll view's pan gesture. Restoring the list after a workspace switch preserves
+  its independent center until the next manual scroll or source seek.
+- The browser has two chronological source-timeline columns in a 96-point sidebar:
+  the first half on the left and the second half on the right, each with time
+  labels and a 44-point touch area. Cross-midpoint rallies render in both. Each
+  marker has one owning column; seeking resumes follow and updates selection.
+  Hide/Show timeline toggles both columns together. The Play/List legend identifies
+  the playback dot and independent list-center diamond. A matching white-filled,
+  dark-outlined diamond sits immediately after the centered rally number. Both
+  diamonds use the same list-center identity and the same 14-point drawing (5-point
+  radius, 2-point stroke), with 6 points after the number. Exactly one row is
+  marked. Manual list scrolling moves both diamonds without seeking or changing
+  the selected-row styling; source seeking resumes follow. Both the source columns
+  and inline Add rows seek directly by tap/drag and expose adjustable accessibility
+  actions. Neither view has a separate source-seek slider. Add replaces the detail
+  pane while keeping the same player and transport visible. Its source timeline
+  wraps across three compact consecutive rows on phone and iPad;
+  each row seeks the player and follows its live playhead. There is no separate
+  seek slider or nudge row. One fixed bottom action says Mark start at [playhead],
+  then Mark end & add rally. Only that second press creates the rally and opens
+  its controls. Start/End/Reset share a row above the timeline; Start stays anchored,
+  End follows the player, and Reset clears the mark. The Add title is in the
+  workspace header, with instructions and Cancel in the lower pane. Existing rallies, ignored
+  footage, reverse ranges and ranges under 500 ms cannot be added. Cancellation
+  edits nothing and reopening starts a fresh selection.
 - Export owns score visibility/fade, point history, MP4 destination/save, chapters
   and project saving. Settings contains project options, processing/storage,
   version, model reanalysis and tutorial replay. The full Editor still exposes its
@@ -107,6 +130,28 @@ the editor's identity and state while switching. Universal iPad builds support
 portrait and landscape with the toggle off.
 
 ## Available validation
+
+The Android-parity refinement passed **259 portable core XCTest cases**, an ARM64
+Debug build/sign/install, and targeted native checks on the physical iPad using
+440 x 956 and 375 x 667 phone test layouts and normal iPad landscape. Hosted and
+UI test sources typechecked for ARM64 iOS; their formal XCTest suites were not
+executed. Captures use synthetic fixture media; actual iPhone hardware remains
+unverified.
+
+Native checks cover both source columns, unique playback/list markers, matching
+row diamonds, manual scrolling without seeking or changing selection, preserving
+the independent center across workspace switches, resuming follow, Hide/Show,
+and rendering a rally across the column midpoint. Ordinary first, later selected
+and rapid consecutive row taps select/open correctly. Pending serving review opens
+in Review mode; ready rallies open in Editing mode without making decisions.
+
+Inline Add checks cover the three-row cap, no extra slider or seek nudges, direct
+tap and horizontal drag seeking, anchored start, invalid ends, Reset, Cancel and
+adding exactly one rally straight into its controls. Earlier native checks also
+covered player geometry and source playback in phone portrait and iPad landscape.
+Add mode retains the current video/detail width and suspends the resize gesture
+so it cannot intercept timeline touches. Display preferences are restored and the
+device returned to verified awake parking after native checks.
 
 Build **1.0.0 (4)** passed 207 portable core XCTest cases and ten targeted native checks on the physical iPad in
 phone portrait and normal iPad landscape: the duplicate bar is absent, the score
@@ -197,9 +242,14 @@ content, not C1 geometry or final native layout fidelity. No project source or
 private data was submitted to a hosted playground.
 The shared `CoreTrimSurface` is compiled by the ARM64 app build; it is not part of
 the Tokamak control probes. The tutorial's full Editor step opens that workspace.
-Rallies keeps its own progress strip; root review metrics appear only in Editor
-and Export. Seeking focused context retains the selected rally, while browser
-source seeking resumes list following and selection.
+Rallies shows Reviewing # rallies with All rallies (#) and a right arrow. All
+rallies, Add missing rally and Editing rally # each have their own header and a
+left-arrow Review rallies action. Opening a rally with any pending clip, cleanup
+or serving review returns to Review mode; Editing applies only to a ready rally.
+Resolving the current review stays in Review mode. There is no progress bar or
+checked fraction; root review metrics appear only in Editor and Export. Seeking focused
+context retains the selected rally, while browser source seeking resumes list
+following and selection.
 
 The compatible preview remains a source/rendering aid. Current native behavior
 and its qualification limits are recorded in the device validation section above.

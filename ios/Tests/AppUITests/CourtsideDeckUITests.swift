@@ -39,25 +39,143 @@ final class CourtsideDeckUITests: XCTestCase {
         app.buttons["editorSettings"].tap()
         XCTAssertEqual(app.textFields["settingsTeam1Name"].value as? String, "Practice A")
     }
-    @MainActor func testAddSourceSliderCanSeekOutOfExistingFootageWithoutAdding() {
+    @MainActor private func seekSource(_ app: XCUIApplication, fraction: Double) {
+        let position = min(2, max(0, fraction * 2))
+        let index = min(1, Int(position))
+        let column = app.otherElements["deckSourceTimelineColumn-\(index)"]
+        XCTAssertTrue(column.waitForExistence(timeout: 10))
+        let scale = column.frame.width / 44
+        let height = max(1, column.frame.height)
+        let y = (8 * scale + (height - 16 * scale) * CGFloat(position - Double(index))) / height
+        column.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: y)).tap()
+    }
+    @MainActor private func seekMissing(_ app: XCUIApplication, fraction: Double) {
+        let position = min(3, max(0, fraction * 3))
+        let index = min(2, Int(position))
+        let row = app.otherElements["deckAddTimelineRow-\(index)"]
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        row.coordinate(withNormalizedOffset: CGVector(dx: position - Double(index), dy: 0.5)).tap()
+    }
+    @MainActor func testAddStaysInlineAndCancellationDoesNotCreateARally() {
+        let app = launch(); defer { app.terminate() }
+        XCTAssertTrue(app.staticTexts["deckReviewCount"].label.hasPrefix("Reviewing "))
+        XCTAssertEqual(app.buttons["deckBrowse"].label, "All rallies (6)")
+        XCTAssertFalse(app.progressIndicators.firstMatch.exists)
+        app.buttons["deckBrowse"].tap()
+        seekSource(app, fraction: 0.22)
+        app.buttons["deckAddMissing"].tap()
+        let mark = app.buttons["deckAddMark"]
+        XCTAssertTrue(mark.waitForExistence(timeout: 10))
+        XCTAssertTrue(mark.label.hasPrefix("Mark start at "))
+        XCTAssertFalse(mark.isEnabled)
+        XCTAssertFalse(app.buttons["deckAddReset"].isEnabled)
+        XCTAssertTrue(app.buttons["deckPlay"].isHittable, "The original player stays available above the inline picker")
+        XCTAssertFalse(app.navigationBars["Add missing rally"].exists)
+        XCTAssertFalse(app.sliders["deckAddSourceSeek"].exists)
+        seekMissing(app, fraction: 0.675)
+        let enabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: mark)
+        XCTAssertEqual(XCTWaiter.wait(for: [enabled], timeout: 10), .completed)
+        mark.tap()
+        XCTAssertEqual(mark.label, "Mark end & add rally")
+        XCTAssertFalse(mark.isEnabled)
+        app.buttons["deckAddCancel"].tap()
+        XCTAssertEqual(app.staticTexts["deckReviewCount"].label, "All rallies")
+        app.buttons["deckBrowse"].tap()
+        XCTAssertEqual(app.buttons["deckBrowse"].label, "All rallies (6)", "Marking and cancellation must not create a rally")
+        app.buttons["deckBrowse"].tap()
+        app.buttons["deckAddMissing"].tap()
+        XCTAssertTrue(app.buttons["deckAddMark"].label.hasPrefix("Mark start at "), "Reopening starts a fresh selection")
+    }
+    @MainActor func testMarkStartThenEndAddsAndImmediatelyOpensRallyEditing() {
         let app = launch(); defer { app.terminate() }
         app.buttons["deckBrowse"].tap()
-        let seek = app.sliders["deckSourceSeek"]
-        XCTAssertTrue(seek.waitForExistence(timeout: 10))
-        seek.adjust(toNormalizedSliderPosition: 0.22)
-        let before = app.staticTexts.matching(NSPredicate(format: "label MATCHES %@", "[0-9]+ rallies")).firstMatch.label
         app.buttons["deckAddMissing"].tap()
-        let add = app.buttons["Add rally"]
-        XCTAssertTrue(add.waitForExistence(timeout: 10))
-        XCTAssertFalse(add.isEnabled)
-        let source = app.sliders["deckAddSourceSeek"]
-        XCTAssertTrue(source.exists)
-        // The fixture ends with unoccupied source time. Native UISlider exposes
-        // adjustable and set-value actions; this exercises its set-value path.
-        source.adjust(toNormalizedSliderPosition: 0.98)
-        let enabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: add)
-        XCTAssertEqual(XCTWaiter.wait(for: [enabled], timeout: 10), .completed)
-        app.buttons["Cancel"].tap()
-        XCTAssertTrue(app.staticTexts[before].exists, "Seeking and cancellation must not create a rally")
+        XCTAssertFalse(app.sliders["deckAddSourceSeek"].exists)
+        seekMissing(app, fraction: 0.675)
+        let mark = app.buttons["deckAddMark"]
+        mark.tap()
+        let start = app.staticTexts["deckAddStartTime"].label
+        seekMissing(app, fraction: 0.22)
+        XCTAssertFalse(mark.isEnabled, "An end before the start cannot add a rally")
+        XCTAssertEqual(app.staticTexts["deckAddStartTime"].label, start)
+        seekMissing(app, fraction: 0.71)
+        XCTAssertTrue(mark.isEnabled)
+        mark.tap()
+        XCTAssertTrue(app.otherElements["deckTrimStart"].waitForExistence(timeout: 10) || app.buttons["deckTrimStart"].exists)
+        XCTAssertFalse(app.buttons["deckAddMark"].exists)
+        XCTAssertTrue(app.staticTexts["deckReviewCount"].label.hasPrefix("Editing rally "))
+        XCTAssertEqual(app.buttons["deckBrowse"].label, "Review rallies")
+        app.buttons["deckBrowse"].tap()
+        XCTAssertEqual(app.buttons["deckBrowse"].label, "All rallies (7)")
+        app.buttons["deckBrowse"].tap()
+        XCTAssertEqual(app.staticTexts["deckReviewCount"].label, "All rallies")
     }
+    @MainActor func testTwoColumnSourceSeekingAndReviewModeForPendingRallies() {
+        let app = launch(); defer { app.terminate() }
+        app.buttons["deckBrowse"].tap()
+        XCTAssertEqual(app.staticTexts["deckReviewCount"].label, "All rallies")
+        XCTAssertFalse(app.sliders["deckSourceSeek"].exists)
+        seekSource(app, fraction: 0.775)
+        XCTAssertTrue(app.buttons["deckRallyRow-R005"].isSelected)
+        XCTAssertEqual(app.buttons["deckRallyRow-R005"].value as? String, "List center")
+        XCTAssertEqual(app.buttons["deckEditSelected"].label, "Edit rally 5")
+        app.buttons["deckEditSelected"].tap()
+        XCTAssertTrue(app.staticTexts["deckReviewCount"].label.hasPrefix("Reviewing "))
+        XCTAssertEqual(app.buttons["deckBrowse"].label, "All rallies (6)")
+        app.buttons["deckBrowse"].tap()
+        app.buttons["deckToggleSourceTimeline"].tap()
+        XCTAssertFalse(app.otherElements["deckSourceTimelineColumn-0"].exists)
+        XCTAssertFalse(app.otherElements["deckSourceTimelineColumn-1"].exists)
+        app.buttons["deckToggleSourceTimeline"].tap()
+        seekSource(app, fraction: 0.075)
+        XCTAssertTrue(app.buttons["deckRallyRow-R001"].isSelected)
+        app.buttons["deckEditSelected"].tap()
+        XCTAssertEqual(app.staticTexts["deckReviewCount"].label, "Editing rally 1")
+        XCTAssertEqual(app.buttons["deckBrowse"].label, "Review rallies")
+    }
+
+    @MainActor func testManualListScrollingMovesOneDiamondWithoutSeekingTheVideo() {
+        let app = launch(); defer { app.terminate() }
+        app.buttons["deckBrowse"].tap()
+        seekSource(app, fraction: 0)
+        let playhead = app.staticTexts["deckPlayhead"].label
+        let marked = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND value == %@", "deckRallyRow-", "List center"))
+        XCTAssertEqual(marked.count, 1)
+        let before = marked.firstMatch.identifier
+        app.scrollViews.firstMatch.swipeUp()
+        XCTAssertEqual(app.staticTexts["deckPlayhead"].label, playhead)
+        XCTAssertEqual(marked.count, 1)
+        XCTAssertNotEqual(marked.firstMatch.identifier, before)
+        let center = marked.firstMatch.identifier
+        app.buttons["workspace-editor-tab"].tap()
+        app.buttons["workspace-rallies-tab"].tap()
+        XCTAssertEqual(marked.firstMatch.identifier, center)
+        XCTAssertEqual(app.staticTexts["deckPlayhead"].label, playhead)
+        seekSource(app, fraction: 0.775)
+        XCTAssertEqual(app.buttons["deckRallyRow-R005"].value as? String, "List center")
+        XCTAssertTrue(app.buttons["deckRallyRow-R005"].isSelected)
+    }
+
+    @MainActor func testOrdinaryTapOpensTheCurrentlySelectedRally() {
+        let app = launch(); defer { app.terminate() }
+        app.buttons["deckBrowse"].tap()
+        let first = app.buttons["deckRallyRow-R001"]
+        first.tap()
+        XCTAssertTrue(first.isSelected)
+        XCTAssertEqual(app.staticTexts["deckReviewCount"].label, "All rallies")
+        first.tap()
+        XCTAssertEqual(app.staticTexts["deckReviewCount"].label, "Editing rally 1")
+        app.buttons["deckBrowse"].tap()
+        XCTAssertEqual(app.buttons["deckBrowse"].label, "All rallies (6)")
+        app.buttons["deckBrowse"].tap()
+        first.doubleTap()
+        XCTAssertEqual(app.staticTexts["deckReviewCount"].label, "Editing rally 1")
+        app.buttons["deckBrowse"].tap()
+        app.buttons["deckBrowse"].tap()
+        seekSource(app, fraction: 0.775)
+        app.buttons["deckRallyRow-R005"].tap()
+        XCTAssertTrue(app.staticTexts["deckReviewCount"].label.hasPrefix("Reviewing "))
+        XCTAssertEqual(app.buttons["deckBrowse"].label, "All rallies (6)", "Opening cannot make a review decision")
+    }
+
 }
