@@ -1,7 +1,6 @@
 package com.volleycut.nativeanalysis
 
 import android.content.Context
-import android.net.Uri
 
 /** Restores missing rally/dead traces for pre-team-switch projects from the retained context cache. */
 internal object ProductionStateLoader {
@@ -13,28 +12,11 @@ internal object ProductionStateLoader {
             SideSwitchModelRunner.validateStateOutputs(project.productionStateOutputs)
         }.onSuccess { return project.productionStateOutputs }
 
-        val requestedTimes = AnalysisEngine.analysisTimes(
-            project.media.durationSeconds(),
-            project.analysisWindow.start(),
-            project.analysisWindow.end(),
-        )
-        val cacheSource = project.featureCacheSource ?: project.source
-        val cache = NativeFeatureCache.openWithSourceMetadata(
-            context,
-            Uri.parse(cacheSource.uri),
-            cacheSource.name,
-            cacheSource.size,
-            cacheSource.lastModified,
-            project.media,
-            project.roi,
-            FeatureSchema.FULL_SOURCE_FRAME_LIMIT,
-            requestedTimes.size,
-            project.analysisWindow,
-        )
-        val visual = cache.loadVisual()
-        require(visual.complete() && visual.rows() > 0 && cache.timesMatch(visual, requestedTimes)) {
+        val retained = requireNotNull(ProjectFeatureCache.loadVisual(context, project)) {
             "Team-switch inference needs the retained feature cache; rerun project analysis"
         }
+        val cache = retained.cache
+        val visual = retained.visual
         val contextual = cache.loadContext(visual.rows())
             ?: error("Team-switch inference needs contextual features; rerun project analysis")
         val all = ModelRunner(context, FeatureSchema.ALL_LABELS_V2_MODEL_ID)

@@ -11,7 +11,6 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.provider.OpenableColumns
 import android.view.WindowManager
@@ -48,7 +47,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.safeDrawing
@@ -116,7 +114,6 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -164,8 +161,6 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.NonCancellable
-import org.json.JSONArray
-import org.json.JSONObject
 import java.util.Locale
 import java.util.UUID
 import kotlin.math.max
@@ -396,8 +391,7 @@ internal fun resizedDesktopSidebarWidth(
     density: Float,
     minWidthDp: Float,
     maxWidthDp: Float,
-): Float = (currentWidthDp + dragDeltaPx / density.coerceAtLeast(0.1f))
-    .coerceIn(minWidthDp, maxWidthDp.coerceAtLeast(minWidthDp))
+): Float = resizedPlayerHeight(currentWidthDp, dragDeltaPx, density, minWidthDp, maxWidthDp)
 
 internal fun editorLayoutMode(widthDp: Int, heightDp: Int): EditorLayoutMode =
     if (widthDp >= 840 && heightDp >= 360) EditorLayoutMode.DESKTOP else EditorLayoutMode.COMPACT
@@ -410,13 +404,6 @@ internal fun timelineNeedsReview(
 
 private fun EditableCut.isModelDisagreement(): Boolean =
     ProductionEnsemble.isDisagreement(agreement)
-
-private fun EditableCut.modelAgreementLabel(): String = when (agreement) {
-    ProductionEnsemble.BOTH_MODELS -> "Found automatically"
-    ProductionEnsemble.ALL_LABELS_V2_ONLY,
-    ProductionEnsemble.PREVIOUS_PRODUCTION_ONLY -> "Needs a quick check"
-    else -> "Suggested clip"
-}
 
 @Composable
 private fun VolleySpliceTheme(content: @Composable () -> Unit) {
@@ -704,7 +691,7 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                             displayName = source.name,
                             source = source,
                             media = media,
-                            roi = AnalysisEngine.inferRoi(source.name),
+                            roi = AnalysisTypes.Roi.fullFrame(),
                         )
                     }
                     selectedSource = prepared
@@ -957,8 +944,7 @@ private fun EditorApp(activity: ComponentActivity, initialSeed: EditorSeed?) {
                         detail = "Waiting to find the rallies",
                     )
                     reloadProjects(queued.id)
-                    if (Build.VERSION.SDK_INT >= 33 &&
-                        context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                    if (context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
                     ) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
                     ProjectAnalysisService.enqueue(context, queued.id)
                 }
@@ -1527,15 +1513,10 @@ private fun ProjectHeaderBar(
     }
     val context = LocalContext.current
     val versionName = remember(context) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            context.packageManager.getPackageInfo(
-                context.packageName,
-                PackageManager.PackageInfoFlags.of(0),
-            ).versionName
-        } else {
-            @Suppress("DEPRECATION")
-            context.packageManager.getPackageInfo(context.packageName, 0).versionName
-        } ?: "unknown"
+        context.packageManager.getPackageInfo(
+            context.packageName,
+            PackageManager.PackageInfoFlags.of(0),
+        ).versionName ?: "unknown"
     }
     Surface(
         color = Paper,
@@ -3241,70 +3222,50 @@ private fun EditorScreen(
             prepare()
         }
     }
-    val sortedCuts = draft.cuts.sortedWith(compareBy<EditableCut> { it.keepStartMs }.thenBy { it.keepEndMs })
-    val finalMaterialization = EditorMath.materialize(draft, seed.suppression)
-    val finalIntervals = finalMaterialization.intervals
-    val editableRallies = rallyGroupsForDraft(draft, seed.suppression, finalIntervals)
+    val derived = remember(draft, seed.suppression, seed.gameStartMs, seed.gameEndMs) {
+        EditorDerivedState(draft, seed.suppression, seed.gameStartMs, seed.gameEndMs)
+    }
+    val sortedCuts = derived.sortedCuts
+    val finalIntervals = derived.finalIntervals
+    val editableRallies = derived.editableRallies
+    val effectiveIds = derived.effectiveIds
+    val effectiveRallies = derived.effectiveRallies
+    val excludedScoreRallyIds = derived.excludedScoreRallyIds
+    val scoreRallyRanges = derived.scoreRallyRanges
+    val preparedScoreOverlay = derived.preparedScoreOverlay
+    val visibleIgnoredIntervals = derived.visibleIgnoredIntervals
+    val activeSuggestions = derived.activeSuggestions
+    val appliedSuggestionIds = derived.appliedSuggestionIds
+    val userRemovedSuggestionIds = derived.userRemovedSuggestionIds
+    val userRemovedCleanupCutIds = derived.userRemovedCleanupCutIds
+    val pendingCleanupReview = derived.pendingCleanupReview
+    val lowConfidence = derived.lowConfidence
+    val pendingReview = derived.pendingReview
+    val reviewableServeReviews = derived.reviewableServeReviews
+    val reviewAttentionCount = derived.reviewAttentionCount
+    val rallyQueue = derived.rallyQueue
+    val reviewAttentionBreakdown = derived.reviewAttentionBreakdown
+    val totalFinalMs = derived.totalFinalMs
+    val leftOutRallyCount = derived.leftOutRallyCount
     val selectedRally = editableRallies.firstOrNull { selectedId in it.cutIds }
         ?: editableRallies.firstOrNull()
     val selected = selectedRally?.asEditableCut()
     val selectedIndex = selectedRally?.let { editableRallies.indexOf(it) } ?: -1
-    val effectiveIds = EditorMath.effectiveKeptIds(draft, seed.suppression)
-    val effectiveRallies = editableRallies.filter { rally -> rally.cutIds.any { it in effectiveIds } }
-    val excludedScoreRallyIds = draft.cuts.asSequence()
-        .filter { it.origin == CutOrigin.INFERRED && (!it.included || it.id !in effectiveIds) }
-        .map { it.id }
-        .toSet()
-    val scoreRallyRanges = draft.cuts.filter {
-        it.included && (it.origin == CutOrigin.MANUAL || it.id in effectiveIds)
-    }.map { ScoreRallyRange(it.coreStartMs, it.coreEndMs, it.keepStartMs, it.keepEndMs) }
-    val scoreMergedRanges = finalIntervals.map { ScoreMergedRange(it.startMs, it.endMs) }
-    val preparedScoreOverlay = ScoreOverlay.prepare(
-        draft.scoreTracking,
-        draft.ignoredIntervals,
-        excludedScoreRallyIds,
-        scoreRallyRanges,
-        scoreMergedRanges,
-    )
-    val scoreEffectiveTimestampMs = ScoreReducer.scoreBoundaryTimestamp(
-        playbackPositionMs,
-        preparedScoreOverlay.rallyRanges,
-        preparedScoreOverlay.tracking,
-        preparedScoreOverlay.mergedRanges,
-    )
-    val visibleScore = ScoreReducer.deriveAt(preparedScoreOverlay.tracking, scoreEffectiveTimestampMs)
-    val scoreEffectiveServeId = preparedScoreOverlay.tracking.serveMarkers
-        .sortedWith(compareBy<ServeMarker> { it.timestampMs }.thenBy { it.id })
-        .lastOrNull { it.timestampMs <= scoreEffectiveTimestampMs }
-        ?.id
+    val scoreEffectiveTimestampMs = remember(playbackPositionMs, preparedScoreOverlay) {
+        ScoreReducer.scoreBoundaryTimestamp(
+            playbackPositionMs,
+            preparedScoreOverlay.rallyRanges,
+            preparedScoreOverlay.tracking,
+            preparedScoreOverlay.mergedRanges,
+        )
+    }
+    val visibleScore = remember(preparedScoreOverlay.tracking, scoreEffectiveTimestampMs) {
+        ScoreReducer.deriveAt(preparedScoreOverlay.tracking, scoreEffectiveTimestampMs)
+    }
+    val scoreEffectiveServeId = derived.orderedServeMarkers
+        .lastOrNull { it.timestampMs <= scoreEffectiveTimestampMs }?.id
     LaunchedEffect(scoreEffectiveServeId) {
         if (scoreEffectiveServeId != null) selectedScoreMarkerId = scoreEffectiveServeId
-    }
-    val visibleIgnoredIntervals = draft.ignoredIntervals.filter {
-        it.endMs > seed.gameStartMs && it.startMs < seed.gameEndMs
-    }
-    val activeSuggestions = EditorMath.activeSuggestions(draft, seed.suppression)
-    val appliedSuggestionIds = activeSuggestions.filter {
-        EditorMath.suggestionEffectiveDecision(draft, it) == SuppressionDecision.SUPPRESS
-    }.map { it.fragmentId() }.toSet()
-    val userRemovedSuggestionIds = activeSuggestions.filter { suggestion ->
-        draft.suppressionDecisionOverrides[suggestion.logicalId()] == SuppressionDecision.SUPPRESS
-    }.mapTo(mutableSetOf()) { it.fragmentId() }
-    val userRemovedCleanupCutIds = sortedCuts.filter { cut ->
-        cut.id !in effectiveIds && activeSuggestions.any { suggestion ->
-            suggestion.fragmentId() in userRemovedSuggestionIds &&
-                cut.coreStartMs < suggestion.endMs() && suggestion.startMs() < cut.coreEndMs
-        }
-    }.mapTo(mutableSetOf()) { it.id }
-    val reviewableCleanupSuggestions = activeSuggestions.filter { suggestion ->
-        EditorMath.firstReviewableTime(
-            suggestion.startMs(),
-            suggestion.endMs(),
-            visibleIgnoredIntervals,
-        ) != null
-    }
-    val pendingCleanupReview = reviewableCleanupSuggestions.filter { suggestion ->
-        suggestion.logicalId() !in draft.suppressionDecisionOverrides
     }
     val selectedSuggestion = activeSuggestions.firstOrNull { it.fragmentId() == selectedSuggestionId }
         .takeIf { selectedRally?.cuts?.none { it.editableGroupId != null } != false }
@@ -3317,48 +3278,7 @@ private fun EditorScreen(
             }
         }
     }
-    val lowConfidence = editableRallies.filter { rally ->
-        rally.cuts.any {
-            it.origin == CutOrigin.INFERRED && it.included && it.id in effectiveIds &&
-                (it.isModelDisagreement() || it.confidence < draft.confidenceReviewThreshold)
-        }
-    }
-    val pendingReview = lowConfidence
-        .filter { rally -> rally.cutIds.any { it !in draft.reviewedCutIds } }
-        .filter { rally ->
-            EditorMath.firstReviewableTime(
-                rally.keepStartMs,
-                rally.keepEndMs,
-                visibleIgnoredIntervals,
-            ) != null
-        }
-    val reviewableServeReviews = preparedScoreOverlay.tracking.serveMarkers
-        .filter { marker ->
-            marker.side == ServingSide.REVIEW &&
-                !EditorMath.isTimestampIgnored(marker.timestampMs, visibleIgnoredIntervals)
-        }
-        .sortedBy { it.timestampMs }
-    val reviewAttentionCount = pendingReview.size + pendingCleanupReview.size + reviewableServeReviews.size
-    val rallyQueue = remember(editableRallies, pendingReview, pendingCleanupReview, reviewableServeReviews, visibleIgnoredIntervals, draft.scoreTracking.enabled) {
-        rallyReviewQueue(
-            editableRallies,
-            pendingReview.mapTo(mutableSetOf()) { it.id },
-            pendingCleanupReview.map { RallyReviewCleanup(it.logicalId(), it.startMs(), it.endMs()) },
-            reviewableServeReviews.takeIf { draft.scoreTracking.enabled }.orEmpty(),
-            visibleIgnoredIntervals,
-        )
-    }
-    val reviewAttentionBreakdown = buildList {
-        if (pendingReview.isNotEmpty()) add("${pendingReview.size} ${if (pendingReview.size == 1) "clip" else "clips"}")
-        if (pendingCleanupReview.isNotEmpty()) add("${pendingCleanupReview.size} cleanup")
-        if (reviewableServeReviews.isNotEmpty()) add(
-            "${reviewableServeReviews.size} ${if (reviewableServeReviews.size == 1) "serve" else "serves"}",
-        )
-    }.joinToString(" · ")
-    val joinedGaps = finalIntervals.flatMap { it.joinedGaps }
-    val totalFinalMs = EditorMath.totalFinalMs(finalIntervals)
     val exportPending = exportState.status == "queued" || exportState.status == "running"
-    val leftOutRallyCount = editableRallies.count { rally -> rally.cutIds.none { it in effectiveIds } }
     val detailWindow = selectedSuggestion?.let { suggestion ->
         val span = max(24_000L, suggestion.endMs() - suggestion.startMs() + 10_000L)
         val center = (suggestion.startMs() + suggestion.endMs()) / 2
@@ -3395,12 +3315,6 @@ private fun EditorScreen(
             project.sideSwitchEnabled,
         )
         if (seeded != draft.scoreTracking) updateDraft { it.copy(scoreTracking = seeded) }
-    }
-
-    fun updateCut(id: String, mutate: (EditableCut) -> EditableCut) {
-        updateDraft { current ->
-            current.copy(cuts = current.cuts.map { if (it.id == id) mutate(it) else it })
-        }
     }
 
     fun updateRallyCuts(ids: Set<String>, mutate: (EditableCut) -> EditableCut) {
@@ -3450,6 +3364,50 @@ private fun EditorScreen(
             visibleIgnoredIntervals,
         ) ?: reviewStart
         seekTo(reviewTime)
+    }
+
+    fun setScoreTrackingEnabled(enabled: Boolean) {
+        updateDraft { it.copy(scoreTracking = it.scoreTracking.copy(enabled = enabled)) }
+        val missingOutput = project.servingSide == null ||
+            (project.sideSwitchEnabled && project.sideSwitch == null)
+        if (enabled && missingOutput &&
+            project.servingSideStatus != ServingSideAnalysisStatus.QUEUED &&
+            project.servingSideStatus != ServingSideAnalysisStatus.ANALYZING
+        ) {
+            if (sourceAvailable == false) {
+                message = "Re-link the source video to prepare score tracking"
+            } else {
+                message = "Preparing score markers"
+                scope.launch {
+                    val queued = withContext(Dispatchers.IO) {
+                        NativeProjectStore.updateServingSideStatus(
+                            context,
+                            project.id,
+                            ServingSideAnalysisStatus.QUEUED,
+                        )
+                    }
+                    queued?.let(onProjectUpdated)
+                    ProjectAnalysisService.enqueueServingSide(context, project.id)
+                }
+            }
+        }
+    }
+
+    fun selectScoreMarker(markerId: String, timestampMs: Long) {
+        selectedScoreMarkerId = markerId
+        seekTo(timestampMs)
+    }
+
+    fun seekOverview(timeMs: Long, cutId: String?, suggestionId: String?) {
+        if (suggestionId != null) {
+            activeSuggestions.firstOrNull { it.fragmentId() == suggestionId }?.let(::selectSuggestion)
+        } else {
+            cutId?.let {
+                selectedSuggestionId = null
+                selectedId = editableRallies.firstOrNull { rally -> it in rally.cutIds }?.id ?: it
+            }
+            seekTo(timeMs)
+        }
     }
 
     fun setKeepBoundary(side: String, valueMs: Long) {
@@ -3650,8 +3608,7 @@ private fun EditorScreen(
                 EditorExportKind.VIDEO -> if (result.jobId != null) {
                     exportState = ExportService.statusForProject(project.id)?.toUiState()
                         ?: ExportUiState(result.jobId, "queued", 0, result.message)
-                    if (Build.VERSION.SDK_INT >= 33 &&
-                        context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                    if (context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
                     ) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
                 } else message = result.message
             }
@@ -4386,32 +4343,7 @@ private fun EditorScreen(
                                 desktop = true,
                                 modifier = Modifier.guidedTourTarget("editor-score-panel", guidedTourTargets),
                                 toggleModifier = Modifier.guidedTourTarget("editor-score-toggle", guidedTourTargets),
-                                onEnabledChange = { enabled ->
-                                    updateDraft { it.copy(scoreTracking = it.scoreTracking.copy(enabled = enabled)) }
-                                    val missingOutput = project.servingSide == null ||
-                                        (project.sideSwitchEnabled && project.sideSwitch == null)
-                                    if (enabled && missingOutput &&
-                                        project.servingSideStatus != ServingSideAnalysisStatus.QUEUED &&
-                                        project.servingSideStatus != ServingSideAnalysisStatus.ANALYZING
-                                    ) {
-                                        if (sourceAvailable == false) {
-                                            message = "Re-link the source video to prepare score tracking"
-                                        } else {
-                                            message = "Preparing score markers"
-                                            scope.launch {
-                                                val queued = withContext(Dispatchers.IO) {
-                                                    NativeProjectStore.updateServingSideStatus(
-                                                        context,
-                                                        project.id,
-                                                        ServingSideAnalysisStatus.QUEUED,
-                                                    )
-                                                }
-                                                queued?.let(onProjectUpdated)
-                                                ProjectAnalysisService.enqueueServingSide(context, project.id)
-                                            }
-                                        }
-                                    }
-                                },
+                                onEnabledChange = ::setScoreTrackingEnabled,
                                 onTracking = { tracking -> updateDraft { it.copy(scoreTracking = tracking) } },
                                 onSelect = { markerId, timestampMs ->
                                     selectedScoreMarkerId = markerId
@@ -4460,48 +4392,16 @@ private fun EditorScreen(
                                     modifier = Modifier.guidedTourTarget("editor-video", guidedTourTargets),
                                     colors = CardDefaults.cardColors(containerColor = Color.Black),
                                 ) {
-                                    BoxWithConstraints(
-                                        Modifier
-                                            .fillMaxWidth()
-                                            .height(desktopPlayerHeightDp.dp),
-                                    ) {
-                                        if (!BuildConfig.BLACK_VIDEO_PREVIEW) {
-                                            ContentFrame(
-                                                player = player,
-                                                modifier = Modifier.fillMaxSize(),
-                                                surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
-                                            )
-                                        }
-                                        if (draft.renderScoreOverlay && draft.scoreTracking.enabled) {
-                                            val (displayWidth, displayHeight) = scoreOverlayDisplaySize(
-                                                seed.width,
-                                                seed.height,
-                                                seed.rotation,
-                                            )
-                                            val videoAspect = displayWidth.toFloat() / displayHeight.coerceAtLeast(1)
-                                            val containerAspect = maxWidth.value / maxHeight.value.coerceAtLeast(.001f)
-                                            val videoModifier = if (containerAspect > videoAspect) {
-                                                Modifier.height(maxHeight).width(maxHeight * videoAspect)
-                                            } else {
-                                                Modifier.width(maxWidth).height(maxWidth / videoAspect)
-                                            }
-                                            ScoreOverlayPreview(
-                                                snapshot = ScoreOverlay.snapshot(preparedScoreOverlay, playbackPositionMs),
-                                                timeline = ScoreOverlay.pointTimelineSnapshot(preparedScoreOverlay, playbackPositionMs),
-                                                renderTimeline = draft.renderScoreTimeline,
-                                                fadeScoreOverlay = draft.fadeScoreOverlay,
-                                                modifier = videoModifier.align(Alignment.Center),
-                                            )
-                                        }
-                                        Box(
-                                            Modifier
-                                                .fillMaxSize()
-                                                .clickable(onClick = ::togglePlayback)
-                                                .semantics {
-                                                    contentDescription = if (isPlaying) "Pause video" else "Play video"
-                                                },
-                                        )
-                                    }
+                                    EditorVideoPreview(
+                                        seed = seed,
+                                        draft = draft,
+                                        player = player,
+                                        preparedScoreOverlay = preparedScoreOverlay,
+                                        playbackPositionMs = playbackPositionMs,
+                                        isPlaying = isPlaying,
+                                        onTogglePlayback = ::togglePlayback,
+                                        modifier = Modifier.fillMaxWidth().height(desktopPlayerHeightDp.dp),
+                                    )
                                 }
                                 Box(Modifier.fillMaxWidth().height(36.dp)) {
                                     PlayerControls(
@@ -4551,91 +4451,18 @@ private fun EditorScreen(
                                         textAlign = TextAlign.End,
                                     )
                                 }
-                                WholeTimeline(
-                                    windowStartMs = seed.gameStartMs,
-                                    windowEndMs = (seed.gameStartMs + seed.gameEndMs) / 2,
-                                    cuts = sortedCuts,
-                                    joinedGaps = joinedGaps,
-                                    ignored = visibleIgnoredIntervals,
-                                    suggestions = activeSuggestions,
-                                    appliedSuggestionIds = appliedSuggestionIds,
-                                    userRemovedSuggestionIds = userRemovedSuggestionIds,
-                                    userRemovedCleanupCutIds = userRemovedCleanupCutIds,
-                                    selectedSuggestionId = selectedSuggestionId,
+                                EditorOverview(
+                                    seed = seed,
+                                    draft = draft,
+                                    derived = derived,
                                     selectedCutIds = selectedRally?.cutIds.orEmpty(),
-                                    effectiveIds = effectiveIds,
-                                    confidenceThreshold = draft.confidenceReviewThreshold,
-                                    reviewedCutIds = draft.reviewedCutIds,
+                                    selectedSuggestionId = selectedSuggestionId,
                                     playheadMs = playbackPositionMs,
-                                    serveMarkers = if (draft.scoreTracking.enabled) preparedScoreOverlay.tracking.serveMarkers else emptyList(),
-                                    sideSwitchMarkers = if (draft.scoreTracking.enabled) preparedScoreOverlay.tracking.sideSwitchMarkers else emptyList(),
                                     selectedScoreMarkerId = selectedScoreMarkerId,
-                                    onMarkerSelect = { markerId, timestampMs ->
-                                        selectedScoreMarkerId = markerId
-                                        seekTo(timestampMs)
-                                    },
-                                    onSeek = { time, id, suggestionId ->
-                                        if (suggestionId != null) {
-                                            activeSuggestions.firstOrNull { it.fragmentId() == suggestionId }
-                                                ?.let(::selectSuggestion)
-                                        } else {
-                                            id?.let {
-                                                selectedSuggestionId = null
-                                                selectedId = editableRallies.firstOrNull { rally -> it in rally.cutIds }?.id ?: it
-                                            }
-                                            seekTo(time)
-                                        }
-                                    },
+                                    onMarkerSelect = ::selectScoreMarker,
+                                    onSeek = ::seekOverview,
                                     heightScale = 0.8f,
                                 )
-                                TimelineLabels(
-                                    seed.gameStartMs,
-                                    (seed.gameStartMs * 3 + seed.gameEndMs) / 4,
-                                    (seed.gameStartMs + seed.gameEndMs) / 2,
-                                )
-                                WholeTimeline(
-                                    windowStartMs = (seed.gameStartMs + seed.gameEndMs) / 2,
-                                    windowEndMs = seed.gameEndMs,
-                                    cuts = sortedCuts,
-                                    joinedGaps = joinedGaps,
-                                    ignored = visibleIgnoredIntervals,
-                                    suggestions = activeSuggestions,
-                                    appliedSuggestionIds = appliedSuggestionIds,
-                                    userRemovedSuggestionIds = userRemovedSuggestionIds,
-                                    userRemovedCleanupCutIds = userRemovedCleanupCutIds,
-                                    selectedSuggestionId = selectedSuggestionId,
-                                    selectedCutIds = selectedRally?.cutIds.orEmpty(),
-                                    effectiveIds = effectiveIds,
-                                    confidenceThreshold = draft.confidenceReviewThreshold,
-                                    reviewedCutIds = draft.reviewedCutIds,
-                                    playheadMs = playbackPositionMs,
-                                    serveMarkers = if (draft.scoreTracking.enabled) preparedScoreOverlay.tracking.serveMarkers else emptyList(),
-                                    sideSwitchMarkers = if (draft.scoreTracking.enabled) preparedScoreOverlay.tracking.sideSwitchMarkers else emptyList(),
-                                    selectedScoreMarkerId = selectedScoreMarkerId,
-                                    onMarkerSelect = { markerId, timestampMs ->
-                                        selectedScoreMarkerId = markerId
-                                        seekTo(timestampMs)
-                                    },
-                                    onSeek = { time, id, suggestionId ->
-                                        if (suggestionId != null) {
-                                            activeSuggestions.firstOrNull { it.fragmentId() == suggestionId }
-                                                ?.let(::selectSuggestion)
-                                        } else {
-                                            id?.let {
-                                                selectedSuggestionId = null
-                                                selectedId = editableRallies.firstOrNull { rally -> it in rally.cutIds }?.id ?: it
-                                            }
-                                            seekTo(time)
-                                        }
-                                    },
-                                    heightScale = 0.8f,
-                                )
-                                TimelineLabels(
-                                    (seed.gameStartMs + seed.gameEndMs) / 2,
-                                    (seed.gameStartMs + seed.gameEndMs * 3) / 4,
-                                    seed.gameEndMs,
-                                )
-                                TimelineLegend()
                             }
                             if (message.isNotBlank()) {
                                 Surface(color = Color(0xFFFFE2D8), shape = RoundedCornerShape(10.dp)) {
@@ -4980,32 +4807,7 @@ private fun EditorScreen(
                     sideSwitchEnabled = project.sideSwitchEnabled,
                     modifier = Modifier.guidedTourTarget("editor-score-panel", guidedTourTargets),
                     toggleModifier = Modifier.guidedTourTarget("editor-score-toggle", guidedTourTargets),
-                    onEnabledChange = { enabled ->
-                        updateDraft { it.copy(scoreTracking = it.scoreTracking.copy(enabled = enabled)) }
-                        val missingRequestedScoreOutput = project.servingSide == null ||
-                            (project.sideSwitchEnabled && project.sideSwitch == null)
-                        if (enabled && missingRequestedScoreOutput &&
-                            project.servingSideStatus != ServingSideAnalysisStatus.QUEUED &&
-                            project.servingSideStatus != ServingSideAnalysisStatus.ANALYZING
-                        ) {
-                            if (sourceAvailable == false) {
-                                message = "Re-link the source video to prepare score tracking"
-                            } else {
-                                message = "Preparing score markers"
-                                scope.launch {
-                                    val queued = withContext(Dispatchers.IO) {
-                                        NativeProjectStore.updateServingSideStatus(
-                                            context,
-                                            project.id,
-                                            ServingSideAnalysisStatus.QUEUED,
-                                        )
-                                    }
-                                    queued?.let(onProjectUpdated)
-                                    ProjectAnalysisService.enqueueServingSide(context, project.id)
-                                }
-                            }
-                        }
-                    },
+                    onEnabledChange = ::setScoreTrackingEnabled,
                     onTracking = { tracking -> updateDraft { it.copy(scoreTracking = tracking) } },
                     onSelect = { markerId, timestampMs ->
                         selectedScoreMarkerId = markerId
@@ -5018,42 +4820,16 @@ private fun EditorScreen(
                     modifier = Modifier.guidedTourTarget("editor-video", guidedTourTargets),
                     colors = CardDefaults.cardColors(containerColor = Color.Black),
                 ) {
-                    BoxWithConstraints(Modifier.fillMaxWidth().height(compactPlayerHeightDp.dp)) {
-                        if (!BuildConfig.BLACK_VIDEO_PREVIEW) {
-                                ContentFrame(
-                                    player = player,
-                                    modifier = Modifier.fillMaxSize(),
-                                    surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
-                                )
-                        }
-                        if (draft.renderScoreOverlay && draft.scoreTracking.enabled) {
-                            val (displayWidth, displayHeight) = scoreOverlayDisplaySize(
-                                seed.width, seed.height, seed.rotation,
-                            )
-                            val videoAspect = displayWidth.toFloat() / displayHeight.coerceAtLeast(1)
-                            val containerAspect = maxWidth.value / maxHeight.value.coerceAtLeast(.001f)
-                            val videoModifier = if (containerAspect > videoAspect) {
-                                Modifier.height(maxHeight).width(maxHeight * videoAspect)
-                            } else {
-                                Modifier.width(maxWidth).height(maxWidth / videoAspect)
-                            }
-                            ScoreOverlayPreview(
-                                snapshot = ScoreOverlay.snapshot(preparedScoreOverlay, playbackPositionMs),
-                                timeline = ScoreOverlay.pointTimelineSnapshot(preparedScoreOverlay, playbackPositionMs),
-                                renderTimeline = draft.renderScoreTimeline,
-                                fadeScoreOverlay = draft.fadeScoreOverlay,
-                                modifier = videoModifier.align(Alignment.Center),
-                            )
-                        }
-                        Box(
-                            Modifier
-                                .fillMaxSize()
-                                .clickable(onClick = ::togglePlayback)
-                                .semantics {
-                                    contentDescription = if (isPlaying) "Pause video" else "Play video"
-                                },
-                        )
-                    }
+                    EditorVideoPreview(
+                        seed = seed,
+                        draft = draft,
+                        player = player,
+                        preparedScoreOverlay = preparedScoreOverlay,
+                        playbackPositionMs = playbackPositionMs,
+                        isPlaying = isPlaying,
+                        onTogglePlayback = ::togglePlayback,
+                        modifier = Modifier.fillMaxWidth().height(compactPlayerHeightDp.dp),
+                    )
                 }
                 VideoResizeHandle(description = "Resize phone video player height") { dragDeltaPx ->
                     compactPlayerHeightDp = resizedPlayerHeight(
@@ -5091,95 +4867,17 @@ private fun EditorScreen(
                 compact = true,
                 modifier = Modifier.guidedTourTarget("editor-overview", guidedTourTargets),
             ) {
-                WholeTimeline(
-                    windowStartMs = seed.gameStartMs,
-                    windowEndMs = (seed.gameStartMs + seed.gameEndMs) / 2,
-                    cuts = sortedCuts,
-                    joinedGaps = joinedGaps,
-                    ignored = visibleIgnoredIntervals,
-                    suggestions = activeSuggestions,
-                    appliedSuggestionIds = activeSuggestions.filter {
-                        EditorMath.suggestionEffectiveDecision(draft, it) == SuppressionDecision.SUPPRESS
-                    }.map { it.fragmentId() }.toSet(),
-                    userRemovedSuggestionIds = userRemovedSuggestionIds,
-                    userRemovedCleanupCutIds = userRemovedCleanupCutIds,
-                    selectedSuggestionId = selectedSuggestionId,
+                EditorOverview(
+                    seed = seed,
+                    draft = draft,
+                    derived = derived,
                     selectedCutIds = selectedRally?.cutIds.orEmpty(),
-                    effectiveIds = effectiveIds,
-                    confidenceThreshold = draft.confidenceReviewThreshold,
-                    reviewedCutIds = draft.reviewedCutIds,
-                    playheadMs = playbackPositionMs,
-                    serveMarkers = if (draft.scoreTracking.enabled) preparedScoreOverlay.tracking.serveMarkers else emptyList(),
-                    sideSwitchMarkers = if (draft.scoreTracking.enabled) preparedScoreOverlay.tracking.sideSwitchMarkers else emptyList(),
-                    selectedScoreMarkerId = selectedScoreMarkerId,
-                    onMarkerSelect = { markerId, timestampMs ->
-                        selectedScoreMarkerId = markerId
-                        seekTo(timestampMs)
-                    },
-                    onSeek = { time, id, suggestionId ->
-                        if (suggestionId != null) {
-                            val candidate = suggestionId
-                            activeSuggestions.firstOrNull { it.fragmentId() == candidate }
-                                ?.let(::selectSuggestion)
-                        } else {
-                            id?.let {
-                                selectedSuggestionId = null
-                                selectedId = editableRallies.firstOrNull { rally -> it in rally.cutIds }?.id ?: it
-                            }
-                            seekTo(time)
-                        }
-                    },
-                )
-                TimelineLabels(
-                    seed.gameStartMs,
-                    (seed.gameStartMs * 3 + seed.gameEndMs) / 4,
-                    (seed.gameStartMs + seed.gameEndMs) / 2,
-                )
-                WholeTimeline(
-                    windowStartMs = (seed.gameStartMs + seed.gameEndMs) / 2,
-                    windowEndMs = seed.gameEndMs,
-                    cuts = sortedCuts,
-                    joinedGaps = joinedGaps,
-                    ignored = visibleIgnoredIntervals,
-                    suggestions = activeSuggestions,
-                    appliedSuggestionIds = activeSuggestions.filter {
-                        EditorMath.suggestionEffectiveDecision(draft, it) == SuppressionDecision.SUPPRESS
-                    }.map { it.fragmentId() }.toSet(),
-                    userRemovedSuggestionIds = userRemovedSuggestionIds,
-                    userRemovedCleanupCutIds = userRemovedCleanupCutIds,
                     selectedSuggestionId = selectedSuggestionId,
-                    selectedCutIds = selectedRally?.cutIds.orEmpty(),
-                    effectiveIds = effectiveIds,
-                    confidenceThreshold = draft.confidenceReviewThreshold,
-                    reviewedCutIds = draft.reviewedCutIds,
                     playheadMs = playbackPositionMs,
-                    serveMarkers = if (draft.scoreTracking.enabled) preparedScoreOverlay.tracking.serveMarkers else emptyList(),
-                    sideSwitchMarkers = if (draft.scoreTracking.enabled) preparedScoreOverlay.tracking.sideSwitchMarkers else emptyList(),
                     selectedScoreMarkerId = selectedScoreMarkerId,
-                    onMarkerSelect = { markerId, timestampMs ->
-                        selectedScoreMarkerId = markerId
-                        seekTo(timestampMs)
-                    },
-                    onSeek = { time, id, suggestionId ->
-                        if (suggestionId != null) {
-                            val candidate = suggestionId
-                            activeSuggestions.firstOrNull { it.fragmentId() == candidate }
-                                ?.let(::selectSuggestion)
-                        } else {
-                            id?.let {
-                                selectedSuggestionId = null
-                                selectedId = editableRallies.firstOrNull { rally -> it in rally.cutIds }?.id ?: it
-                            }
-                            seekTo(time)
-                        }
-                    },
+                    onMarkerSelect = ::selectScoreMarker,
+                    onSeek = ::seekOverview,
                 )
-                TimelineLabels(
-                    (seed.gameStartMs + seed.gameEndMs) / 2,
-                    (seed.gameStartMs + seed.gameEndMs * 3) / 4,
-                    seed.gameEndMs,
-                )
-                TimelineLegend()
             }
 
             SectionCard(
@@ -5459,7 +5157,7 @@ private fun EditorScreen(
             if (displayAnalysisMeasurements) AnalysisMeasurementsCard(project.analysisMeasurements)
 
             if (BuildConfig.DEBUG) {
-                TextButton(onClick = { context.startActivity(Intent(context, MainActivity::class.java)) }) {
+                TextButton(onClick = { context.startActivity(Intent().setClassName(context, "com.volleycut.nativeanalysis.MainActivity")) }) {
                     Text("Benchmark tools")
                 }
             }
@@ -5536,6 +5234,103 @@ private fun EditorScreen(
             )
         }
     }
+}
+
+@OptIn(markerClass = [UnstableApi::class])
+@Composable
+private fun EditorVideoPreview(
+    seed: EditorSeed,
+    draft: EditorDraft,
+    player: ExoPlayer,
+    preparedScoreOverlay: PreparedScoreOverlay,
+    playbackPositionMs: Long,
+    isPlaying: Boolean,
+    onTogglePlayback: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    BoxWithConstraints(modifier) {
+        if (!BuildConfig.BLACK_VIDEO_PREVIEW) {
+            ContentFrame(
+                player = player,
+                modifier = Modifier.fillMaxSize(),
+                surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
+            )
+        }
+        if (draft.renderScoreOverlay && draft.scoreTracking.enabled) {
+            val (displayWidth, displayHeight) = scoreOverlayDisplaySize(
+                seed.width,
+                seed.height,
+                seed.rotation,
+            )
+            val videoAspect = displayWidth.toFloat() / displayHeight.coerceAtLeast(1)
+            val containerAspect = maxWidth.value / maxHeight.value.coerceAtLeast(.001f)
+            val videoModifier = if (containerAspect > videoAspect) {
+                Modifier.height(maxHeight).width(maxHeight * videoAspect)
+            } else {
+                Modifier.width(maxWidth).height(maxWidth / videoAspect)
+            }
+            ScoreOverlayPreview(
+                snapshot = ScoreOverlay.snapshot(preparedScoreOverlay, playbackPositionMs),
+                timeline = ScoreOverlay.pointTimelineSnapshot(preparedScoreOverlay, playbackPositionMs),
+                renderTimeline = draft.renderScoreTimeline,
+                fadeScoreOverlay = draft.fadeScoreOverlay,
+                modifier = videoModifier.align(Alignment.Center),
+            )
+        }
+        Box(
+            Modifier
+                .fillMaxSize()
+                .clickable(onClick = onTogglePlayback)
+                .semantics {
+                    contentDescription = if (isPlaying) "Pause video" else "Play video"
+                },
+        )
+    }
+}
+
+@Composable
+private fun EditorOverview(
+    seed: EditorSeed,
+    draft: EditorDraft,
+    derived: EditorDerivedState,
+    selectedCutIds: Set<String>,
+    selectedSuggestionId: String?,
+    playheadMs: Long,
+    selectedScoreMarkerId: String?,
+    onMarkerSelect: (String, Long) -> Unit,
+    onSeek: (Long, String?, String?) -> Unit,
+    heightScale: Float = 1f,
+) {
+    val midpoint = (seed.gameStartMs + seed.gameEndMs) / 2
+    repeat(2) { half ->
+        val start = if (half == 0) seed.gameStartMs else midpoint
+        val end = if (half == 0) midpoint else seed.gameEndMs
+        WholeTimeline(
+            windowStartMs = start,
+            windowEndMs = end,
+            cuts = derived.sortedCuts,
+            joinedGaps = derived.joinedGaps,
+            ignored = derived.visibleIgnoredIntervals,
+            suggestions = derived.activeSuggestions,
+            appliedSuggestionIds = derived.appliedSuggestionIds,
+            userRemovedSuggestionIds = derived.userRemovedSuggestionIds,
+            userRemovedCleanupCutIds = derived.userRemovedCleanupCutIds,
+            selectedSuggestionId = selectedSuggestionId,
+            selectedCutIds = selectedCutIds,
+            effectiveIds = derived.effectiveIds,
+            confidenceThreshold = draft.confidenceReviewThreshold,
+            reviewedCutIds = draft.reviewedCutIds,
+            playheadMs = playheadMs,
+            serveMarkers = if (draft.scoreTracking.enabled) derived.preparedScoreOverlay.tracking.serveMarkers else emptyList(),
+            sideSwitchMarkers = if (draft.scoreTracking.enabled) derived.preparedScoreOverlay.tracking.sideSwitchMarkers else emptyList(),
+            selectedScoreMarkerId = selectedScoreMarkerId,
+            onMarkerSelect = onMarkerSelect,
+            onSeek = onSeek,
+            heightScale = heightScale,
+        )
+        TimelineLabels(start, (start + end) / 2, end)
+    }
+    TimelineLegend()
 }
 
 @Composable
@@ -7706,131 +7501,6 @@ private fun SmallButton(label: String, enabled: Boolean = true, onClick: () -> U
     }
 }
 
-internal fun editListJson(seed: EditorSeed, draft: EditorDraft, intervals: List<FinalCutInterval>) =
-    JSONObject().apply {
-        put("schemaVersion", 2)
-        put("method", "android-editor-v3-suppression")
-        put("modelId", seed.rallyModelId)
-        put("modelLabel", RallyModels.label(seed.rallyModelId))
-        put("sourceName", seed.displayName)
-        put("sourceUri", seed.sourceUri)
-        put("sourceDuration", seed.durationMs / 1_000.0)
-        put("gameStartSeconds", seed.gameStartMs / 1_000.0)
-        put("gameEndSeconds", seed.gameEndMs / 1_000.0)
-        put("sourceRevision", seed.sourceRevision)
-        put("beforePaddingSeconds", draft.beforePaddingMs / 1_000.0)
-        put("afterPaddingSeconds", draft.afterPaddingMs / 1_000.0)
-        put("joinGapSeconds", draft.joinGapMs / 1_000.0)
-        put("outputDuration", EditorMath.totalFinalMs(intervals) / 1_000.0)
-        put("policyContractVersion", draft.suppressionContractVersion)
-        put("selectedSuppressionPolicy", draft.selectedSuppressionPolicy.wireName)
-        put("recordedSuppressionPolicy", draft.selectedSuppressionPolicy.recordedPolicy)
-        put("suppressionInitialBehavior", draft.suppressionInitialBehavior.wireName)
-        put("defaultSuppressionScope", SuppressionScope.WHOLE_RALLY.wireName)
-        put("suppression", seed.suppression?.let { analysis -> JSONObject().apply {
-            put("modelId", analysis.modelId())
-            put("artifactSha256", analysis.artifactSha256())
-            put("weightsSha256", analysis.weightsSha256())
-            put("decoderVersion", analysis.decoderVersion())
-            put("productionComponents", JSONObject().apply {
-                put("allLabelsV2", JSONArray().apply {
-                    seed.productionComponents.allLabelsV2().forEach { interval ->
-                        put(JSONObject().apply {
-                            put("start", interval.start())
-                            put("end", interval.end())
-                            put("confidence", interval.confidence().toDouble())
-                        })
-                    }
-                })
-                put("previousProduction", JSONArray().apply {
-                    seed.productionComponents.previousProduction().forEach { interval ->
-                        put(JSONObject().apply {
-                            put("start", interval.start())
-                            put("end", interval.end())
-                            put("confidence", interval.confidence().toDouble())
-                        })
-                    }
-                })
-            })
-            put("suggestions", JSONArray().apply {
-                analysis.suggestions().forEach { suggestion -> put(JSONObject().apply {
-                    put("logicalId", suggestion.logicalId())
-                    put("fragmentId", suggestion.fragmentId())
-                    put("start", suggestion.startMs() / 1_000.0)
-                    put("end", suggestion.endMs() / 1_000.0)
-                    put("score", suggestion.score().toDouble())
-                    put("sourceProductionIds", JSONArray(suggestion.sourceProductionIds()))
-                    put("eligiblePolicyIds", JSONArray(suggestion.eligiblePolicyIds()))
-                    put("active", suggestion.eligiblePolicyIds().contains(draft.selectedSuppressionPolicy.wireName))
-                    put("explicitDecision", draft.suppressionDecisionOverrides[suggestion.logicalId()]?.wireName ?: JSONObject.NULL)
-                    put("effectiveDecision", EditorMath.suggestionEffectiveDecision(draft, suggestion).wireName)
-                    put("effectiveScope", EditorMath.suggestionEffectiveScope(draft, suggestion).wireName)
-                }) }
-            })
-            put("decisionOverrides", JSONObject().apply {
-                draft.suppressionDecisionOverrides.toSortedMap().forEach { (id, decision) ->
-                    put(id, decision.wireName)
-                }
-            })
-            put("scopeOverrides", JSONObject().apply {
-                draft.suppressionScopeOverrides.toSortedMap().forEach { (id, scope) ->
-                    put(id, scope.wireName)
-                }
-            })
-            put("userTouchedCutIds", JSONArray(draft.userTouchedCutIds.sorted()))
-        }} ?: JSONObject.NULL)
-        put("ranges", JSONArray().apply {
-            intervals.forEach { range -> put(JSONObject().apply {
-                put("start", range.startMs / 1_000.0)
-                put("end", range.endMs / 1_000.0)
-                put("cutIds", JSONArray(range.cutIds))
-                if (range.joinedGaps.isNotEmpty()) put("joinedGaps", JSONArray().apply {
-                    range.joinedGaps.forEach { gap -> put(JSONObject().apply {
-                        put("start", gap.startMs / 1_000.0)
-                        put("end", gap.endMs / 1_000.0)
-                    }) }
-                })
-            }) }
-        })
-        put("cuts", JSONArray().apply {
-            draft.cuts.forEach { cut -> put(JSONObject().apply {
-                put("id", cut.id)
-                put("coreStart", cut.coreStartMs / 1_000.0)
-                put("coreEnd", cut.coreEndMs / 1_000.0)
-                put("keepStart", cut.keepStartMs / 1_000.0)
-                put("keepEnd", cut.keepEndMs / 1_000.0)
-                put("confidence", cut.confidence.toDouble())
-                put("included", cut.included)
-                put("origin", cut.origin.name.lowercase())
-                cut.editableGroupId?.let { put("editableGroupId", it) }
-                put("agreement", cut.agreement ?: JSONObject.NULL)
-            }) }
-        })
-        put("ignoredIntervals", JSONArray().apply {
-            draft.ignoredIntervals.forEach { interval -> put(JSONObject().apply {
-                put("id", interval.id)
-                put("start", interval.startMs / 1_000.0)
-                put("end", interval.endMs / 1_000.0)
-                put("reason", interval.reason)
-            }) }
-        })
-        put("materializationProvenance", JSONArray().apply {
-            EditorMath.materialize(draft, seed.suppression).provenance.forEach { segment ->
-                put(JSONObject().apply {
-                    put("start", segment.startMs / 1_000.0)
-                    put("end", segment.endMs / 1_000.0)
-                    put("kind", segment.kind)
-                    put("cutIds", JSONArray(segment.cutIds))
-                    put("suggestionIds", JSONArray(segment.suggestionIds))
-                })
-            }
-        })
-        put("scoreTracking", ScoreTrackingJson.encodeWire(draft.scoreTracking))
-        put("renderScoreOverlay", draft.renderScoreOverlay)
-        put("renderScoreTimeline", draft.renderScoreTimeline)
-        put("fadeScoreOverlay", draft.fadeScoreOverlay)
-    }
-
 private fun exportFilename(sourceName: String): String {
     val base = sourceName.substringBeforeLast('.').replace(Regex("[^A-Za-z0-9._-]+"), "-").trim('-')
     return "${base.ifBlank { "volleysplice" }}-cut.mp4"
@@ -7868,13 +7538,6 @@ private fun sourceDisplayName(context: Context, uri: Uri): String {
         }
     }
     return uri.lastPathSegment ?: "selected-video"
-}
-
-private fun formatBytes(bytes: Long): String = when {
-    bytes >= 1_073_741_824 -> String.format(Locale.US, "%.1f GiB", bytes / 1_073_741_824.0)
-    bytes >= 1_048_576 -> String.format(Locale.US, "%.1f MiB", bytes / 1_048_576.0)
-    bytes >= 1_024 -> String.format(Locale.US, "%.1f KiB", bytes / 1_024.0)
-    else -> "$bytes B"
 }
 
 private fun secondsLabel(seconds: Double): String =

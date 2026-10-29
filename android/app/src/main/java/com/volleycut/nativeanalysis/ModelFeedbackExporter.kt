@@ -35,33 +35,14 @@ internal object ModelFeedbackExporter {
     }
 
     fun loadAnalysis(context: Context, project: NativeProject): ModelFeedbackAnalysis? {
-        val requestedTimes = AnalysisEngine.analysisTimes(
-            project.media.durationSeconds(),
-            project.analysisWindow.start(),
-            project.analysisWindow.end(),
-        )
-        val cacheSource = project.featureCacheSource ?: project.source
-        val cache = NativeFeatureCache.openWithSourceMetadata(
-            context,
-            Uri.parse(cacheSource.uri),
-            cacheSource.name,
-            cacheSource.size,
-            cacheSource.lastModified,
-            project.media,
-            project.roi,
-            FeatureSchema.FULL_SOURCE_FRAME_LIMIT,
-            requestedTimes.size,
-            project.analysisWindow,
-        )
-        val visual = cache.loadVisual()
-        if (!visual.complete() || visual.rows() == 0 || !cache.timesMatch(visual, requestedTimes)) {
-            return null
-        }
+        val retained = ProjectFeatureCache.loadVisual(context, project) ?: return null
+        val cache = retained.cache
+        val visual = retained.visual
         val rows = visual.rows()
         val audio = cache.loadAudio(rows) ?: return null
         val contextual = cache.loadContext(rows) ?: return null
         val temporal = FeatureMath.temporalVisualFeatures(visual.values(), rows)
-        val base = combineBase(visual.values(), temporal, audio, rows)
+        val base = FeatureMath.combineBase(visual.values(), temporal, audio, rows)
         val probabilities = ModelRunner(context, FeatureSchema.ALL_LABELS_V2_MODEL_ID)
             .runProfiled(visual.times(), contextual, visual.analyzedDurationSeconds())
         return ModelFeedbackAnalysis(
@@ -429,38 +410,6 @@ internal object ModelFeedbackExporter {
             put("dataType", dataType)
             put("shape", JSONArray(shape.toList()))
             put("data", Base64.getEncoder().encodeToString(bytes))
-        }
-    }
-
-    private fun combineBase(
-        visual: FloatArray,
-        temporal: FloatArray,
-        audio: FloatArray,
-        rows: Int,
-    ): FloatArray {
-        val frameColumns = FeatureSchema.FRAME.size
-        val temporalColumns = FeatureSchema.TEMPORAL.size
-        val audioColumns = FeatureSchema.AUDIO.size
-        require(visual.size == rows * frameColumns)
-        require(temporal.size == rows * temporalColumns)
-        require(audio.size == rows * audioColumns)
-        return FloatArray(rows * FeatureSchema.BASE.size).also { output ->
-            repeat(rows) { row ->
-                val target = row * FeatureSchema.BASE.size
-                visual.copyInto(output, target, row * frameColumns, (row + 1) * frameColumns)
-                temporal.copyInto(
-                    output,
-                    target + frameColumns,
-                    row * temporalColumns,
-                    (row + 1) * temporalColumns,
-                )
-                audio.copyInto(
-                    output,
-                    target + frameColumns + temporalColumns,
-                    row * audioColumns,
-                    (row + 1) * audioColumns,
-                )
-            }
         }
     }
 

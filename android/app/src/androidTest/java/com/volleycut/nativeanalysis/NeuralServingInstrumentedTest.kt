@@ -73,7 +73,7 @@ class NeuralServingInstrumentedTest {
         for (model in listOf(RallyModels.F1, RallyModels.RECALL)) {
             val began = System.nanoTime()
             val fresh = if (args.getString("skipFresh") == "true") null else checkNotNull(DistilledRallyModels.open(context,model,media,roi,cancelled::get)).use { neural ->
-                AnalysisEngine(context,neural).analyze(uri,true,Int.MAX_VALUE,AnalysisTypes.VideoDecoderOptions.defaults(),
+                AnalysisEngine(context,neural).analyze(uri,Int.MAX_VALUE,AnalysisTypes.VideoDecoderOptions.defaults(),
                     NativeFeatureCache.Mode.USE,AnalysisTypes.AnalysisWindow(0.0,minOf(30.0,media.durationSeconds())),
                     AnalysisTypes.AnalysisStages.all(),AnalysisTypes.AudioDecoderMode.AUTO,cancelled,progress,true,false)
             }

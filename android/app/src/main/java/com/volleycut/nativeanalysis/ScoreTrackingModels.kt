@@ -346,9 +346,7 @@ internal object ScoreOverlay {
     const val BORDER_COLOR = 0xff000000
     const val TEAM_1_COLOR = 0xffd9342b
     const val TEAM_2_COLOR = 0xff2367c9
-    const val TEAM_TEXT_COLOR = 0xffffffff
     const val SCORE_BACKGROUND_COLOR = 0xffffffff
-    const val SCORE_TEXT_COLOR = 0xff000000
     const val POINT_TEXT_COLOR = 0xffffffff
     const val POINT_TIMELINE_FADE_IN_MS = 250L
     const val POINT_TIMELINE_HOLD_MS = 2_000L

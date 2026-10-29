@@ -769,9 +769,6 @@ internal object EditorMath {
         return ordered.firstOrNull { it.startMs() >= positionMs } ?: ordered.first()
     }
 
-    fun playbackFocusCut(cuts: List<EditableCut>, positionMs: Long): EditableCut? =
-        cuts.filter { it.keepStartMs <= positionMs }.maxByOrNull { it.keepStartMs }
-
     fun detailWindow(
         cut: EditableCut?,
         positionMs: Long,

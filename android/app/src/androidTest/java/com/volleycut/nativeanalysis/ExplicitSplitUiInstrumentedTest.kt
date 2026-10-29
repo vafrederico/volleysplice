@@ -57,6 +57,7 @@ class ExplicitSplitUiInstrumentedTest {
         val evidence = File(context.getExternalFilesDir(null), "explicit-split-cleanup-$nextPart").apply { mkdirs() }
         ActivityScenario.launch<EditorActivity>(Intent(context, EditorActivity::class.java)).use {
             compose.waitForIdle()
+            compose.onNodeWithTag("workspace-editor-tab").performClick()
             compose.onAllNodesWithContentDescription("Game timeline", substring = true)[1]
                 .performScrollTo().performTouchInput {
                     // Drag seeks without selecting the overlapping cleanup suggestion.
@@ -121,6 +122,7 @@ class ExplicitSplitUiInstrumentedTest {
         }
         ActivityScenario.launch<EditorActivity>(Intent(context, EditorActivity::class.java)).use { scenario ->
             compose.waitForIdle()
+            compose.onNodeWithTag("workspace-editor-tab").performClick()
             seek(.55f)
             compose.onNodeWithText("Split at playhead").performScrollTo().performClick()
             compose.waitUntil(10_000) { saved().cuts.size == 2 }
@@ -161,7 +163,7 @@ class ExplicitSplitUiInstrumentedTest {
             File(evidence, "feedback.json").writeText(archive.toString(2))
             assertEquals(removed.cuts, ModelFeedbackImporter.parse(archive.toString()).draft.cuts)
             device.takeScreenshot(File(evidence, "reopened.png"))
-            compose.onNodeWithText("Project options").performScrollTo().performClick()
+            compose.onNodeWithTag("editor-settings-button").performClick()
             compose.onNodeWithText("Start this review over").performClick()
             compose.onNodeWithText("Reset").performClick()
             val modelCuts = EditorMath.newDraft(seed).cuts

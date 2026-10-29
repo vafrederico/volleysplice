@@ -1,35 +1,17 @@
 package com.volleycut.nativeanalysis
 
 import android.content.Context
-import android.net.Uri
 
 /** Adds suppression analysis to a ready legacy project using only its contextual feature cache. */
 internal object SuppressionAugmenter {
     fun augment(context: Context, project: NativeProject): NativeProject {
         if (RallyModels.isNeural(project.modelId)) return project
         project.suppression?.let { return project }
-        val requestedTimes = AnalysisEngine.analysisTimes(
-            project.media.durationSeconds(),
-            project.analysisWindow.start(),
-            project.analysisWindow.end(),
-        )
-        val cacheSource = project.featureCacheSource ?: project.source
-        val cache = NativeFeatureCache.openWithSourceMetadata(
-            context,
-            Uri.parse(cacheSource.uri),
-            cacheSource.name,
-            cacheSource.size,
-            cacheSource.lastModified,
-            project.media,
-            project.roi,
-            FeatureSchema.FULL_SOURCE_FRAME_LIMIT,
-            requestedTimes.size,
-            project.analysisWindow,
-        )
-        val visual = cache.loadVisual()
-        require(visual.complete() && visual.rows() > 0 && cache.timesMatch(visual, requestedTimes)) {
+        val retained = requireNotNull(ProjectFeatureCache.loadVisual(context, project)) {
             "Suppression needs the saved feature cache for this recording"
         }
+        val cache = retained.cache
+        val visual = retained.visual
         val contextual = cache.loadContext(visual.rows())
             ?: error("Suppression needs the saved contextual feature cache")
         val duration = minOf(project.analysisWindow.end(), visual.analyzedDurationSeconds())

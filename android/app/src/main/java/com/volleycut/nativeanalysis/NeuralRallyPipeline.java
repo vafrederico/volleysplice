@@ -75,7 +75,6 @@ final class NeuralRallyPipeline implements AnalysisEngine.RallyOverride, Closeab
             Files.deleteIfExists(root.toPath());
         }
     }
-    @Override public boolean supportsEnsembleSuppression() { return diagnostics; }
     @Override public SharedVideoFrameConsumer prepareSharedVideo(AnalysisTypes.MediaInfo media,
             AnalysisTypes.Roi roi, AnalysisTypes.AnalysisWindow window, int sourceFrameLimit,
             java.util.function.BooleanSupplier cancelled) throws IOException {

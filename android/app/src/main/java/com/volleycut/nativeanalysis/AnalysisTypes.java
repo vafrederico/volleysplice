@@ -35,7 +35,11 @@ public final class AnalysisTypes {
         }
     }
 
-    public record Roi(double x, double y, double width, double height, String label) {}
+    public record Roi(double x, double y, double width, double height, String label) {
+        static Roi fullFrame() {
+            return new Roi(0, 0, 1, 1, "Full frame");
+        }
+    }
 
     public record VideoDecoderOptions(int operatingRate, int priority) {
         static VideoDecoderOptions defaults() {

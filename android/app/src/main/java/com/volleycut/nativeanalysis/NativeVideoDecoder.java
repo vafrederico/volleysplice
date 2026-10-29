@@ -835,64 +835,6 @@ final class NativeVideoDecoder {
         return new YuvCropSampler(image, roi, rotation).convert(image, color);
     }
 
-    static Mat imageToRgba(
-            Image image,
-            AnalysisTypes.Roi roi,
-            int rotation,
-            int outputWidth,
-            int outputHeight,
-            YuvColorConversion color
-    ) {
-        if (outputWidth <= 0 || outputHeight <= 0) {
-            throw new IllegalArgumentException("Output dimensions must be positive");
-        }
-        Image.Plane[] planes = image.getPlanes();
-        if (planes.length < 3) throw new IllegalArgumentException("YUV image has fewer than three planes");
-        Rect crop = image.getCropRect();
-        byte[] rgba = new byte[outputWidth * outputHeight * 4];
-        ByteBuffer yBuffer = planes[0].getBuffer().duplicate();
-        ByteBuffer uBuffer = planes[1].getBuffer().duplicate();
-        ByteBuffer vBuffer = planes[2].getBuffer().duplicate();
-        int yRowStride = planes[0].getRowStride();
-        int yPixelStride = planes[0].getPixelStride();
-        int uRowStride = planes[1].getRowStride();
-        int uPixelStride = planes[1].getPixelStride();
-        int vRowStride = planes[2].getRowStride();
-        int vPixelStride = planes[2].getPixelStride();
-
-        int outputIndex = 0;
-        for (int y = 0; y < outputHeight; y++) {
-            double displayV = roi.y() + (y + 0.5) / outputHeight * roi.height();
-            for (int x = 0; x < outputWidth; x++) {
-                double displayU = roi.x() + (x + 0.5) / outputWidth * roi.width();
-                double sourceU;
-                double sourceV;
-                switch (rotation) {
-                    case 90 -> { sourceU = displayV; sourceV = 1 - displayU; }
-                    case 180 -> { sourceU = 1 - displayU; sourceV = 1 - displayV; }
-                    case 270 -> { sourceU = 1 - displayV; sourceV = displayU; }
-                    default -> { sourceU = displayU; sourceV = displayV; }
-                }
-                int sourceX = clamp(crop.left + (int) Math.floor(sourceU * crop.width()), crop.left, crop.right - 1);
-                int sourceY = clamp(crop.top + (int) Math.floor(sourceV * crop.height()), crop.top, crop.bottom - 1);
-                int yValue = yBuffer.get(sourceY * yRowStride + sourceX * yPixelStride) & 0xff;
-                int chromaX = sourceX / 2;
-                int chromaY = sourceY / 2;
-                int uValue = uBuffer.get(chromaY * uRowStride + chromaX * uPixelStride) & 0xff;
-                int vValue = vBuffer.get(chromaY * vRowStride + chromaX * vPixelStride) & 0xff;
-
-                int rgb = color.rgb(yValue, uValue, vValue);
-                rgba[outputIndex++] = (byte) (rgb >> 16);
-                rgba[outputIndex++] = (byte) (rgb >> 8);
-                rgba[outputIndex++] = (byte) rgb;
-                rgba[outputIndex++] = (byte) 255;
-            }
-        }
-        Mat result = new Mat(outputHeight, outputWidth, CvType.CV_8UC4);
-        result.put(0, 0, rgba);
-        return result;
-    }
-
     static final class YuvCropSampler {
         private final Rect crop;
         private final int yRowStride;

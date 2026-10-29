@@ -7,6 +7,7 @@ import android.net.Uri
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ActivityScenario
@@ -58,13 +59,13 @@ class CachelessCleanupArchiveInstrumentedTest {
                         compose.waitForIdle()
                         if (compose.onAllNodesWithText("Not now").fetchSemanticsNodes().isNotEmpty())
                             compose.onNodeWithText("Not now").performClick()
-                        compose.onNodeWithText("Project options").performScrollTo().assertExists()
+                        compose.onNodeWithTag("workspace-export-tab").assertExists()
                         scenario.recreate()
                         compose.waitForIdle()
                         assertEquals(behavior, restored().suppressionInitialBehavior)
                         assertEquals(scope, EditorMath.suggestionEffectiveScope(restored(), imported.suppression!!.suggestions().single()))
                         assertEquals(expected, EditorMath.finalIntervals(restored(), imported.suppression))
-                        compose.onNodeWithText("Project options").performScrollTo().performClick()
+                        compose.onNodeWithTag("workspace-export-tab").performClick()
                         compose.onNodeWithText("Save project").performClick()
                         compose.waitUntil(10_000) { destination.exists() && runCatching {
                             ModelFeedbackImporter.parse(destination.readText())

@@ -86,10 +86,12 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    sourceSets.getByName("main").java.srcDir("../video-common/src/main/java")
-    sourceSets.getByName("main").java.srcDir("../neural-runtime/src/main/java")
-    sourceSets.getByName("androidTest").assets.srcDir("src/test/resources")
-    sourceSets.getByName("androidTest").assets.srcDir(rootProject.file("../ios/Tests/Fixtures"))
+    sourceSets.getByName("main").java.directories += "../video-common/src/main/java"
+    sourceSets.getByName("main").java.directories += "../neural-runtime/src/main/java"
+    sourceSets.getByName("test").kotlin.directories += "src/testSupport/kotlin"
+    sourceSets.getByName("androidTest").kotlin.directories += "src/testSupport/kotlin"
+    sourceSets.getByName("androidTest").assets.directories += "src/test/resources"
+    sourceSets.getByName("androidTest").assets.directories += rootProject.file("../ios/Tests/Fixtures").path
 
     buildFeatures {
         compose = true
@@ -102,9 +104,9 @@ android {
 }
 
 if (providers.gradleProperty("pipelineBenchmark").isPresent) {
-    android.sourceSets.getByName("debug").java.srcDir("src/pipelineBenchmark/java")
+    android.sourceSets.getByName("debug").java.directories += "src/pipelineBenchmark/java"
     android.sourceSets.getByName("debug").manifest.srcFile("src/pipelineBenchmark/AndroidManifest.xml")
-    android.sourceSets.getByName("debug").java.srcDir("../neuralbenchmark/src/main/java")
+    android.sourceSets.getByName("debug").java.directories += "../neuralbenchmark/src/main/java"
     dependencies {
         add("debugImplementation", "com.google.ai.edge.litert:litert:1.4.2")
         add("debugImplementation", "com.google.ai.edge.litert:litert-gpu:1.4.2")
@@ -113,7 +115,7 @@ if (providers.gradleProperty("pipelineBenchmark").isPresent) {
 }
 
 val generatedNeuralAssets = layout.buildDirectory.dir("generated/neural-assets")
-android.sourceSets.getByName("main").assets.srcDir(generatedNeuralAssets.get().asFile)
+android.sourceSets.getByName("main").assets.directories += generatedNeuralAssets.get().asFile.path
 val prepareNeuralAssets by tasks.registering {
     val manifest = rootProject.file("../models/distilled-large/android-manifest.json")
     val bundleRoot = providers.environmentVariable("VOLLEYCUT_NEURAL_ASSETS_DIR")
@@ -158,7 +160,7 @@ val prepareNeuralAssets by tasks.registering {
 }
 
 val generatedServingAssets = layout.buildDirectory.dir("generated/serving-assets")
-android.sourceSets.getByName("main").assets.srcDir(generatedServingAssets.get().asFile)
+android.sourceSets.getByName("main").assets.directories += generatedServingAssets.get().asFile.path
 val prepareServingAssets by tasks.registering {
     val manifest = rootProject.file("../models/serving-side/android-manifest.json")
     val graphs = rootProject.file("../prod/public/runtime/serving-models")
