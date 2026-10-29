@@ -4190,7 +4190,7 @@ private fun EditorScreen(
                                 visibleIgnoredIntervals.any { it.startMs < end && it.endMs > start }
                             if (start < seed.gameStartMs || end > seed.gameEndMs ||
                                 end - start < RALLY_MIN_DURATION_MS || overlaps) {
-                                false
+                                null
                             } else {
                                 val cut = EditorMath.newManualCut(draft, start, end,
                                     seed.gameStartMs, seed.gameEndMs)
@@ -4204,7 +4204,8 @@ private fun EditorScreen(
                                                 ServingSide.REVIEW, ServeMarkerOrigin.MANUAL, rallyId = cut.id)),
                                 ) }
                                 selectedId = cut.id
-                                true
+                                seekTo(start)
+                                cut.id
                             }
                         },
                         onExport = { player.pause(); desktopTab = DesktopEditorTab.EXPORT; showRallyExport = true },

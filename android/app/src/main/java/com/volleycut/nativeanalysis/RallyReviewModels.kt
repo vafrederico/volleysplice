@@ -150,25 +150,35 @@ internal fun nearestRallyIndex(rallies: List<EditableRallyGroup>, timestampMs: L
 
 internal data class MissingRallyRange(val startMs: Long, val endMs: Long)
 
-/** Never create a rally over existing footage or a deliberately ignored interval. */
+/** Continue the full-source vertical timeline at the top of the second column. */
+internal fun rallySourceTimelineColumns(sourceStartMs: Long, sourceEndMs: Long): List<DetailWindow> {
+    val duration = sourceEndMs - sourceStartMs
+    if (duration <= 0) return emptyList()
+    val count = minOf(2L, duration).toInt()
+    return (0 until count).map { index ->
+        DetailWindow(sourceStartMs + duration * index / count, sourceStartMs + duration * (index + 1) / count)
+    }
+}
+
+/** Show the whole recording in at most three equal-duration rows. */
+internal fun missingRallyTimelineRows(sourceStartMs: Long, sourceEndMs: Long): List<DetailWindow> {
+    val duration = sourceEndMs - sourceStartMs
+    if (duration <= 0) return emptyList()
+    val count = minOf(3L, duration).toInt()
+    return (0 until count).map { index ->
+        DetailWindow(sourceStartMs + duration * index / count, sourceStartMs + duration * (index + 1) / count)
+    }
+}
+
+/** Validate the exact marked bounds; never silently replace them with a suggested range. */
 internal fun missingRallyRange(
-    timestampMs: Long,
+    startMs: Long,
+    endMs: Long,
     sourceStartMs: Long,
     sourceEndMs: Long,
     occupied: List<Pair<Long, Long>>,
 ): MissingRallyRange? {
-    if (timestampMs !in sourceStartMs..sourceEndMs) return null
-    if (occupied.any { (start, end) -> timestampMs >= start && timestampMs < end }) return null
-    val left = occupied.filter { it.second <= timestampMs }.maxOfOrNull { it.second }
-        ?.coerceAtLeast(sourceStartMs) ?: sourceStartMs
-    val right = occupied.filter { it.first > timestampMs }.minOfOrNull { it.first }
-        ?.coerceAtMost(sourceEndMs) ?: sourceEndMs
-    if (right - left < RALLY_MIN_DURATION_MS) return null
-    var start = maxOf(left, timestampMs - 3_000)
-    var end = minOf(right, timestampMs + 5_000)
-    if (end - start < RALLY_MIN_DURATION_MS) {
-        start = maxOf(left, end - RALLY_MIN_DURATION_MS)
-        end = minOf(right, start + RALLY_MIN_DURATION_MS)
-    }
-    return MissingRallyRange(start, end).takeIf { end - start >= RALLY_MIN_DURATION_MS }
+    if (startMs < sourceStartMs || endMs > sourceEndMs || endMs - startMs < RALLY_MIN_DURATION_MS) return null
+    if (occupied.any { (start, end) -> start < endMs && end > startMs }) return null
+    return MissingRallyRange(startMs, endMs)
 }

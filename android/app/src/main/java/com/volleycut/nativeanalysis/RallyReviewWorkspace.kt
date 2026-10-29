@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -23,6 +24,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.platform.testTag
@@ -112,7 +114,7 @@ internal class RallyWorkspaceState(val list: LazyListState = LazyListState()) {
     var editingRally by mutableStateOf(false)
     var showTimeline by mutableStateOf(true)
     var addingMissing by mutableStateOf(false)
-    var reviewKeys by mutableStateOf<Set<String>>(emptySet())
+    var missingStartMs by mutableStateOf<Long?>(null)
     var following by mutableStateOf(true)
     companion object {
         val Saver = mapSaver(
@@ -120,7 +122,8 @@ internal class RallyWorkspaceState(val list: LazyListState = LazyListState()) {
                 "initialized" to state.initialized, "browsing" to state.browsing,
                 "editing" to state.editingRally, "timeline" to state.showTimeline,
                 "adding" to state.addingMissing, "following" to state.following,
-                "last" to state.lastSelection.orEmpty(), "keys" to ArrayList(state.reviewKeys),
+                "last" to state.lastSelection.orEmpty(),
+                "missingStart" to (state.missingStartMs ?: -1L),
                 "focus" to state.focus?.key.orEmpty(), "rally" to state.focus?.rallyId.orEmpty(),
                 "start" to (state.focus?.startMs ?: 0L), "end" to (state.focus?.endMs ?: 0L),
                 "cleanup" to ArrayList(state.focus?.cleanupIds.orEmpty()),
@@ -137,7 +140,7 @@ internal class RallyWorkspaceState(val list: LazyListState = LazyListState()) {
                     addingMissing = values["adding"] as Boolean
                     following = values["following"] as Boolean
                     lastSelection = (values["last"] as String).ifEmpty { null }
-                    reviewKeys = (values["keys"] as List<*>).filterIsInstance<String>().toSet()
+                    missingStartMs = (values["missingStart"] as? Long)?.takeIf { it >= 0 }
                     val key = values["focus"] as String
                     if (key.isNotEmpty()) focus = RallyReviewItem(
                         key, (values["rally"] as String).ifEmpty { null },
@@ -177,7 +180,7 @@ internal fun RallyReviewWorkspace(
     onDecision: (RallyReviewItem, Boolean) -> Unit,
     onServe: (ServeMarker, ServingSide?) -> Unit,
     onNewServe: (EditableRallyGroup, ServingSide) -> Unit,
-    onAdd: (Long, Long) -> Boolean,
+    onAdd: (Long, Long) -> String?,
     onExport: () -> Unit,
     onTrim: (String, Long) -> Unit,
     guidedTourTargets: GuidedTourTargets,
@@ -197,11 +200,9 @@ internal fun RallyReviewWorkspace(
             .distinctBy { it.id }
     } else emptyList()
 
-    SideEffect { if (!state.reviewKeys.containsAll(queue.map { it.key })) state.reviewKeys += queue.map { it.key } }
-    LaunchedEffect(selectedId) {
+    LaunchedEffect(selectedId, pending?.key) {
         if (!state.initialized) {
             state.initialized = true
-            state.reviewKeys = queue.mapTo(mutableSetOf()) { it.key }
             state.focus = queue.firstOrNull()
             state.focus?.let(onSelect)
         } else if (state.lastSelection != selectedId && !state.browsing &&
@@ -209,6 +210,7 @@ internal fun RallyReviewWorkspace(
             state.focus = queue.firstOrNull { it.rallyId in selected?.cutIds.orEmpty() }
             state.editingRally = state.focus == null && selected != null
         }
+        if (pending != null && !state.browsing && !state.addingMissing) state.editingRally = false
         state.lastSelection = selectedId
     }
     BackHandler(state.addingMissing || state.browsing || state.editingRally) {
@@ -232,6 +234,7 @@ internal fun RallyReviewWorkspace(
         state.focus = next
         state.editingRally = false
         state.browsing = false
+        state.addingMissing = false
         next?.let(onSelect)
     }
     fun seekSource(time: Long) {
@@ -239,11 +242,12 @@ internal fun RallyReviewWorkspace(
         onSeek(time)
     }
     fun openAdd() {
+        state.missingStartMs = null
         state.addingMissing = true
     }
     fun editRally(rally: EditableRallyGroup) {
         state.focus = queue.firstOrNull { it.rallyId in rally.cutIds }
-        state.editingRally = true
+        state.editingRally = state.focus == null
         state.browsing = false
         onSelectRally(rally)
     }
@@ -252,40 +256,28 @@ internal fun RallyReviewWorkspace(
         BoxWithConstraints(Modifier.fillMaxSize().background(CourtsideGround).testTag("rally-review-workspace")) {
             val wide = maxWidth >= 720.dp || (maxWidth >= 560.dp && maxHeight < 480.dp)
             val stackedTransport = wide && maxWidth < 720.dp
-            val compactProgress = wide && maxHeight < 480.dp
+            val compactLayout = wide && maxHeight < 480.dp
             val compactControls = (maxHeight * .49f).coerceIn(240.dp, 360.dp)
-            val progress: @Composable () -> Unit = {
-                Column(Modifier.fillMaxWidth().guidedTourTarget("rally-tour-progress", guidedTourTargets)
-                    .padding(horizontal = 16.dp, vertical = if (compactProgress) 4.dp else 8.dp)) {
-                    if (!state.browsing && !state.addingMissing && !compactProgress) {
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Text(if (queue.isEmpty() && focus == null && !state.editingRally) "Review complete" else "Review rallies",
-                                Modifier.weight(1f), fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = CourtsideInk)
-                            TextButton(onClick = ::browse, modifier = Modifier.heightIn(min = 44.dp).testTag("rally-browse-all")
-                                .guidedTourTarget("rally-tour-all", guidedTourTargets)) {
-                                Text("All " + rallies.size + "  →", color = CourtsideInk, fontSize = 13.sp)
-                            }
-                        }
+            val missingPlayerHeight = (maxHeight * .34f).coerceIn(150.dp, 280.dp)
+            val header: @Composable () -> Unit = {
+                val outsideReview = state.browsing || state.addingMissing || state.editingRally
+                Row(Modifier.fillMaxWidth().guidedTourTarget("rally-tour-progress", guidedTourTargets)
+                    .padding(horizontal = 16.dp, vertical = if (compactLayout) 0.dp else 4.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Text(when {
+                        state.addingMissing -> "Add missing rally"
+                        state.browsing -> "All rallies"
+                        state.editingRally && pending == null -> "Editing rally " + (index + 1)
+                        else -> "Reviewing ${queue.size} " + if (queue.size == 1) "rally" else "rallies"
+                    }, Modifier.weight(1f).testTag("rally-workspace-title"), fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold, color = CourtsideInk)
+                    TextButton(onClick = { if (outsideReview) resumeReview() else browse() },
+                        modifier = Modifier.heightIn(min = 44.dp)
+                            .testTag(if (outsideReview) "rally-return-review" else "rally-browse-all")
+                            .guidedTourTarget("rally-tour-all", guidedTourTargets)) {
+                        Text(if (outsideReview) "← Review rallies" else "All rallies (${rallies.size}) →",
+                            color = CourtsideInk, fontSize = 13.sp)
                     }
-                    val checked = state.reviewKeys.count { key -> queue.none { it.key == key } }
-                    Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(if (queue.isEmpty()) "Review complete" else "" + queue.size + " need review",
-                            Modifier.weight(1f), color = CourtsideMuted, fontSize = 12.sp)
-                        Text("$checked / " + state.reviewKeys.size + " checked", color = CourtsideMuted,
-                            fontSize = 12.sp, modifier = Modifier.testTag("rally-review-progress"))
-                        if (compactProgress && !state.browsing && !state.addingMissing) {
-                            TextButton(onClick = ::browse, modifier = Modifier.heightIn(min = 44.dp).testTag("rally-browse-all")
-                                .guidedTourTarget("rally-tour-all", guidedTourTargets)) {
-                                Text("All " + rallies.size + "  →", color = CourtsideInk, fontSize = 13.sp)
-                            }
-                        }
-                    }
-                    LinearProgressIndicator(
-                        progress = { if (state.reviewKeys.isEmpty()) 0f else checked.toFloat() / state.reviewKeys.size },
-                        modifier = Modifier.fillMaxWidth().height(3.dp),
-                        color = CourtsideAccent, trackColor = Color(0xFFDCE3E5),
-                        drawStopIndicator = {},
-                    )
                 }
             }
             val controls: @Composable () -> Unit = {
@@ -296,44 +288,6 @@ internal fun RallyReviewWorkspace(
                         .verticalScroll(rememberScrollState()).padding(12.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         when {
-                            state.addingMissing -> {
-                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                    Text("Add missing rally", Modifier.weight(1f), fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
-                                    TextButton(onClick = { state.addingMissing = false }) { Text("Cancel") }
-                                }
-                                Text("Source position " + preciseTime(positionMs), fontSize = 13.sp, color = CourtsideMuted)
-                                WholeTimeline(
-                                    windowStartMs = seed.gameStartMs, windowEndMs = seed.gameEndMs,
-                                    cuts = rallies.flatMap { it.cuts }, joinedGaps = emptyList(), ignored = ignored,
-                                    suggestions = emptyList(), appliedSuggestionIds = emptySet(),
-                                    userRemovedSuggestionIds = emptySet(), userRemovedCleanupCutIds = emptySet(),
-                                    selectedSuggestionId = null, selectedCutIds = emptySet(), effectiveIds = effectiveIds,
-                                    confidenceThreshold = 1f,
-                                    reviewedCutIds = rallies.filter { rally -> queue.none { it.rallyId == rally.id } }
-                                        .flatMapTo(mutableSetOf()) { it.cutIds },
-                                    playheadMs = positionMs, serveMarkers = emptyList(), sideSwitchMarkers = emptyList(),
-                                    selectedScoreMarkerId = null, onMarkerSelect = { _, time -> onSeek(time) },
-                                    onSeek = { time, _, _ -> onSeek(time) },
-                                    onScrubbingChange = onScrubbingChange,
-                                )
-                                val candidate = missingRallyRange(positionMs, seed.gameStartMs, seed.gameEndMs, occupied)
-                                if (candidate != null) {
-                                    Text("New rally " + preciseTime(candidate.startMs) + " – " + preciseTime(candidate.endMs),
-                                        fontSize = 13.sp, color = CourtsideMuted)
-                                } else Text("Choose a gap between rallies to add missing footage.", color = CourtsideMuted, fontSize = 13.sp)
-                                Button(
-                                    onClick = {
-                                        candidate?.let { range ->
-                                            if (onAdd(range.startMs, range.endMs)) {
-                                                state.addingMissing = false
-                                                browse()
-                                                state.following = true
-                                            }
-                                        }
-                                    }, enabled = candidate != null, modifier = Modifier.fillMaxWidth().testTag("add-missing-rally-confirm"),
-                                    shape = RoundedCornerShape(6.dp),
-                                ) { Text("Add rally here") }
-                            }
                             focus == null && !state.editingRally -> {
                                 Text(if (queue.isEmpty()) "All checked." else "Continue reviewing", fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
                                 Text(if (queue.isEmpty()) "Browse the recording for anything missed." else "Review the remaining decisions.",
@@ -464,7 +418,7 @@ internal fun RallyReviewWorkspace(
                 }
             }
             Column(Modifier.fillMaxSize()) {
-                progress()
+                header()
                 if (wide) {
                     Row(Modifier.weight(1f)) {
                         video(Modifier.weight(1f).fillMaxHeight())
@@ -473,20 +427,167 @@ internal fun RallyReviewWorkspace(
                                 selected, positionMs, ::seekSource, onScrubbingChange, {
                                     state.following = true; onSelectRally(it)
                                 }, ::editRally,
-                                ::resumeReview, ::openAdd, Modifier.width(340.dp).fillMaxHeight(), compact = compactProgress,
+                                ::openAdd, Modifier.width(340.dp).fillMaxHeight(), compact = compactLayout,
                                 guidedTourTargets = guidedTourTargets)
-                        } else Column(Modifier.width(350.dp).fillMaxHeight()) { controls() }
+                        } else Column(Modifier.width(350.dp).fillMaxHeight()) {
+                            if (state.addingMissing) MissingRallyPicker(state, seed, rallies, queue, effectiveIds,
+                                ignored, occupied, positionMs, onSeek, onScrubbingChange, onAdd, guidedTourTargets, Modifier.weight(1f))
+                            else controls()
+                        }
                     }
                 } else {
-                    video(Modifier.weight(if (state.browsing) .95f else 1f).fillMaxWidth())
+                    video(if (state.addingMissing) Modifier.height(missingPlayerHeight).fillMaxWidth()
+                        else Modifier.weight(if (state.browsing) .95f else 1f).fillMaxWidth())
                     if (state.browsing && !state.addingMissing) {
                         RallyBrowser(state, seed, rallies, effectiveIds, queue, scoreOverlay, tracking.enabled,
                             selected, positionMs, ::seekSource, onScrubbingChange, {
                                 state.following = true; onSelectRally(it)
                             }, ::editRally,
-                            ::resumeReview, ::openAdd, Modifier.weight(1f).fillMaxWidth(), guidedTourTargets = guidedTourTargets)
-                    } else controls()
+                            ::openAdd, Modifier.weight(1f).fillMaxWidth(), guidedTourTargets = guidedTourTargets)
+                    } else if (state.addingMissing) MissingRallyPicker(state, seed, rallies, queue, effectiveIds,
+                        ignored, occupied, positionMs, onSeek, onScrubbingChange, onAdd, guidedTourTargets, Modifier.weight(1f))
+                    else controls()
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MissingRallyPicker(
+    state: RallyWorkspaceState, seed: EditorSeed, rallies: List<EditableRallyGroup>, queue: List<RallyReviewItem>,
+    effectiveIds: Set<String>, ignored: List<IgnoredSourceInterval>, occupied: List<Pair<Long, Long>>,
+    positionMs: Long, onSeek: (Long) -> Unit, onScrubbingChange: (Boolean) -> Unit, onAdd: (Long, Long) -> String?,
+    guidedTourTargets: GuidedTourTargets, modifier: Modifier,
+) {
+    val rows = remember(seed.gameStartMs, seed.gameEndMs) { missingRallyTimelineRows(seed.gameStartMs, seed.gameEndMs) }
+    val initialRow = rows.indexOfFirst { positionMs >= it.startMs && positionMs < it.endMs }.coerceAtLeast(0)
+    val list = rememberLazyListState(initialFirstVisibleItemIndex = initialRow)
+    var error by remember { mutableStateOf<String?>(null) }
+    val start = state.missingStartMs
+    val candidate = start?.let { missingRallyRange(it, positionMs, seed.gameStartMs, seed.gameEndMs, occupied) }
+    val canMarkStart = missingRallyRange(positionMs, positionMs + RALLY_MIN_DURATION_MS,
+        seed.gameStartMs, seed.gameEndMs, occupied) != null
+    val seek by rememberUpdatedState(onSeek)
+    val scrub by rememberUpdatedState(onScrubbingChange)
+    Surface(modifier.fillMaxWidth().padding(8.dp), shape = RoundedCornerShape(16.dp),
+        color = Color.White, border = BorderStroke(1.dp, Color(0xFFE8EAEC))) {
+        Column(Modifier.fillMaxSize().padding(12.dp).guidedTourTarget("rally-tour-controls", guidedTourTargets),
+            verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(when {
+                    start == null && !canMarkStart -> "Choose a start in the empty footage between rallies."
+                    start == null -> "Seek to the rally start, then mark it below."
+                    positionMs - start < RALLY_MIN_DURATION_MS -> "Seek at least 0.5 seconds after the start."
+                    candidate == null -> "Choose an end before the next rally or ignored footage."
+                    else -> "Seek to the rally end, then mark and add it below."
+                }, Modifier.weight(1f).testTag("missing-rally-instruction").semantics { liveRegion = LiveRegionMode.Polite },
+                    fontSize = 14.sp, color = CourtsideInk)
+                TextButton(onClick = { state.addingMissing = false }) { Text("Cancel") }
+            }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Start " + (start?.let(::preciseTime) ?: "—"), Modifier.weight(1f).testTag("missing-rally-start"),
+                    fontSize = 14.sp, fontWeight = FontWeight.Medium, color = CourtsideAccent)
+                Text("End " + (if (start != null) preciseTime(positionMs) else "—"), Modifier.weight(1f).testTag("missing-rally-end"),
+                    fontSize = 14.sp, fontWeight = FontWeight.Medium, color = CourtsideAccent)
+                TextButton(onClick = { state.missingStartMs = null; error = null },
+                    enabled = start != null, modifier = Modifier.testTag("missing-rally-reset")) { Text("Reset") }
+            }
+            LazyColumn(state = list, modifier = Modifier.weight(1f).fillMaxWidth().testTag("missing-rally-timeline"),
+                verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                itemsIndexed(rows) { index, window ->
+                    val scale = RallyTimelineScale(window)
+                    Column {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(preciseTime(window.startMs), fontSize = 11.sp, color = CourtsideMuted)
+                            Text(preciseTime(window.endMs), fontSize = 11.sp, color = CourtsideMuted)
+                        }
+                        Canvas(Modifier.fillMaxWidth().height(48.dp).clip(RoundedCornerShape(6.dp))
+                            .background(CourtsideRaised).testTag("missing-rally-row-$index").semantics {
+                                contentDescription = "Source timeline from ${preciseTime(window.startMs)} to ${preciseTime(window.endMs)}"
+                                stateDescription = "Playback ${preciseTime(positionMs)}"
+                                progressBarRangeInfo = ProgressBarRangeInfo(positionMs.coerceIn(window.startMs, window.endMs).toFloat(),
+                                    window.startMs.toFloat()..window.endMs.toFloat())
+                                setProgress { value ->
+                                    if (!value.isFinite()) false else {
+                                        onSeek(value.toLong().coerceIn(window.startMs, window.endMs)); true
+                                    }
+                                }
+                            }.pointerInput(window) {
+                                awaitEachGesture {
+                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                    var dragging = false
+                                    var scrubbing = false
+                                    fun seekAt(x: Float) {
+                                        if (!scrubbing) { scrub(true); scrubbing = true }
+                                        seek(scale.time(x / size.width.coerceAtLeast(1)))
+                                    }
+                                    try {
+                                        while (true) {
+                                            val pointer = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+                                            if (pointer.isConsumed) break
+                                            val delta = pointer.position - down.position
+                                            // Vertical gestures scroll the rows; horizontal gestures scrub the video.
+                                            if (!dragging && abs(delta.y) > viewConfiguration.touchSlop && abs(delta.y) > abs(delta.x)) break
+                                            if (abs(delta.x) > viewConfiguration.touchSlop) dragging = true
+                                            if (dragging || !pointer.pressed) {
+                                                seekAt(pointer.position.x)
+                                                pointer.consume()
+                                            }
+                                            if (!pointer.pressed) break
+                                        }
+                                    } finally { if (scrubbing) scrub(false) }
+                                }
+                            }) {
+                            fun x(time: Long) = scale.fraction(time) * size.width
+                            fun span(a: Long, b: Long, color: Color, top: Float = 10.dp.toPx(), height: Float = 28.dp.toPx()) {
+                                if (a >= window.endMs || b <= window.startMs) return
+                                drawRoundRect(color, Offset(x(a), top), Size((x(b) - x(a)).coerceAtLeast(1f), height), CornerRadius(3.dp.toPx()))
+                            }
+                            rallies.forEach { rally ->
+                                val color = when {
+                                    rally.cutIds.none { it in effectiveIds } -> CourtsideControl
+                                    queue.any { it.rallyId == rally.id } -> Orange
+                                    else -> Green
+                                }
+                                rally.cuts.forEach { cut -> span(cut.keepStartMs, cut.keepEndMs, color) }
+                            }
+                            ignored.forEach { span(it.startMs, it.endMs, CourtsideMuted.copy(alpha = .35f), 0f, size.height) }
+                            if (start != null) {
+                                if (candidate != null) span(start, candidate.endMs, CourtsideAccent.copy(alpha = .25f), 0f, size.height)
+                                listOfNotNull(start, candidate?.endMs).filter { it in window.startMs..window.endMs }.forEach { time ->
+                                    drawLine(CourtsideAccent, Offset(x(time), 0f), Offset(x(time), size.height), 3.dp.toPx())
+                                    drawCircle(CourtsideAccent, 4.dp.toPx(), Offset(x(time), 5.dp.toPx()))
+                                }
+                            }
+                            if (positionMs in window.startMs..window.endMs) {
+                                drawLine(CourtsideInk, Offset(x(positionMs), 0f), Offset(x(positionMs), size.height), 1.dp.toPx())
+                            }
+                        }
+                    }
+                }
+            }
+            if (error != null) Text(error!!, Modifier.testTag("missing-rally-error").semantics { liveRegion = LiveRegionMode.Polite },
+                color = Danger, fontSize = 12.sp)
+            Button(onClick = {
+                if (start == null) {
+                    state.missingStartMs = positionMs
+                    error = null
+                } else candidate?.let { range ->
+                    val id = onAdd(range.startMs, range.endMs)
+                    if (id != null) {
+                        state.focus = RallyReviewItem("rally-$id", id, range.startMs, range.endMs)
+                        state.addingMissing = false
+                        state.browsing = false
+                        state.editingRally = true
+                        state.following = true
+                    } else error = "This range is no longer available. Reset and mark it again."
+                }
+            }, enabled = if (start == null) canMarkStart else candidate != null,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("add-missing-rally-confirm"),
+                shape = RoundedCornerShape(6.dp)) {
+                Text(if (start == null) "Mark start at ${preciseTime(positionMs)}" else "Mark end & add rally")
             }
         }
     }
@@ -707,7 +808,7 @@ private fun RallyBrowser(
     queue: List<RallyReviewItem>, scoreOverlay: PreparedScoreOverlay, scoresEnabled: Boolean,
     selectedRally: EditableRallyGroup?, positionMs: Long,
     onSeek: (Long) -> Unit, onScrubbingChange: (Boolean) -> Unit, onSelect: (EditableRallyGroup) -> Unit,
-    onEdit: (EditableRallyGroup) -> Unit, onReview: () -> Unit, onAdd: () -> Unit, modifier: Modifier,
+    onEdit: (EditableRallyGroup) -> Unit, onAdd: () -> Unit, modifier: Modifier,
     compact: Boolean = false,
     guidedTourTargets: GuidedTourTargets? = null,
 ) {
@@ -741,33 +842,38 @@ private fun RallyBrowser(
             else "Rally " + (rallies.indexOf(hit) + 1) + " · " + preciseTime(positionMs)
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("" + rallies.size + " rallies", fontWeight = FontWeight.SemiBold, fontSize = 16.sp,
-                    lineHeight = if (compact) 20.sp else TextUnit.Unspecified)
-                if (compact) Text(sourceLabel, color = if (hit == null) CourtsideAccent else CourtsideMuted,
+                Text(sourceLabel, color = if (hit == null) CourtsideAccent else CourtsideMuted,
                     fontSize = 12.sp, lineHeight = 16.sp, modifier = Modifier.testTag("rally-source-status"))
-            }
-            if (queue.isNotEmpty()) {
-                TextButton(onClick = onReview, modifier = Modifier.testTag("rally-browser-review")) {
-                    Text("Review " + queue.size, fontSize = 12.sp)
-                }
             }
             TextButton(onClick = { state.showTimeline = !state.showTimeline }) {
                 Text(if (state.showTimeline) "Hide timeline" else "Show timeline", fontSize = 12.sp)
             }
         }
-        if (!compact) Text(sourceLabel,
-            Modifier.padding(horizontal = 16.dp, vertical = 4.dp).testTag("rally-source-status"),
-            color = if (hit == null) CourtsideAccent else CourtsideMuted, fontSize = 12.sp)
         Row(Modifier.weight(1f)) {
             if (state.showTimeline) {
-                Column(Modifier.width(64.dp).fillMaxHeight().padding(horizontal = 5.dp, vertical = 8.dp),
+                val columns = rallySourceTimelineColumns(seed.gameStartMs, seed.gameEndMs)
+                Column(Modifier.width(96.dp).fillMaxHeight().padding(horizontal = 4.dp, vertical = 8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(compactTime(seed.gameStartMs), color = CourtsideMuted, fontSize = 11.sp,
-                        lineHeight = if (compact) 14.sp else TextUnit.Unspecified)
+                    Row(Modifier.fillMaxWidth()) {
+                        columns.forEachIndexed { index, window ->
+                            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                                Text(compactTime(window.startMs), color = CourtsideMuted, fontSize = 11.sp,
+                                    lineHeight = if (compact) 14.sp else TextUnit.Unspecified,
+                                    modifier = Modifier.testTag("rally-source-column-$index-start"))
+                            }
+                        }
+                    }
                     RallySourceTimeline(seed, rallies, queue, effectiveIds, positionMs, centerTime, centerIndex, onSeek, onScrubbingChange,
                         Modifier.weight(1f).fillMaxWidth().guidedTourTarget("rally-tour-source", guidedTourTargets))
-                    Text(compactTime(seed.gameEndMs), color = CourtsideMuted, fontSize = 11.sp,
-                        lineHeight = if (compact) 14.sp else TextUnit.Unspecified)
+                    Row(Modifier.fillMaxWidth()) {
+                        columns.forEachIndexed { index, window ->
+                            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                                Text(compactTime(window.endMs), color = CourtsideMuted, fontSize = 11.sp,
+                                    lineHeight = if (compact) 14.sp else TextUnit.Unspecified,
+                                    modifier = Modifier.testTag("rally-source-column-$index-end"))
+                            }
+                        }
+                    }
                 }
             }
             Column(Modifier.weight(1f)) {
@@ -803,12 +909,22 @@ private fun RallyBrowser(
                         val needsReview = queue.any { it.rallyId == rally.id }
                         Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(6.dp))
                             .background(if (active) Color(0xFFEBEDEE) else Color.White)
-                            .selectable(active, role = Role.Button, onClick = { onSelect(rally) })
+                            .selectable(active, role = Role.Button, onClick = {
+                                if (active) onEdit(rally) else onSelect(rally)
+                            })
                             .padding(horizontal = 6.dp, vertical = if (compact) 6.dp else 10.dp).testTag("rally-card-" + rally.id),
                             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text("Rally " + (index + 1), fontSize = 14.sp, fontWeight = FontWeight.Medium,
-                                    lineHeight = if (compact) 18.sp else TextUnit.Unspecified)
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text("Rally " + (index + 1), fontSize = 14.sp, fontWeight = FontWeight.Medium,
+                                        lineHeight = if (compact) 18.sp else TextUnit.Unspecified)
+                                    if (index == centerIndex) {
+                                        Canvas(Modifier.size(14.dp).testTag("rally-list-marker-" + rally.id)
+                                            .semantics { contentDescription = "Timeline list position" }) {
+                                            drawRallyListMarker(center)
+                                        }
+                                    }
+                                }
                                 Text(compactTime(rally.coreStartMs), color = CourtsideMuted, fontSize = 12.sp,
                                     lineHeight = if (compact) 16.sp else TextUnit.Unspecified)
                             }
@@ -843,6 +959,17 @@ private fun RallyBrowser(
     }
 }
 
+/** Use the identical marker on the source timeline and beside the rally it identifies. */
+private fun DrawScope.drawRallyListMarker(at: Offset) {
+    val radius = 5.dp.toPx()
+    val diamond = Path().apply {
+        moveTo(at.x, at.y - radius); lineTo(at.x + radius, at.y)
+        lineTo(at.x, at.y + radius); lineTo(at.x - radius, at.y); close()
+    }
+    drawPath(diamond, Color.White)
+    drawPath(diamond, CourtsideInk, style = Stroke(2.dp.toPx()))
+}
+
 @Composable
 private fun RallySourceTimeline(
     seed: EditorSeed, rallies: List<EditableRallyGroup>, queue: List<RallyReviewItem>, effectiveIds: Set<String>,
@@ -851,47 +978,65 @@ private fun RallySourceTimeline(
 ) {
     val seek by rememberUpdatedState(onSeek)
     val scrub by rememberUpdatedState(onScrubbingChange)
+    val columns = remember(seed.gameStartMs, seed.gameEndMs) {
+        rallySourceTimelineColumns(seed.gameStartMs, seed.gameEndMs)
+    }
     Canvas(modifier.testTag("rally-vertical-timeline").semantics {
-        contentDescription = "Full recording timeline"
+        contentDescription = "Full recording timeline in ${columns.size} columns"
         stateDescription = "Playback " + preciseTime(positionMs) + "; list center rally " + (listIndex?.plus(1) ?: 0)
         progressBarRangeInfo = ProgressBarRangeInfo(positionMs.toFloat(), seed.gameStartMs.toFloat()..seed.gameEndMs.toFloat())
-        setProgress { value -> onSeek(value.toLong().coerceIn(seed.gameStartMs, seed.gameEndMs)); true }
+        setProgress { value ->
+            if (!value.isFinite()) false else {
+                onSeek(value.toLong().coerceIn(seed.gameStartMs, seed.gameEndMs)); true
+            }
+        }
     }.pointerInput(seed.gameStartMs, seed.gameEndMs) {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
-            fun at(y: Float) = seed.gameStartMs + ((y / size.height.coerceAtLeast(1)).coerceIn(0f, 1f) * (seed.gameEndMs - seed.gameStartMs)).toLong()
+            if (columns.isEmpty()) return@awaitEachGesture
+            fun at(point: Offset): Long {
+                val column = (point.x / size.width.coerceAtLeast(1) * columns.size).toInt().coerceIn(columns.indices)
+                return RallyTimelineScale(columns[column]).time(point.y / size.height.coerceAtLeast(1))
+            }
             scrub(true)
             try {
-                down.consume(); seek(at(down.position.y))
+                down.consume(); seek(at(down.position))
                 while (true) {
                     val pointer = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
-                    seek(at(pointer.position.y)); pointer.consume()
+                    seek(at(pointer.position)); pointer.consume()
                     if (!pointer.pressed) break
                 }
             } finally { scrub(false) }
         }
     }) {
-        val duration = (seed.gameEndMs - seed.gameStartMs).coerceAtLeast(1)
-        fun y(time: Long) = ((time - seed.gameStartMs).toFloat() / duration).coerceIn(0f, 1f) * size.height
-        val middle = size.width / 2
-        drawRoundRect(CourtsideControl, Offset(middle - 2.dp.toPx(), 0f), Size(4.dp.toPx(), size.height), CornerRadius(2.dp.toPx()))
-        rallies.forEach { rally ->
-            val color = when {
-                queue.any { it.rallyId == rally.id } -> CourtsideAccent
-                rally.cutIds.any { it in effectiveIds } -> Color(0xFF879296)
-                else -> Danger
+        val columnWidth = size.width / columns.size.coerceAtLeast(1)
+        columns.forEachIndexed { index, window ->
+            val scale = RallyTimelineScale(window)
+            fun y(time: Long) = scale.fraction(time) * size.height
+            fun contains(time: Long) = time >= window.startMs &&
+                (time < window.endMs || index == columns.lastIndex && time <= window.endMs)
+            val left = columnWidth * index
+            val middle = left + columnWidth / 2
+            drawRoundRect(CourtsideControl, Offset(middle - 2.dp.toPx(), 0f), Size(4.dp.toPx(), size.height), CornerRadius(2.dp.toPx()))
+            rallies.filter { it.keepStartMs < window.endMs && it.keepEndMs > window.startMs }.forEach { rally ->
+                val color = when {
+                    queue.any { it.rallyId == rally.id } -> CourtsideAccent
+                    rally.cutIds.any { it in effectiveIds } -> Color(0xFF879296)
+                    else -> Danger
+                }
+                drawRoundRect(color, Offset(middle - 9.dp.toPx(), y(rally.keepStartMs)),
+                    Size(18.dp.toPx(), (y(rally.keepEndMs) - y(rally.keepStartMs)).coerceAtLeast(2.dp.toPx())), CornerRadius(1.dp.toPx()))
             }
-            drawRoundRect(color, Offset(middle - 9.dp.toPx(), y(rally.keepStartMs)),
-                Size(18.dp.toPx(), (y(rally.keepEndMs) - y(rally.keepStartMs)).coerceAtLeast(2.dp.toPx())), CornerRadius(1.dp.toPx()))
-        }
-        val play = y(positionMs)
-        drawLine(CourtsideAccent, Offset(6.dp.toPx(), play), Offset(middle, play), 2.dp.toPx())
-        drawCircle(CourtsideAccent, 4.dp.toPx(), Offset(6.dp.toPx(), play))
-        listTime?.let {
-            val cy = y(it); val cx = size.width - 6.dp.toPx(); val r = 5.dp.toPx()
-            val diamond = Path().apply { moveTo(cx, cy - r); lineTo(cx + r, cy); lineTo(cx, cy + r); lineTo(cx - r, cy); close() }
-            drawLine(CourtsideInk, Offset(middle + 3.dp.toPx(), cy), Offset(cx, cy), 1.dp.toPx())
-            drawPath(diamond, Color.White); drawPath(diamond, CourtsideInk, style = Stroke(2.dp.toPx()))
+            if (contains(positionMs)) {
+                val play = y(positionMs)
+                drawLine(CourtsideAccent, Offset(left + 5.dp.toPx(), play), Offset(middle, play), 2.dp.toPx())
+                drawCircle(CourtsideAccent, 4.dp.toPx(), Offset(left + 5.dp.toPx(), play))
+            }
+            listTime?.takeIf(::contains)?.let {
+                val cy = y(it); val cx = left + columnWidth - 6.dp.toPx()
+                drawLine(CourtsideInk, Offset(middle + 3.dp.toPx(), cy), Offset(cx, cy), 1.dp.toPx())
+                drawRallyListMarker(Offset(cx, cy))
+            }
         }
     }
 }

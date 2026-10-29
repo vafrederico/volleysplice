@@ -97,7 +97,7 @@ internal enum class GuidedTourStep(
     ),
     RALLIES_REVIEW(
         GuidedTourStage.EDITOR, "rally-tour-progress", "Start with rallies to review",
-        "Rallies is the default view. Start with the rallies needing review; the counters show what remains and how many you have checked. Watch each rally in the large player.", "Next",
+        "Rallies is the default view. The title shows how many rallies still need review. Watch each rally in the large player.", "Next",
     ),
     RALLIES_TAG(
         GuidedTourStage.EDITOR, "rally-tour-controls", "Tag the rally",
@@ -113,15 +113,15 @@ internal enum class GuidedTourStep(
     ),
     RALLIES_ALL(
         GuidedTourStage.EDITOR, "rally-tour-all", "View all rallies",
-        "Tap All to open the rally list whenever you want to check the rest of the recording, even while reviews remain. Review returns to the outstanding decisions.", "Next",
+        "Tap All rallies to open the rally list whenever you want to check the rest of the recording, even while reviews remain. Review rallies returns to the outstanding decisions.", "Next",
     ),
     RALLIES_LIST(
         GuidedTourStage.EDITOR, "rally-tour-list", "Browse and edit a rally",
-        "Scroll through rally numbers, scores and source times. Tap a row to select and seek to it, then use Edit rally below the list to adjust that rally. Scrolling the list alone leaves playback where it is.", "Next",
+        "Scroll through rally numbers, scores and source times. Tap a row to select and seek to it. Tap the selected row again, or use Edit rally below the list, to open its controls. Rallies that still need review open in review mode. Scrolling the list alone leaves playback where it is.", "Next",
     ),
     RALLIES_SOURCE(
         GuidedTourStage.EDITOR, "rally-tour-source", "Seek the whole recording",
-        "Drag the vertical timeline to seek the video; the list follows the time you choose. The filled dot is playback. The outlined diamond marks the rally at the list center. Hide timeline collapses the sidebar.", "Next",
+        "Drag either timeline column to seek the video; the recording continues at the top of the second column. The list follows the time you choose. The filled dot is playback. The outlined diamond marks the rally at the list center, with the same diamond beside its rally number. Hide timeline collapses the sidebar.", "Next",
     ),
     RALLIES_MISSING(
         GuidedTourStage.EDITOR, "rally-tour-missing", "Find a missing rally",
@@ -129,7 +129,7 @@ internal enum class GuidedTourStep(
     ),
     RALLIES_ADD(
         GuidedTourStage.EDITOR, "rally-tour-controls", "Add the missed footage",
-        "Seek this source timeline into the missed rally. Add rally here creates the displayed suggested range; then select it and use Edit rally to refine its bounds. Cancel returns without adding anything. The tutorial adds nothing for you.", "Next",
+        "Tap or drag horizontally on the timeline to seek the video, and scroll vertically for more rows. At the rally start, tap Mark start below. Seek to its end, then tap Mark end & add rally to open it for editing. Reset clears the start; Cancel returns without adding anything. The tutorial adds nothing for you.", "Next",
     ),
     EDITOR_SETTINGS(
         GuidedTourStage.EDITOR,

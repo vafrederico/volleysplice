@@ -77,13 +77,49 @@ class RallyReviewModelsTest {
     }
 
     @Test
-    fun missingCandidateIsLimitedToTheRealGapAndIgnoredFootage() {
+    fun missingRallyUsesExactMarksAndRejectsCrossingRalliesOrIgnoredFootage() {
         val occupied = listOf(2_000L to 5_000L, 12_000L to 15_000L, 18_000L to 20_000L)
-        assertNull(missingRallyRange(3_000, 0, 20_000, occupied))
-        assertEquals(MissingRallyRange(6_000, 12_000), missingRallyRange(9_000, 0, 20_000, occupied))
-        assertEquals(MissingRallyRange(15_000, 18_000), missingRallyRange(17_000, 0, 20_000, occupied))
-        assertNull(missingRallyRange(5_200, 0, 20_000, occupied + (5_400L to 12_000L)))
-        assertEquals(MissingRallyRange(0, 2_000), missingRallyRange(0, 0, 20_000, occupied))
+        assertEquals(MissingRallyRange(6_000, 9_000), missingRallyRange(6_000, 9_000, 0, 20_000, occupied))
+        assertEquals(MissingRallyRange(5_000, 12_000), missingRallyRange(5_000, 12_000, 0, 20_000, occupied))
+        assertEquals(MissingRallyRange(0, 2_000), missingRallyRange(0, 2_000, 0, 20_000, occupied))
+        assertNull(missingRallyRange(3_000, 9_000, 0, 20_000, occupied))
+        assertNull(missingRallyRange(9_000, 16_000, 0, 20_000, occupied))
+        assertNull(missingRallyRange(5_200, 9_000, 0, 20_000, occupied + (7_000L to 8_000L)))
+        assertNull(missingRallyRange(9_000, 6_000, 0, 20_000, occupied))
+        assertNull(missingRallyRange(6_000, 6_499, 0, 20_000, occupied))
+        assertEquals(MissingRallyRange(6_000, 6_500), missingRallyRange(6_000, 6_500, 0, 20_000, occupied))
+        assertNull(missingRallyRange(-1, 1_000, 0, 20_000, occupied))
+        assertNull(missingRallyRange(15_000, 20_001, 0, 20_000, occupied))
+    }
+
+    @Test
+    fun sourceTimelineContinuesChronologicallyInTwoEqualColumns() {
+        listOf(20_000L, 20_001L, 834_000L).forEach { duration ->
+            val columns = rallySourceTimelineColumns(5_000, 5_000 + duration)
+            assertEquals(2, columns.size)
+            assertEquals(5_000L, columns.first().startMs)
+            assertEquals(5_000 + duration, columns.last().endMs)
+            assertEquals(columns.first().endMs, columns.last().startMs)
+            assertEquals(columns.first().endMs, RallyTimelineScale(columns.first()).time(1f))
+            assertEquals(columns.last().startMs, RallyTimelineScale(columns.last()).time(0f))
+            assertTrue(kotlin.math.abs((columns[0].endMs - columns[0].startMs) -
+                (columns[1].endMs - columns[1].startMs)) <= 1)
+        }
+        assertTrue(rallySourceTimelineColumns(5_000, 5_000).isEmpty())
+    }
+
+    @Test
+    fun missingTimelineRowsCoverTheGameWithAConsistentScaleAndNoGaps() {
+        listOf(20_000L, 180_000L, 834_000L).forEach { duration ->
+            val rows = missingRallyTimelineRows(5_000, 5_000 + duration)
+            assertEquals(3, rows.size)
+            assertEquals(5_000L, rows.first().startMs)
+            assertEquals(5_000 + duration, rows.last().endMs)
+            rows.zipWithNext().forEach { (a, b) -> assertEquals(a.endMs, b.startMs) }
+            val lengths = rows.map { it.endMs - it.startMs }
+            assertTrue(lengths.max() - lengths.min() <= 1)
+        }
+        assertTrue(missingRallyTimelineRows(5_000, 5_000).isEmpty())
     }
 
     @Test

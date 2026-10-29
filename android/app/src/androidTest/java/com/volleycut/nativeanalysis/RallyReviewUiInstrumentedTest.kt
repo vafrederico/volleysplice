@@ -132,6 +132,42 @@ class RallyReviewUiInstrumentedTest {
         capture(f, "courtside-portrait-current-rally.png")
     }
     private fun pill(text: String) = compose.onNode(hasText(text) and hasClickAction())
+    private fun selectBrowserRally(id: String) {
+        val row = compose.onNodeWithTag("rally-card-$id").performScrollTo()
+        if (row.fetchSemanticsNode().config.getOrNull(SemanticsProperties.Selected) != true) row.performClick()
+    }
+    private fun assertListMarkerMatchesCenter() {
+        val label = compose.onNodeWithTag("rally-list-center").fetchSemanticsNode().config[SemanticsProperties.Text].joinToString()
+        val number = requireNotNull(Regex("\\d+").find(label)).value
+        compose.onAllNodesWithContentDescription("Timeline list position", useUnmergedTree = true).assertCountEquals(1)
+        compose.onNodeWithTag("rally-list-marker-R" + number.padStart(3, '0'), useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithTag("rally-vertical-timeline").assert(SemanticsMatcher("Timeline identifies the same rally") {
+            it.config[SemanticsProperties.StateDescription].endsWith("list center rally $number")
+        })
+    }
+    private fun TouchInjectionScope.sourcePoint(timeMs: Long): Offset {
+        val column = if (timeMs < 10_000) 0 else 1
+        return Offset(width * (if (column == 0) .25f else .75f), height * (timeMs - column * 10_000) / 10_000f)
+    }
+    private fun missingRow(timeMs: Long): SemanticsNodeInteraction {
+        val rows = missingRallyTimelineRows(0, 20_000)
+        val index = rows.indexOfFirst { timeMs >= it.startMs && timeMs <= it.endMs }
+        return compose.onNodeWithTag("missing-rally-row-$index").performScrollTo()
+    }
+    private fun seekMissing(timeMs: Long) {
+        missingRow(timeMs).performSemanticsAction(SemanticsActions.SetProgress) { it(timeMs.toFloat()) }
+    }
+    private fun markMissingStart(timeMs: Long) {
+        seekMissing(timeMs)
+        compose.onNodeWithTag("add-missing-rally-confirm").performClick()
+    }
+    private fun tapMissing(timeMs: Long) {
+        val row = missingRow(timeMs)
+        val range = row.fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].range
+        row.performTouchInput {
+            click(Offset(width * (timeMs - range.start) / (range.endInclusive - range.start), center.y))
+        }
+    }
     private fun projectSettings() {
         closeSoftKeyboard()
         compose.onNodeWithTag("editor-settings-button").performClick()
@@ -237,13 +273,13 @@ class RallyReviewUiInstrumentedTest {
         compose.onNodeWithTag("rally-browse-all").performClick()
         repeat(6) { cycle ->
             val timeline = compose.onNodeWithTag("rally-vertical-timeline")
-            timeline.performTouchInput { down(Offset(center.x, height * .125f)) }
+            timeline.performTouchInput { down(sourcePoint(2_500)) }
             awaitVideoFrame(Color.Red)
-            timeline.performTouchInput { moveTo(Offset(center.x, height * .375f)) }
+            timeline.performTouchInput { moveTo(sourcePoint(7_500)) }
             awaitVideoFrame(Color.Green)
-            timeline.performTouchInput { moveTo(Offset(center.x, height * .625f)) }
+            timeline.performTouchInput { moveTo(sourcePoint(12_500)) }
             awaitVideoFrame(Color.Blue)
-            timeline.performTouchInput { moveTo(Offset(center.x, height * .875f)) }
+            timeline.performTouchInput { moveTo(sourcePoint(17_500)) }
             awaitVideoFrame(Color.Yellow)
             timeline.performTouchInput { up() }
             awaitPlaying(false)
@@ -514,7 +550,8 @@ class RallyReviewUiInstrumentedTest {
                 GuidedTourWorkspace.RALLY -> compose.onNodeWithTag("rally-review-workspace").assertExists()
                 GuidedTourWorkspace.RALLY_LIST -> compose.onNodeWithTag("rally-card-list").assertExists()
                 GuidedTourWorkspace.ADD_RALLY -> {
-                    compose.onNodeWithTag("whole-timeline").performTouchInput { click(Offset(width * .4f, center.y)) }
+                    markMissingStart(6_000)
+                    seekMissing(9_000)
                     compose.onNodeWithTag("add-missing-rally-confirm").assertIsEnabled()
                 }
                 GuidedTourWorkspace.EDITOR -> compose.waitUntil(5_000) {
@@ -558,7 +595,7 @@ class RallyReviewUiInstrumentedTest {
                     scoreTracking = draft.scoreTracking.copy(serveMarkers = emptyList()))
             }) { f ->
                 compose.onNodeWithText("Browse rallies").performClick()
-                compose.onNodeWithTag(if (previous) "rally-card-R002" else "rally-card-R001").performScrollTo().performClick()
+                selectBrowserRally(if (previous) "R002" else "R001")
                 compose.onNodeWithTag("edit-selected-rally").performClick()
                 val timeline = compose.onNodeWithTag("rally-bounds-timeline")
                 val position = if (previous) 6_000f else 11_000f
@@ -647,25 +684,157 @@ class RallyReviewUiInstrumentedTest {
     }
 
     @Test
-    fun addMissingTimelineCanSeekAGapThroughAccessibilityWithoutAdding() = withProject { f ->
+    fun addMissingRequiresBothMarksPreservesThemAndOpensTheNewRallyForEditing() = withProject { f ->
         val original = requireNotNull(f.loadDraft()).cuts
         compose.onNodeWithTag("rally-browse-all").performClick()
         compose.onNodeWithTag("add-missing-rally").performClick()
         compose.onNodeWithTag("add-missing-rally-confirm").assertIsNotEnabled()
-        val timeline = compose.onNodeWithTag("whole-timeline")
+        val timeline = missingRow(8_000)
         timeline.performSemanticsAction(SemanticsActions.SetProgress) { it(8_000f) }
         compose.waitUntil(5_000) {
             timeline.fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].current == 8_000f
         }
         compose.onNodeWithTag("add-missing-rally-confirm").assertIsEnabled()
         assertEquals(original, requireNotNull(f.loadDraft()).cuts)
-        timeline.performSemanticsAction(SemanticsActions.SetProgress) { it(3_000f) }
+        markMissingStart(6_000)
+        compose.onNodeWithTag("missing-rally-start").assertTextEquals("Start 0:06.0")
+        compose.onNodeWithTag("add-missing-rally-confirm").assertIsNotEnabled()
+        seekMissing(16_000) // Both marks are in gaps, but the range crosses an existing rally.
+        compose.onNodeWithTag("missing-rally-instruction").assertTextEquals("Choose an end before the next rally or ignored footage.")
         compose.onNodeWithTag("add-missing-rally-confirm").assertIsNotEnabled()
         assertEquals(original, requireNotNull(f.loadDraft()).cuts)
         timeline.performSemanticsAction(SemanticsActions.SetProgress) { assertFalse(it(Float.NaN)) }
-        timeline.performSemanticsAction(SemanticsActions.SetProgress) { it(8_000f) }
-        compose.onNodeWithTag("add-missing-rally-confirm").performScrollTo().performClick()
-        awaitDraft(f) { it.cuts.size == original.size + 1 }
+        seekMissing(9_000)
+        compose.onNodeWithTag("add-missing-rally-confirm").assertIsEnabled()
+        f.scenario.recreate()
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("missing-rally-start").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("missing-rally-start").assertTextEquals("Start 0:06.0")
+        compose.onNodeWithTag("missing-rally-end").assertTextEquals("End 0:09.0")
+        capture(f, "courtside-missing-rally-marks.png")
+        compose.onNodeWithTag("add-missing-rally-confirm").assertIsDisplayed().performClick()
+        awaitDraft(f) { it.cuts.size == original.size + 1 && it.cuts.any { c ->
+            c.origin == CutOrigin.MANUAL && c.coreStartMs == 6_000L && c.coreEndMs == 9_000L } }
+        compose.onNodeWithTag("rally-browser").assertDoesNotExist()
+        compose.onNodeWithTag("rally-start-readout").assertTextEquals("Start 0:06.0")
+        compose.onNodeWithTag("rally-end-readout").assertTextEquals("End 0:09.0")
+        capture(f, "courtside-missing-rally-edit.png")
+    }
+
+    @Test
+    fun missingRallyTapsAndDragsOnlySeekUntilTheBottomButtonMarksAndAdds() = withProject { f ->
+        val original = requireNotNull(f.loadDraft()).cuts
+        compose.onNodeWithTag("rally-browse-all").performClick()
+        compose.onNodeWithTag("add-missing-rally").performClick()
+        capture(f, "courtside-missing-rally-start-step.png")
+        tapMissing(3_000)
+        compose.onNodeWithTag("missing-rally-start").assertTextEquals("Start —")
+        tapMissing(6_000)
+        compose.onNodeWithTag("missing-rally-start").assertTextEquals("Start —")
+        compose.onNodeWithTag("missing-rally-end").assertTextEquals("End —")
+        compose.onNodeWithTag("add-missing-rally-confirm").assertTextEquals("Mark start at 0:06.0").performClick()
+        compose.onNodeWithTag("missing-rally-start").assertTextEquals("Start 0:06.0")
+        compose.onNodeWithTag("add-missing-rally-confirm").assertIsNotEnabled()
+        capture(f, "courtside-missing-rally-end-step.png")
+        tapMissing(8_000)
+        compose.onNodeWithTag("missing-rally-start").assertTextEquals("Start 0:06.0")
+        val row = missingRow(8_000)
+        val range = row.fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].range
+        row.performTouchInput {
+            fun x(time: Float) = width * (time - range.start) / (range.endInclusive - range.start)
+            down(Offset(x(8_000f), center.y))
+            moveTo(Offset(x(10_000f), center.y))
+        }
+        compose.waitUntil(5_000) {
+            row.fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].current in 9_950f..10_050f
+        }
+        compose.onNodeWithTag("missing-rally-start").assertTextEquals("Start 0:06.0")
+        assertEquals(original, requireNotNull(f.loadDraft()).cuts)
+        row.performTouchInput { up() }
+        capture(f, "courtside-missing-rally-timeline.png")
+        compose.onNodeWithTag("missing-rally-end").assertTextEquals("End 0:10.0")
+        compose.onNodeWithTag("add-missing-rally-confirm").assertIsEnabled().assertTextEquals("Mark end & add rally")
+        compose.onNodeWithTag("missing-rally-reset").performClick()
+        compose.onNodeWithTag("missing-rally-start").assertTextEquals("Start —")
+        compose.onNodeWithTag("missing-rally-end").assertTextEquals("End —")
+        compose.onNodeWithTag("add-missing-rally-confirm").assertIsEnabled()
+        compose.onNodeWithText("Cancel").performClick()
+        compose.onNodeWithTag("rally-workspace-title").assertTextEquals("All rallies")
+        assertEquals(original, requireNotNull(f.loadDraft()).cuts)
+    }
+
+    @Test
+    fun anOrdinaryTapOpensTheSelectedRallyAndRapidTapsSelectThenOpen() = withProject(configureDraft = {
+        it.copy(scoreTracking = it.scoreTracking.copy(serveMarkers = it.scoreTracking.serveMarkers.map { marker ->
+            if (marker.id == "S2") marker.copy(side = ServingSide.FAR) else marker
+        }))
+    }) { f ->
+        val original = requireNotNull(f.loadDraft()).cuts
+        compose.onNodeWithTag("rally-browse-all").performClick()
+        val row = compose.onNodeWithTag("rally-card-R002").performScrollTo()
+        row.assertIsNotSelected().performTouchInput { click() }
+        compose.waitUntil(5_000) { row.fetchSemanticsNode().config[SemanticsProperties.Selected] }
+        compose.onNodeWithTag("rally-browser").assertIsDisplayed()
+        compose.onNodeWithTag("rally-workspace-title").assertTextEquals("All rallies")
+        capture(f, "courtside-tap-selected-rally.png")
+        row.performTouchInput { advanceEventTime(1_000); click() }
+        compose.onNodeWithTag("rally-workspace-title").assertTextEquals("Editing rally 2")
+        compose.onNodeWithTag("rally-start-readout").assertTextEquals("Start 0:12.0")
+        compose.onNodeWithTag("rally-browser").assertDoesNotExist()
+        capture(f, "courtside-tap-opened-rally.png")
+        assertEquals(original, requireNotNull(f.loadDraft()).cuts)
+
+        compose.onNodeWithTag("rally-return-review").performClick()
+        compose.onNodeWithTag("rally-browse-all").performClick()
+        row.performScrollTo().assertIsNotSelected().performTouchInput { doubleClick() }
+        compose.onNodeWithTag("rally-workspace-title").assertTextEquals("Editing rally 2")
+        compose.onNodeWithTag("rally-start-readout").assertTextEquals("Start 0:12.0")
+        assertEquals(original, requireNotNull(f.loadDraft()).cuts)
+    }
+
+    @Test
+    fun openingAPendingRallyFromTheBrowserReturnsToReviewMode() = withProject { f ->
+        compose.onNodeWithTag("rally-browse-all").performClick()
+        compose.onNodeWithTag("rally-card-R002").performScrollTo().performClick()
+        compose.onNodeWithTag("rally-card-R002").assertIsSelected().performClick()
+        compose.onNodeWithTag("rally-workspace-title").assertTextEquals("Reviewing 2 rallies")
+        compose.onNodeWithTag("rally-browse-all").assertIsDisplayed()
+        compose.onNodeWithTag("rally-return-review").assertDoesNotExist()
+        compose.onNodeWithText("Rally 2").assertIsDisplayed()
+        compose.onNodeWithText("Far").performClick()
+        awaitDraft(f) { it.scoreTracking.serveMarkers.first { m -> m.id == "S2" }.side == ServingSide.FAR }
+        compose.onNodeWithTag("rally-workspace-title").assertTextEquals("Reviewing 1 rally")
+        compose.onNodeWithTag("rally-browse-all").performClick()
+        compose.onNodeWithTag("rally-card-R002").performScrollTo().assertIsSelected().performClick()
+        compose.onNodeWithTag("rally-workspace-title").assertTextEquals("Editing rally 2")
+        compose.onNodeWithTag("rally-return-review").assertIsDisplayed()
+    }
+
+    @Test
+    fun rallyHeaderNamesEachViewAndAlwaysReturnsToReviewWithoutProgressCounters() = withProject(configureDraft = {
+        it.copy(scoreTracking = it.scoreTracking.copy(serveMarkers = it.scoreTracking.serveMarkers.map { marker ->
+            if (marker.id == "S2") marker.copy(side = ServingSide.FAR) else marker
+        }))
+    }) { f ->
+        compose.onNodeWithTag("rally-workspace-title").assertTextEquals("Reviewing 1 rally")
+        compose.onNodeWithTag("rally-review-progress").assertDoesNotExist()
+        capture(f, "courtside-review-header.png")
+        compose.onNodeWithTag("rally-browse-all").assertTextEquals("All rallies (2) →").performClick()
+        compose.onNodeWithTag("rally-workspace-title").assertTextEquals("All rallies")
+        compose.onNodeWithTag("rally-return-review").assertIsDisplayed()
+        capture(f, "courtside-all-rallies.png")
+        selectBrowserRally("R002")
+        compose.onNodeWithTag("edit-selected-rally").performClick()
+        compose.onNodeWithTag("rally-workspace-title").assertTextEquals("Editing rally 2")
+        capture(f, "courtside-editing-header.png")
+        compose.onNodeWithTag("rally-return-review").performClick()
+        compose.onNodeWithTag("rally-workspace-title").assertTextEquals("Reviewing 1 rally")
+        compose.onNodeWithText("Rally 1").assertIsDisplayed()
+        compose.onNodeWithText("Keep").performClick()
+        awaitDraft(f) { "R001" in it.reviewedCutIds }
+        compose.onNodeWithTag("rally-workspace-title").assertTextEquals("Reviewing 0 rallies")
+        compose.onNodeWithTag("rally-browse-all").performClick()
+        compose.onNodeWithTag("rally-return-review").assertIsDisplayed().performClick()
+        compose.onNodeWithText("All checked.").assertIsDisplayed()
     }
 
     @Test
@@ -713,28 +882,26 @@ class RallyReviewUiInstrumentedTest {
             click(Offset(inset + (width - inset * 2) * scale.fraction(8_000), center.y))
         }
         awaitVideoFrame(Color.Green)
-        compose.onNodeWithText("All 2  →").performClick()
+        compose.onNodeWithTag("rally-browse-all").performClick()
         compose.onNodeWithTag("rally-vertical-timeline").performTouchInput {
-            down(Offset(center.x, height * .625f))
+            down(sourcePoint(12_500))
         }
         awaitVideoFrame(Color.Blue)
         compose.onNodeWithTag("rally-vertical-timeline").performTouchInput {
-            moveTo(Offset(center.x, height * .875f))
+            moveTo(sourcePoint(17_500))
         }
         awaitVideoFrame(Color.Yellow)
         compose.onNodeWithTag("rally-vertical-timeline").performTouchInput { up() }
         compose.onNodeWithTag("add-missing-rally").performClick()
-        compose.onNodeWithTag("whole-timeline").performTouchInput {
-            click(Offset(width * .15f, center.y))
-        }
+        missingRow(3_000).performSemanticsAction(SemanticsActions.SetProgress) { it(3_000f) }
         awaitVideoFrame(Color.Red)
         compose.onNodeWithText("Cancel").performClick()
 
         // Edit is always present even with outstanding reviews. It edits the
         // highlighted selection, independently of the source gap or list center.
-        compose.onNodeWithTag("rally-card-R002").performScrollTo().performClick()
+        selectBrowserRally("R002")
         compose.onNodeWithTag("rally-card-R002").assertIsSelected()
-        compose.onNodeWithTag("rally-browser-review").assertIsDisplayed()
+        compose.onNodeWithTag("rally-return-review").assertIsDisplayed()
         compose.onNodeWithTag("edit-selected-rally").assertIsEnabled().performClick()
         compose.onNodeWithText("Rally 2").assertIsDisplayed()
         awaitVideoFrame(Color.Blue)
@@ -795,7 +962,7 @@ class RallyReviewUiInstrumentedTest {
 
         // A source gap seeks in place. It never switches to Editor or creates a cut.
         compose.onNodeWithTag("rally-vertical-timeline").performTouchInput {
-            click(Offset(center.x, height * .45f))
+            click(sourcePoint(9_000))
         }
         compose.onNodeWithTag("rally-review-workspace").assertIsDisplayed()
         compose.onNodeWithTag("rally-source-status").assertTextContains("No rally at", substring = true)
@@ -807,9 +974,11 @@ class RallyReviewUiInstrumentedTest {
 
         // Explicit add stays in Rallies and immediately appears in the existing Editor.
         compose.onNodeWithTag("add-missing-rally").performClick()
-        compose.onNodeWithTag("add-missing-rally-confirm").performScrollTo().performClick()
+        markMissingStart(6_000)
+        seekMissing(10_000)
+        compose.onNodeWithTag("add-missing-rally-confirm").assertIsDisplayed().performClick()
         awaitDraft(f) { it.cuts.size == 3 && it.cuts.any { c -> c.origin == CutOrigin.MANUAL && c.coreStartMs <= 9_000 && c.coreEndMs >= 9_000 } }
-        compose.onNodeWithTag("rally-browser").assertIsDisplayed()
+        compose.onNodeWithTag("rally-bounds-timeline").assertIsDisplayed()
         pill("Editor").performClick()
         compose.onNodeWithTag("rally-review-workspace").assertDoesNotExist()
         assertEquals(3, requireNotNull(f.loadDraft()).cuts.size)
@@ -851,7 +1020,7 @@ class RallyReviewUiInstrumentedTest {
         withProject(many = true, removedRallyIds = setOf("R002", "R004", "R006")) { f ->
             compose.onNodeWithText("Browse rallies").performClick()
             compose.onNodeWithTag("rally-card-list").performScrollToNode(hasTestTag("rally-card-R003"))
-            compose.onNodeWithTag("rally-card-R003").performClick()
+            selectBrowserRally("R003")
             compose.onNodeWithTag("edit-selected-rally").performClick()
             compose.onNodeWithTag("rally-bounds-timeline").assert(
                 SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Previous rally 1; next rally 5"))
@@ -878,7 +1047,7 @@ class RallyReviewUiInstrumentedTest {
         }, scoreTracking = draft.scoreTracking.copy(enabled = false, serveMarkers = emptyList()))
     }) { f ->
         compose.onNodeWithText("Browse rallies").performClick()
-        compose.onNodeWithTag("rally-card-R002").performClick()
+        selectBrowserRally("R002")
         compose.onNodeWithTag("edit-selected-rally").performClick()
         val timeline = compose.onNodeWithTag("rally-bounds-timeline")
         fun assertVisibleBars() {
@@ -924,35 +1093,78 @@ class RallyReviewUiInstrumentedTest {
     }
 
     @Test
+    fun allRalliesUsesTwoTimelineColumnsAndSeeksAcrossThemWithoutEditing() = withProject(many = true) { f ->
+        val original = requireNotNull(f.loadDraft()).cuts
+        compose.onNodeWithTag("rally-browse-all").performClick()
+        compose.onNodeWithTag("rally-source-column-0-start").assertTextEquals("0:00")
+        compose.onNodeWithTag("rally-source-column-0-end").assertTextEquals("0:10")
+        compose.onNodeWithTag("rally-source-column-1-start").assertTextEquals("0:10")
+        compose.onNodeWithTag("rally-source-column-1-end").assertTextEquals("0:20")
+        val timeline = compose.onNodeWithTag("rally-vertical-timeline")
+        timeline.performTouchInput { click(sourcePoint(6_500)) }
+        compose.waitUntil(5_000) {
+            compose.onNodeWithTag("rally-source-status").fetchSemanticsNode().config[SemanticsProperties.Text]
+                .joinToString().contains("Rally 4")
+        }
+        compose.onNodeWithTag("rally-card-R004").assertIsSelected()
+        compose.waitUntil(5_000) {
+            compose.onNodeWithTag("rally-list-center").fetchSemanticsNode().config[SemanticsProperties.Text].joinToString().contains("4")
+        }
+        assertListMarkerMatchesCenter()
+        timeline.performTouchInput {
+            down(sourcePoint(6_500))
+            moveTo(sourcePoint(15_500))
+        }
+        compose.waitUntil(5_000) {
+            timeline.fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].current in 15_450f..15_550f
+        }
+        compose.waitUntil(5_000) {
+            compose.onNodeWithTag("rally-list-center").fetchSemanticsNode().config[SemanticsProperties.Text].joinToString().contains("10")
+        }
+        timeline.performTouchInput { up() }
+        compose.onNodeWithTag("rally-card-R010").assertIsSelected()
+        assertListMarkerMatchesCenter()
+        assertEquals(original, requireNotNull(f.loadDraft()).cuts)
+        capture(f, "courtside-two-column-source-timeline.png")
+        compose.onNodeWithText("Hide timeline").performClick()
+        timeline.assertDoesNotExist()
+        compose.onNodeWithText("Show timeline").performClick()
+        timeline.assertIsDisplayed()
+    }
+
+    @Test
     fun manualListScrollMovesOnlyItsMarkerAndSurvivesThePill() = withProject(many = true) { f ->
         compose.onNodeWithText("Browse rallies").performClick()
         val initial = compose.onNodeWithTag("rally-list-center").fetchSemanticsNode().config[SemanticsProperties.Text].joinToString()
         val before = compose.onNodeWithTag("rally-vertical-timeline").fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].current
         compose.onNodeWithTag("rally-card-list").performTouchInput { swipeUp(durationMillis = 500) }
-        capture(f, "courtside-list-position.png")
         compose.waitUntil(5_000) {
             compose.onNodeWithTag("rally-list-center").fetchSemanticsNode().config[SemanticsProperties.Text].joinToString() != initial
         }
         val center = compose.onNodeWithTag("rally-list-center").fetchSemanticsNode().config[SemanticsProperties.Text].joinToString()
+        assertListMarkerMatchesCenter()
+        capture(f, "courtside-list-position.png")
         val after = compose.onNodeWithTag("rally-vertical-timeline").fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].current
         assertEquals(before, after, .1f)
         pill("Editor").performClick()
         pill("Rallies").performClick()
         assertEquals(center, compose.onNodeWithTag("rally-list-center").fetchSemanticsNode().config[SemanticsProperties.Text].joinToString())
+        assertListMarkerMatchesCenter()
         // Seeking resumes list follow immediately, including while the finger is still down.
         compose.onNodeWithTag("rally-vertical-timeline").performTouchInput {
-            down(Offset(width / 2f, height * .325f))
+            down(sourcePoint(6_500))
         }
         compose.waitUntil(5_000) {
             compose.onNodeWithTag("rally-list-center").fetchSemanticsNode().config[SemanticsProperties.Text].joinToString().contains("4")
         }
         compose.onNodeWithTag("rally-vertical-timeline").performTouchInput {
-            moveTo(Offset(width / 2f, height * .775f))
+            moveTo(sourcePoint(15_500))
         }
         compose.waitUntil(5_000) {
             compose.onNodeWithTag("rally-list-center").fetchSemanticsNode().config[SemanticsProperties.Text].joinToString().contains("10")
         }
         compose.onNodeWithTag("rally-vertical-timeline").performTouchInput { up() }
+        assertListMarkerMatchesCenter()
         compose.onNodeWithTag("rally-review-player").assertIsDisplayed()
     }
 
