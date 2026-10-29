@@ -759,7 +759,7 @@ struct EditorWorkspace: View {
                     trim(cut, start: start ? value : cut.coreStartMs, end: start ? cut.coreEndMs : value)
                 }, track: { scale in focusedTrack(cut, window: scale.window) })
                 .id(currentGroup?.cutIds.sorted() ?? [cut.id])
-            if cut.origin == .inferred && (desktop || !isPhone) {
+            if desktop || !isPhone {
                 Text("Extra time").font(.system(size: 11, weight: .semibold)).foregroundStyle(EditorPalette.muted)
                 CoreTrimSurface(core: .init(startMs: cut.keepStartMs, endMs: cut.keepEndMs),
                     kept: .init(startMs: cut.keepStartMs, endMs: cut.keepEndMs), bounds: bounds, playhead: playheadMs,
