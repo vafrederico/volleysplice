@@ -119,11 +119,6 @@ export type FinalCutProvenanceSegment = {
 export const SUPPRESSION_SCOPE_IDS = ["whole-rally", "veto-region"] as const;
 export type SuppressionScope = (typeof SUPPRESSION_SCOPE_IDS)[number];
 export const DEFAULT_SUPPRESSION_SCOPE: SuppressionScope = "whole-rally";
-export const SUPPRESSION_SCOPE_LABELS: Record<SuppressionScope, string> = {
-  "whole-rally": "Whole rally",
-  "veto-region": "Veto region",
-};
-
 export type FinalCutMaterialization = {
   intervals: FinalCutInterval[];
   provenance: FinalCutProvenanceSegment[];
@@ -746,23 +741,6 @@ export function splitCutAt(
   return { draft: nextDraft, newCut: right };
 }
 
-export function playbackFocusCut(
-  cuts: readonly EditableCut[],
-  playbackTime: number,
-): EditableCut | null {
-  if (!Number.isFinite(playbackTime)) return null;
-  let reached: EditableCut | null = null;
-  for (const cut of cuts) {
-    if (
-      cut.keepStart <= playbackTime &&
-      (reached === null || cut.keepStart >= reached.keepStart)
-    ) {
-      reached = cut;
-    }
-  }
-  return reached;
-}
-
 function roundTime(seconds: number): number {
   return Math.round(seconds * 1000) / 1000;
 }
@@ -1076,39 +1054,11 @@ export function materializeFinalCutIntervals(
   return { intervals, provenance: visibleProvenance };
 }
 
-export function effectiveKeptCutIds(
-  draft: CutDraft,
-  suppression?: Pick<OnDeviceSuppression, "suggestions">,
-): string[] {
-  return [...new Set(
-    materializeFinalCutIntervals(draft, suppression).intervals.flatMap(
-      (interval) => interval.cutIds,
-    ),
-  )];
-}
-
 export function buildFinalCutIntervals(
   draft: CutDraft,
   suppression?: Pick<OnDeviceSuppression, "suggestions">,
 ): FinalCutInterval[] {
   return materializeFinalCutIntervals(draft, suppression).intervals;
-}
-
-export function totalFinalCutSeconds(intervals: FinalCutInterval[]): number {
-  return intervals.reduce((total, interval) => total + interval.end - interval.start, 0);
-}
-
-export function nextFinalCutTime(
-  intervals: FinalCutInterval[],
-  playbackTime: number,
-): number | null {
-  for (const interval of intervals) {
-    if (playbackTime >= interval.start && playbackTime < interval.end) {
-      return playbackTime;
-    }
-    if (playbackTime < interval.start) return interval.start;
-  }
-  return null;
 }
 
 export function alignRallyServeMarkers(draft: CutDraft): CutDraft {
