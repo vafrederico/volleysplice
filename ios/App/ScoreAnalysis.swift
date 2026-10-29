@@ -80,8 +80,15 @@ enum ScoreAnalysis {
         let plan = try ServingSideInference.framePlan(ranges: ranges, duration: media.duration, ids: candidateIDs)
         let modelURL = Bundle.main.url(forResource: "serving-side-85bc3325fbd4", withExtension: "json")!
         let model = try ServingSideInference(data: Data(contentsOf: modelURL))
-        let switchModel = try SideSwitchInference(data: Data(contentsOf: Bundle.main.url(forResource: "side-switch-c2570481c30d", withExtension: "json")!))
-        let switchPlan = try switchInput.map { try switchModel.framePlan(input: $0, duration: media.duration) }
+        let switchModel: SideSwitchInference?
+        let switchPlan: SideSwitchInference.FramePlan?
+        if let switchInput {
+            let model = try SideSwitchInference(data: Data(contentsOf: Bundle.main.url(forResource: "side-switch-c2570481c30d", withExtension: "json")!))
+            switchModel = model
+            switchPlan = try model.framePlan(input: switchInput, duration: media.duration)
+        } else {
+            switchModel = nil; switchPlan = nil
+        }
         let switchCacheURL = cacheURL.deletingPathExtension().appendingPathExtension("switch.plist")
         var switchVisual: [Double]?
         var switchError: String?
@@ -137,12 +144,12 @@ enum ScoreAnalysis {
         return try finish(serving: serving, switchModel: switchModel, switchPlan: switchPlan, switchInput: switchInput,
                           switchVisual: switchVisual, switchError: switchError, stepProgress: stepProgress)
     }
-    private static func finish(serving: ServingSideOutput, switchModel: SideSwitchInference, switchPlan: SideSwitchInference.FramePlan?,
+    private static func finish(serving: ServingSideOutput, switchModel: SideSwitchInference?, switchPlan: SideSwitchInference.FramePlan?,
                                switchInput: SideSwitchAnalysisInput?, switchVisual: [Double]?, switchError: String?,
                                stepProgress: @Sendable (AnalysisProgressEvent) -> Void) throws -> Result {
         var switchError = switchError
         var switches: SideSwitchOutput?
-        if let switchPlan, let switchInput, switchVisual != nil || switchPlan.candidates.isEmpty {
+        if let switchModel, let switchPlan, let switchInput, switchVisual != nil || switchPlan.candidates.isEmpty {
             stepProgress(.init(.sideSwitch, fraction: 0.98, detail: "Checking team switches"))
             do { switches = try switchModel.evaluate(input: switchInput, plan: switchPlan, visualFeatures: switchVisual ?? []) }
             catch is CancellationError { throw CancellationError() }

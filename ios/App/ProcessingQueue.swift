@@ -360,33 +360,6 @@ struct ProcessingJobResult: Sendable {
     }
 }
 
-struct ProcessingQueueBar: View {
-    @ObservedObject var queue: ProcessingQueue
-    let onOpen: () -> Void
-    var body: some View {
-        if !queue.unfinishedJobs.isEmpty || queue.preparingInputCount > 0 {
-            let count = queue.unfinishedJobs.count + queue.preparingInputCount
-            let detail = queue.preparingInputCount > 0 ? "Preparing job input" :
-                queue.active?.detail ?? (queue.waitingForSystem ? "Waiting for iOS" : "Unfinished analysis and exports")
-                HStack {
-                    Text("Queue \(count)")
-                    Text(detail)
-                        .font(.caption).lineLimit(3)
-                    Spacer(minLength: 0)
-                }.padding(.horizontal).frame(minHeight: 44)
-                    .allowsHitTesting(false).accessibilityHidden(true)
-                    .overlay {
-                        // Bound the queue target to its rendered strip. SwiftUI's
-                        // expanded button hit area can otherwise steal transport
-                        // taps immediately above it at smaller interface scales.
-                        CourtsideActionButton(title: "Queue \(count), \(detail)", identifier: "processingQueueBar",
-                            enabled: true, selected: false, bordered: false, showsTitle: false, action: onOpen)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    }
-        }
-    }
-}
-
 struct ProcessingQueueSheet: View {
     @ObservedObject var queue: ProcessingQueue
     var onRelink: ((ProcessingJob) -> Void)? = nil

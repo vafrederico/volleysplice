@@ -10,7 +10,7 @@ interval counts or passing a self-roundtrip does not prove cross-platform parity
 | --- | --- |
 | DSP and frozen inference | `AudioFeatureTests`, `FeatureMathTests`, `ModelRunnerTests`, `ServingSideInferenceTests`, `SideSwitchInferenceTests`, `SuppressionTests` |
 | Editing, scoring and export timing | `ProjectContractTests`, `RallyStartMarkerTests`, `EditorReviewTests`, `RallyReviewTests`, `RallyTrimTests`, `ScoreTrackingTests`, `ScoreOverlayTests`, `ChaptersTests`, `ExportTimelineTests` |
-| Storage, queue and progress | `ProjectPersistenceTests`, `PortableReviewPreferencesTests`, `AppStorageTests`, `ProcessingJobTests`, `RecordingImportTests`, `AnalysisProgressTests` |
+| Storage, queue and progress | `ProjectPersistenceTests`, `PortableReviewPreferencesTests`, `AppStorageTests`, `ProcessingJobTests`, `AnalysisProgressTests` |
 | Layout and tutorial state | `EditorLayoutTests`, `InterfaceScaleTests`, `GuidedTourTests` |
 | Hosted media and persistence | `FeatureExtractionIntegrationTests`, `RenderingIntegrationTests`, `SourceVideoAccessTests`, `PhotoKitVideoSourceTests`, `QueueSnapshotTests`, `EditorProjectBindingTests` |
 | Orientation declaration | `AppOrientationDeclarationTests` reads the processed app plist, including device-qualified orientation keys |

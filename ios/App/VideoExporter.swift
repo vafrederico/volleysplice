@@ -19,41 +19,8 @@ struct VideoExportResult: Sendable {
         try project.validate()
         let suppression = try project.feedback.map { try ProjectArchive.suppressionRegions($0) } ?? []
         let intervals = EditorMath.finalIntervals(project.draft, suppression: suppression, bounds: project.gameWindow)
-        return try await perform(source: source, project: project, intervals: intervals, allIntervals: intervals,
+        return try await perform(source: source, project: project, intervals: intervals,
                                  destination: destination, managesBackgroundLease: managesBackgroundLease, progress: progress)
-    }
-
-    /// Serial exports preserve the global match score in each clip. A failure leaves
-    /// already completed clips intact and removes only the current partial output.
-    static func exportRallies(source: URL, project: ProjectDocument, destinationDirectory: URL,
-                              progress: @escaping @Sendable (Double, String) -> Void) async throws -> [VideoExportResult] {
-        try project.validate()
-        let directoryAccess = destinationDirectory.startAccessingSecurityScopedResource()
-        defer { if directoryAccess { destinationDirectory.stopAccessingSecurityScopedResource() } }
-        let suppression = try project.feedback.map { try ProjectArchive.suppressionRegions($0) } ?? []
-        let intervals = EditorMath.finalIntervals(project.draft, suppression: suppression, bounds: project.gameWindow)
-        let tracking = try visibleTracking(project, intervals: intervals)
-        let groups = EditorMath.editableRallyGroups(cuts: project.draft.cuts, intervals: intervals, serveMarkers: tracking.serveMarkers)
-            .filter { group in intervals.contains { !group.cutIds.isDisjoint(with: $0.cutIds) } }
-        guard !groups.isEmpty else { throw ProjectError.invalid("There are no included rallies to export") }
-        try FileManager.default.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
-        var results: [VideoExportResult] = []
-        for (index, group) in groups.enumerated() {
-            try Task.checkCancellation()
-            let selected = intervals.compactMap { interval -> FinalCutInterval? in
-                guard !group.cutIds.isDisjoint(with: interval.cutIds) else { return nil }
-                let start = max(interval.startMs, group.keepStartMs), end = min(interval.endMs, group.keepEndMs)
-                guard end > start else { return nil }
-                return FinalCutInterval(startMs: start, endMs: end, cutIds: interval.cutIds.filter { group.cutIds.contains($0) })
-            }
-            let filename = String(format: "rally-%03d-%@.mp4", index + 1, UUID().uuidString.prefix(8).description)
-            let result = try await perform(source: source, project: project, intervals: selected, allIntervals: intervals,
-                destination: destinationDirectory.appendingPathComponent(filename)) { fraction, detail in
-                    progress((Double(index) + fraction) / Double(groups.count), "Rally \(index + 1)/\(groups.count): \(detail)")
-                }
-            results.append(result)
-        }
-        return results
     }
 
     static func chaptersURL(for destination: URL) -> URL {
@@ -67,7 +34,7 @@ struct VideoExportResult: Sendable {
         return ScoreReducer.visibleTracking(tracking, ignoredIntervals: project.draft.ignoredIntervals, excludedRallyIds: excluded)
     }
 
-    private static func perform(source: URL, project: ProjectDocument, intervals: [FinalCutInterval], allIntervals: [FinalCutInterval],
+    private static func perform(source: URL, project: ProjectDocument, intervals: [FinalCutInterval],
                                 destination: URL, managesBackgroundLease: Bool = true,
                                 progress: @escaping @Sendable (Double, String) -> Void) async throws -> VideoExportResult {
         try Task.checkCancellation()
@@ -152,7 +119,7 @@ struct VideoExportResult: Sendable {
                     videoComposition.colorYCbCrMatrix = CMFormatDescriptionGetExtension(format, extensionKey: kCMFormatDescriptionExtension_YCbCrMatrix) as? String
                     videoComposition.colorTransferFunction = CMFormatDescriptionGetExtension(format, extensionKey: kCMFormatDescriptionExtension_TransferFunction) as? String
                 }
-                let tracking = try visibleTracking(project, intervals: allIntervals)
+                let tracking = try visibleTracking(project, intervals: intervals)
                 let sourceIsHDR = [AVVideoTransferFunction_ITU_R_2100_HLG, AVVideoTransferFunction_SMPTE_ST_2084_PQ]
                     .contains(videoComposition.colorTransferFunction ?? "")
                 var exportColor: VideoExportColor?
@@ -169,7 +136,7 @@ struct VideoExportResult: Sendable {
                 layerInstruction.setTransform(upright, at: .zero)
                 instruction.layerInstructions = [layerInstruction]
                 videoComposition.instructions = [instruction]
-                let retainedIds = Set(allIntervals.flatMap(\.cutIds))
+                let retainedIds = Set(intervals.flatMap(\.cutIds))
                 let ranges = project.draft.cuts.filter { retainedIds.contains($0.id) }.map {
                     ScoreRallyRange(coreStartMs: $0.coreStartMs, coreEndMs: $0.coreEndMs, keepStartMs: $0.keepStartMs, keepEndMs: $0.keepEndMs)
                 }
@@ -220,7 +187,7 @@ struct VideoExportResult: Sendable {
                 let chapters = YouTubeChapters.build(intervals: intervals, cuts: project.draft.cuts, scoreTracking: tracking,
                     options: chapterOptions)
                 try Data(YouTubeChapters.text(chapters, includeCredit: chapterOptions.includeCredit).utf8).write(to: temporaryChapters, options: .withoutOverwriting)
-                guard let session = AVAssetExportSession(asset: composition, presetName: sourceIsHDR ? AVAssetExportPresetHEVCHighestQuality : AVAssetExportPresetHighestQuality),
+                guard let session = AVAssetExportSession(asset: composition, presetName: exportColor?.preset ?? AVAssetExportPresetHighestQuality),
                       session.supportedFileTypes.contains(.mp4) else { throw ProjectError.invalid("Source-color MP4 export is unavailable for this recording") }
                 session.outputURL = temporaryVideo
                 session.outputFileType = .mp4

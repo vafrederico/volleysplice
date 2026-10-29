@@ -108,7 +108,6 @@ struct CourtsideActionButton: UIViewRepresentable {
     var identifier: String? = nil
     let enabled: Bool, selected: Bool
     var bordered = true
-    var showsTitle = true
     let action: () -> Void
     func makeCoordinator() -> Coordinator { Coordinator(action) }
     func makeUIView(context: Context) -> UIButton {
@@ -126,7 +125,7 @@ struct CourtsideActionButton: UIViewRepresentable {
     func updateUIView(_ button: UIButton, context: Context) {
         context.coordinator.action = action
         if button.accessibilityLabel != title {
-            button.setTitle(showsTitle && imageName == nil ? title : nil, for: .normal)
+            button.setTitle(imageName == nil ? title : nil, for: .normal)
             button.setImage(imageName.flatMap { UIImage(systemName: $0) }, for: .normal)
             button.accessibilityLabel = title
         }

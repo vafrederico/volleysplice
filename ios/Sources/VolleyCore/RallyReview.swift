@@ -95,10 +95,6 @@ public enum RallyReview {
         let radius = max(center - start, end - center)
         return .init(startMs: max(bounds.startMs, center - radius), endMs: min(bounds.endMs, center + radius))
     }
-    public static func coreWindow(_ core: TimeRange, bounds: TimeRange) -> TimeRange {
-        let margin = min(8_000, max(0, core.endMs - core.startMs) / 2)
-        return .init(startMs: max(bounds.startMs, core.startMs - margin), endMs: min(bounds.endMs, core.endMs + margin))
-    }
     public static func missingRange(at time: Int64, bounds: TimeRange, occupied: [TimeRange]) -> TimeRange? {
         guard bounds.startMs <= time, time < bounds.endMs,
               !occupied.contains(where: { $0.startMs <= time && time < $0.endMs }) else { return nil }

@@ -7,12 +7,6 @@ public struct ExportTimeline: Equatable, Sendable {
         public var outputStartMs: Int64
         public var outputEndMs: Int64 { outputStartMs + source.endMs - source.startMs }
     }
-    public struct ScoreSpan: Equatable, Sendable {
-        public var source: TimeRange
-        public var outputStartMs: Int64
-        public var outputEndMs: Int64 { outputStartMs + source.endMs - source.startMs }
-        public var score: DerivedScore
-    }
     public let spans: [Span]
     public var durationMs: Int64 { spans.last?.outputEndMs ?? 0 }
     public init(intervals: [FinalCutInterval]) throws {
@@ -31,19 +25,6 @@ public struct ExportTimeline: Equatable, Sendable {
     public func sourceTimestamp(atOutputMs timestamp: Int64) -> Int64? {
         guard let span = spans.first(where: { timestamp >= $0.outputStartMs && timestamp < $0.outputEndMs }) else { return nil }
         return span.source.startMs + timestamp - span.outputStartMs
-    }
-    public func scoreSpans(tracking: ScoreTracking, rallyRanges: [ScoreRallyRange]) -> [ScoreSpan] {
-        let changes = Set(tracking.serveMarkers.map(\.timestampMs) +
-            rallyRanges.flatMap { [$0.keepStartMs, $0.coreStartMs, $0.coreEndMs, $0.keepEndMs] })
-        return spans.flatMap { span in
-            let boundaries = ([span.source.startMs, span.source.endMs] +
-                Array(changes.filter { $0 > span.source.startMs && $0 < span.source.endMs })).sorted()
-            return zip(boundaries, boundaries.dropFirst()).map { start, end in
-                let boundary = ScoreReducer.scoreBoundaryTimestamp(start, rallyRanges: rallyRanges, tracking: tracking)
-                return ScoreSpan(source: .init(startMs: start, endMs: end), outputStartMs: span.outputStartMs + start - span.source.startMs,
-                                 score: ScoreReducer.deriveAt(tracking, sourceTimestampMs: boundary))
-            }
-        }
     }
     /// Matches Android's score timeline reveal in leading padding, in source time.
     public static func pointRevealTimestamp(_ timestampMs: Int64, tracking: ScoreTracking, rallyRanges: [ScoreRallyRange]) -> Int64 {
