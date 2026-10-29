@@ -111,81 +111,8 @@
   color: #fff;
 }
 
-.workflow {
-  display: flex;
-  max-width: 720px;
-  margin: 24px auto 20px;
-  align-items: center;
-  color: #8a8b84;
-  font:
-    var(--v2-font-xs) "Atkinson Hyperlegible Mono",
-    monospace;
-  text-transform: uppercase;
-}
-
-.workflow span {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  white-space: nowrap;
-}
-
-.workflow span[data-current="true"] {
-  color: #171914;
-  font-weight: 700;
-}
-
-.workflow b {
-  display: grid;
-  width: 23px;
-  height: 23px;
-  place-items: center;
-  border: 1px solid currentColor;
-  border-radius: 50%;
-  font-size: var(--v2-font-micro);
-}
-
-.workflow span[data-current="true"] b {
-  border-color: #2653a8;
-  background: #2653a8;
-  color: #fff;
-}
-
-.workflow > i {
-  width: 72px;
-  height: 1px;
-  margin: 0 12px;
-  background: #c9c7bd;
-}
-
-.sourcePicker {
-  display: grid;
-  max-width: 2480px;
-  margin: 0 auto 18px;
-  grid-template-columns: minmax(220px, 1fr) 180px minmax(300px, 1.8fr) auto minmax(
-      170px,
-      auto
-    );
-  gap: 16px;
-  align-items: end;
-  padding: 15px 18px;
-  border: 1px solid #c8c6bc;
-  background: rgba(250, 249, 245, 0.84);
-  box-shadow: 0 8px 26px rgba(24, 26, 20, 0.04);
-}
-
-.sourceHeading,
-.sourcePicker label {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-}
-
-.sourceHeading span,
-.sourcePicker label > span,
 .summaryStats > span,
 .boundaryContract > span,
-.sectionHeading span,
 .selectionEyebrow {
   color: #777970;
   font:
@@ -193,13 +120,6 @@
     monospace;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-}
-
-.sourceHeading strong {
-  overflow: hidden;
-  font-size: var(--v2-font-md);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .compactField select,
@@ -1176,10 +1096,6 @@
 @media (max-width: 1180px) {
   .page .commandBar {
     grid-template-columns: auto minmax(160px, 210px) minmax(280px, 1fr) auto auto;
-  }
-
-  .sourcePicker {
-    grid-template-columns: minmax(220px, 1fr) 160px minmax(280px, 1.5fr) auto;
   }
 
   .sourceState {

@@ -1,5 +1,3 @@
-import type { Mat } from "@techstark/opencv-js";
-
 import { runtimeAssetUrl } from "../runtime-assets.ts";
 import { neuralServingBundle, neuralServingSelection } from "./neural-serving-model.ts";
 import type { OpenedMedia } from "./media.ts";
@@ -7,7 +5,6 @@ import { sampleSpecialistFramesSequentially } from "./specialist-frame-sampling.
 import {
   composeServingSideVerdict,
   COURT_FLOW_OFFSETS_SECONDS,
-  COURT_FLOW_STATISTICS,
   courtFlowFeatureNames,
   FLIGHT_GLOBAL_STATISTICS,
   FLIGHT_GRID_COLUMNS,
