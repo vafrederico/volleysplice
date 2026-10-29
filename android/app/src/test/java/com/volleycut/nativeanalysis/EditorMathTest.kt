@@ -87,7 +87,7 @@ class EditorMathTest {
     }
 
     @Test
-    fun globalPaddingChangesOnlyInferredCuts() {
+    fun globalPaddingChangesInferredAndManualCuts() {
         val draft = EditorDraft(
             sourceRevision = "fixture",
             updatedAtMs = 0,
@@ -100,8 +100,61 @@ class EditorMathTest {
         val padded = EditorMath.applyPadding(draft, 3_000, 1_500, 20_000)
         assertEquals(2_000, padded.cuts[0].keepStartMs)
         assertEquals(7_500, padded.cuts[0].keepEndMs)
-        assertEquals(8_000, padded.cuts[1].keepStartMs)
-        assertEquals(9_000, padded.cuts[1].keepEndMs)
+        assertEquals(5_000, padded.cuts[1].keepStartMs)
+        assertEquals(10_500, padded.cuts[1].keepEndMs)
+        assertEquals(draft.cuts.map { it.coreStartMs to it.coreEndMs },
+            padded.cuts.map { it.coreStartMs to it.coreEndMs })
+    }
+
+    @Test
+    fun manualRallyStartsWithCurrentPaddingAndExportsPaddedTime() {
+        val base = EditorDraft(sourceRevision = "fixture", updatedAtMs = 0, cuts = emptyList())
+        val defaultCut = EditorMath.newManualCut(base, 10_000, 20_000, 0, 40_000)
+        assertEquals(8_000L, defaultCut.keepStartMs)
+        assertEquals(22_000L, defaultCut.keepEndMs)
+        val configured = EditorMath.applyPadding(base, 3_000, 1_500, 40_000)
+        val manual = EditorMath.newManualCut(configured, 10_000, 20_000, 0, 40_000)
+        val draft = configured.copy(cuts = listOf(manual))
+        assertEquals(listOf(FinalCutInterval(7_000, 21_500, listOf(manual.id))),
+            EditorMath.finalIntervals(draft))
+        val edited = EditorMath.setCoreRange(draft, manual.id, 12_000, 18_000, 0, 40_000)
+        assertEquals(9_000L, edited.cuts.single().keepStartMs)
+        assertEquals(19_500L, edited.cuts.single().keepEndMs)
+        val repadded = EditorMath.applyPadding(edited, 1_000, 4_000, 40_000)
+        assertEquals(listOf(FinalCutInterval(11_000, 22_000, listOf(manual.id))),
+            EditorMath.finalIntervals(repadded))
+    }
+
+    @Test
+    fun manualRallyPaddingClipsToGameBoundsAndRespectsIgnoredTime() {
+        val base = EditorDraft(sourceRevision = "fixture", updatedAtMs = 0, cuts = emptyList())
+        val manual = EditorMath.newManualCut(base, 1_500, 8_500, 1_000, 9_000)
+        assertEquals(1_000L, manual.keepStartMs)
+        assertEquals(9_000L, manual.keepEndMs)
+        val draft = base.copy(cuts = listOf(manual), ignoredIntervals = listOf(
+            IgnoredSourceInterval("I001", 1_000, 1_250, "camera-gap"),
+            IgnoredSourceInterval("I002", 8_750, 9_000, "camera-gap"),
+        ))
+        assertEquals(listOf(FinalCutInterval(1_250, 8_750, listOf(manual.id))),
+            EditorMath.finalIntervals(draft))
+        val zero = EditorMath.applyPadding(draft, 0, 0, 10_000, 1_000, 9_000)
+        assertEquals(1_500L, zero.cuts.single().keepStartMs)
+        assertEquals(8_500L, zero.cuts.single().keepEndMs)
+        assertEquals(manual.copy(keepStartMs = 1_500, keepEndMs = 8_500),
+            EditorMath.newManualCut(zero.copy(cuts = emptyList()), 1_500, 8_500, 1_000, 9_000))
+    }
+
+    @Test
+    fun manualRallyOuterHandlesOnlyChangePaddingAndClampAtCore() {
+        val base = EditorDraft(sourceRevision = "fixture", updatedAtMs = 0, cuts = emptyList())
+        val manual = EditorMath.newManualCut(base, 10_000, 20_000, 0, 40_000)
+        val draft = base.copy(cuts = listOf(manual))
+        val start = EditorMath.setKeepBoundary(draft, manual.id, 7_000, true, 0, 40_000)
+        val both = EditorMath.setKeepBoundary(start, manual.id, 23_000, false, 0, 40_000)
+        assertEquals(manual.copy(keepStartMs = 7_000, keepEndMs = 23_000), both.cuts.single())
+        val clampedStart = EditorMath.setKeepBoundary(both, manual.id, 30_000, true, 0, 40_000)
+        val clamped = EditorMath.setKeepBoundary(clampedStart, manual.id, 0, false, 0, 40_000)
+        assertEquals(manual.copy(keepStartMs = 10_000, keepEndMs = 20_000), clamped.cuts.single())
     }
 
     @Test

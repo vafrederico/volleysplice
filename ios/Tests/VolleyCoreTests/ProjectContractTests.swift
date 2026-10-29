@@ -109,16 +109,34 @@ final class ProjectContractTests: XCTestCase {
         draft.joinGapMs = 0
         XCTAssertEqual(EditorMath.finalIntervals(draft).map(\.endMs), [2_000, 3_000])
     }
-    func testPaddingClipsToGameAndNeverRepadsManualCuts() {
+    func testPaddingClipsToGameAndRepadsManualCuts() {
         var draft = EditorMath.newDraft(ranges: [.init(id: "x", coreStartMs: 500, coreEndMs: 9_500)],
             durationMs: 10_000, gameWindow: .init(startMs: 1_000, endMs: 9_000), sourceRevision: "test")
         XCTAssertEqual(draft.cuts[0].coreStartMs, 1_000)
         XCTAssertEqual(draft.cuts[0].coreEndMs, 9_000)
         XCTAssertEqual(draft.ignoredIntervals.map(\.reason), ["outside-game-window", "outside-game-window"])
         draft = EditorMath.addManual(draft, startMs: 4_000, endMs: 5_000, bounds: .init(startMs: 1_000, endMs: 9_000))
+        XCTAssertEqual(draft.cuts[1].keepStartMs, 2_000); XCTAssertEqual(draft.cuts[1].keepEndMs, 7_000)
         let padded = EditorMath.applyPadding(draft, beforeMs: 20_000, afterMs: -1, durationMs: 10_000, gameWindow: .init(startMs: 1_000, endMs: 9_000))
         XCTAssertEqual(padded.beforePaddingMs, 10_000); XCTAssertEqual(padded.afterPaddingMs, 0)
-        XCTAssertEqual(padded.cuts[1].keepStartMs, 4_000); XCTAssertEqual(padded.cuts[1].keepEndMs, 5_000)
+        XCTAssertEqual(padded.cuts[1].keepStartMs, 1_000); XCTAssertEqual(padded.cuts[1].keepEndMs, 5_000)
+        XCTAssertEqual(padded.cuts[1].coreStartMs, 4_000); XCTAssertEqual(padded.cuts[1].coreEndMs, 5_000)
+    }
+    func testManualRallyUsesCurrentPaddingThroughEditsAndExport() throws {
+        let bounds = TimeRange(startMs: 1_000, endMs: 39_000)
+        var draft = EditorDraft(sourceRevision: "fixture", cuts: [])
+        draft.beforePaddingMs = 3_000; draft.afterPaddingMs = 1_500
+        draft = EditorMath.addManual(draft, startMs: 10_000, endMs: 20_000, bounds: bounds)
+        XCTAssertEqual(EditorMath.finalIntervals(draft), [.init(startMs: 7_000, endMs: 21_500, cutIds: ["M001"])])
+        draft = EditorMath.setCoreRange(draft, cutId: "M001", startMs: 12_000, endMs: 18_000, bounds: bounds)
+        XCTAssertEqual(draft.cuts[0].keepStartMs, 9_000); XCTAssertEqual(draft.cuts[0].keepEndMs, 19_500)
+        draft = EditorMath.applyPadding(draft, beforeMs: 1_000, afterMs: 4_000, durationMs: 40_000, gameWindow: bounds)
+        XCTAssertEqual(EditorMath.finalIntervals(draft), [.init(startMs: 11_000, endMs: 22_000, cutIds: ["M001"])])
+        XCTAssertEqual(try JSONDecoder().decode(EditorDraft.self, from: JSONEncoder().encode(draft)), draft)
+        let edge = EditorMath.addManual(draft, startMs: 38_500, endMs: 1_500, bounds: bounds)
+        XCTAssertEqual(edge.cuts[1].keepStartMs, 1_000); XCTAssertEqual(edge.cuts[1].keepEndMs, 39_000)
+        let zero = EditorMath.applyPadding(edge, beforeMs: 0, afterMs: 0, durationMs: 40_000, gameWindow: bounds)
+        XCTAssertEqual(zero.cuts[1].keepStartMs, 1_500); XCTAssertEqual(zero.cuts[1].keepEndMs, 38_500)
     }
     func testManualCutSurvivesWholeRallySuppressionAndTouchOverridesDefault() {
         var draft = EditorDraft(sourceRevision: "test", cuts: [
@@ -177,12 +195,16 @@ final class ProjectContractTests: XCTestCase {
         XCTAssertEqual(padded.cuts[0].keepStartMs, 0); XCTAssertEqual(padded.cuts[0].keepEndMs, 10_000)
         try padded.validate(durationMs: 10_000)
     }
-    func testManualOuterBoundaryMovesCoreAndDeletePreservesInferredCuts() throws {
+    func testManualOuterBoundaryPreservesCoreAndDeletePreservesInferredCuts() throws {
         let original = EditorDraft(sourceRevision: "test", cuts: [
             .init(id: "R001", coreStartMs: 1_000, coreEndMs: 2_000),
             .init(id: "M001", coreStartMs: 4_000, coreEndMs: 6_000, origin: .manual)])
         var edited = EditorMath.setKeepBoundary(original, cutId: "M001", valueMs: 3_500, isStart: true, bounds: .init(startMs: 0, endMs: 10_000))
-        XCTAssertEqual(edited.cuts[1].coreStartMs, 3_500); XCTAssertEqual(edited.cuts[1].keepStartMs, 3_500)
+        XCTAssertEqual(edited.cuts[1].coreStartMs, 4_000); XCTAssertEqual(edited.cuts[1].keepStartMs, 3_500)
+        edited = EditorMath.setKeepBoundary(edited, cutId: "M001", valueMs: 7_000, isStart: false, bounds: .init(startMs: 0, endMs: 10_000))
+        XCTAssertEqual(edited.cuts[1].coreEndMs, 6_000); XCTAssertEqual(edited.cuts[1].keepEndMs, 7_000)
+        edited = EditorMath.resetExtraTime(edited, cutIds: ["M001"], bounds: .init(startMs: 0, endMs: 10_000))
+        XCTAssertEqual(edited.cuts[1].keepStartMs, 2_000); XCTAssertEqual(edited.cuts[1].keepEndMs, 8_000)
         edited.reviewedCutIds = ["M001"]
         edited = EditorMath.deleteManualCuts(edited, cutIds: ["R001", "M001"])
         XCTAssertEqual(edited.cuts, [original.cuts[0]])

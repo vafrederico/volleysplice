@@ -971,10 +971,6 @@ export async function getPreparedLabelingCatalog(): Promise<PreparedLabelingCata
   };
 }
 
-export async function listPreparedLabelingTasks(): Promise<PreparedLabelingTask[]> {
-  return (await getPreparedLabelingCatalog()).tasks;
-}
-
 export async function getPreparedLabelingTask(id: string): Promise<PreparedLabelingTask> {
   if (!/^[A-Za-z0-9_-]+$/.test(id)) throw new LabelingTaskNotFoundError();
   const entries = await readAllEntries();

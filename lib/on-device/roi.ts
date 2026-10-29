@@ -7,8 +7,6 @@ const INDOOR_DEFAULT: NormalizedRoi = {
   height: 0.86,
 };
 
-const FULL_FRAME: NormalizedRoi = { x: 0, y: 0, width: 1, height: 1 };
-
 const KNOWN_PROFILES: ReadonlyArray<{
   videoId: string;
   label: string;
@@ -65,17 +63,6 @@ function cloneRoi(roi: NormalizedRoi): NormalizedRoi {
   return { ...roi };
 }
 
-export function clampRoi(roi: NormalizedRoi): NormalizedRoi {
-  const x = Math.min(0.99, Math.max(0, roi.x));
-  const y = Math.min(0.99, Math.max(0, roi.y));
-  return {
-    x,
-    y,
-    width: Math.min(1 - x, Math.max(0.01, roi.width)),
-    height: Math.min(1 - y, Math.max(0.01, roi.height)),
-  };
-}
-
 export function inferRoiProfile(filename: string): RoiProfile {
   const known = KNOWN_PROFILES.find(({ videoId }) => filename.includes(videoId));
   if (known) {
@@ -91,15 +78,6 @@ export function inferRoiProfile(filename: string): RoiProfile {
     label: "Indoor camera default (adjust if needed)",
     roi: cloneRoi(INDOOR_DEFAULT),
     source: "camera-default",
-  };
-}
-
-export function fullFrameRoi(): RoiProfile {
-  return {
-    id: "full-frame",
-    label: "Full frame",
-    roi: cloneRoi(FULL_FRAME),
-    source: "full-frame",
   };
 }
 

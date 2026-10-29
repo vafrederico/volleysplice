@@ -181,13 +181,3 @@ export function contextualizeFeatures(
   }
   return { values: output, names };
 }
-
-export function medianPositiveDelta(times: Float64Array): number {
-  if (times.length < 2) return 0.25;
-  const deltas: number[] = [];
-  for (let index = 1; index < times.length; index += 1) {
-    const delta = times[index] - times[index - 1];
-    if (Number.isFinite(delta) && delta > 0) deltas.push(delta);
-  }
-  return deltas.length ? quantile(deltas, 0.5) : 0.25;
-}

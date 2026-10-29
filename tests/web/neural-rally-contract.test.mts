@@ -66,8 +66,8 @@ test("neural provenance is neither ensemble agreement nor ensemble disagreement"
 });
 
 
-test("neural provenance survives both root and editor-lab draft restoration", async () => {
-  for (const editor of [await import("../../lib/cut-draft.ts"), await import("../../components/production-lab/editor/lib/cut-draft.ts")]) {
+test("neural provenance survives both production and editor-lab draft restoration", async () => {
+  for (const editor of [await import("../../prod/src/lib/cut-draft.ts"), await import("../../components/production-lab/editor/lib/cut-draft.ts")]) {
     const seed = { analysisId: "neural-test", recordingId: "fixture", duration: 10,
       rallies: [{ id: "N001", start: 2, end: 5, confidence: .9, included: true, agreement: "neural" as const }], ignoredIntervals: [] };
     const draft = editor.createCutDraft(seed);

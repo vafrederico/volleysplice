@@ -1,13 +1,7 @@
-import type { Mat } from "@techstark/opencv-js";
-
 import { runtimeAssetUrl } from "../runtime-assets.ts";
-import { neuralServingBundle, neuralServingSelection } from "./neural-serving-model.ts";
-import type { OpenedMedia } from "./media.ts";
-import { sampleSpecialistFramesSequentially } from "./specialist-frame-sampling.ts";
 import {
   composeServingSideVerdict,
   COURT_FLOW_OFFSETS_SECONDS,
-  COURT_FLOW_STATISTICS,
   courtFlowFeatureNames,
   FLIGHT_GLOBAL_STATISTICS,
   FLIGHT_GRID_COLUMNS,
@@ -20,15 +14,11 @@ import {
   SERVING_SIDE_ASSET,
   SERVING_SIDE_FEATURE_VERSION,
   SERVING_SIDE_HEIGHT,
-  SERVING_SIDE_MODEL_FINGERPRINT,
-  SERVING_SIDE_MODEL_ID,
   SERVING_SIDE_WIDTH,
-  servingSideFeatureNames,
   tiedPercentileRanks,
   type ServingSideRuntimeModel,
 } from "./serving-side-model.ts";
 import type {
-  NormalizedRoi,
   OnDeviceInterval,
   OnDeviceServingSideOutput,
   ProductionServeOutputs,
@@ -770,72 +760,4 @@ export async function evaluateServingSideFrames(
     sampled,
     onProgress,
   );
-}
-
-/**
- * Runs the frozen SERVSIDE237-FLIGHT model at each merged production interval start.
- * The complete candidate set is extracted before tied within-recording ranks are made.
- */
-export async function inferServingSides(
-  media: OpenedMedia,
-  roi: NormalizedRoi,
-  analysis: ServingSideAnalysisInput,
-  onProgress?: (progress: ServingSideProgress) => void,
-): Promise<OnDeviceServingSideOutput> {
-  const candidates = candidateIntervals(analysis);
-  const times = analysis.times ?? analysis.inferenceTimes;
-  const serveOutputs = analysis.productionServeOutputs;
-  if (!times || !serveOutputs) {
-    throw new Error("Serving-side inference requires both production serve-head outputs.");
-  }
-  if (candidates.length === 0) {
-    const neural = neuralServingBundle(analysis.modelId);
-    return {
-      modelId: neural?.id ?? SERVING_SIDE_MODEL_ID,
-      modelFingerprint: neural?.fingerprint ?? SERVING_SIDE_MODEL_FINGERPRINT,
-      featureVersion: SERVING_SIDE_FEATURE_VERSION,
-      anchorContract: SERVING_SIDE_ANCHOR_CONTRACT,
-      features: {
-        rows: 0,
-        columns: servingSideFeatureNames().length,
-        values: new Float64Array(0),
-      },
-      candidates: [],
-    };
-  }
-  onProgress?.({ stage: "loading", completed: 0, total: candidates.length, detail: "Getting serve markers ready" });
-  const plan = servingSideFramePlan(analysis, media.info.duration, null);
-  const sampled = await sampleSpecialistFramesSequentially(
-    media,
-    roi,
-    { servingSideTimes: plan.requestedTimes },
-    (completed, total) => onProgress?.({
-      stage: "frames",
-      completed,
-      total,
-      detail: `Checking serve court sides · ${completed}/${total}`,
-    }),
-  );
-  const evaluated = await evaluateServingSideFrames(
-    media.info.duration,
-    analysis,
-    null,
-    sampled.servingSide,
-    (completed, total) => onProgress?.({
-      stage: "features",
-      completed,
-      total,
-      detail: `Checking serve court sides · ${completed}/${total} rallies`,
-    }),
-  );
-  const output = neuralServingSelection(analysis.modelId)
-    ? await (await import("./neural-serving")).inferNeuralServingSideOutput(media, roi, analysis, evaluated.output, onProgress)
-    : evaluated.output;
-  onProgress?.({
-    stage: "complete",
-    completed: candidates.length,
-    total: candidates.length,
-    detail: `Serve markers ready · ${candidates.length} rallies checked`,
-  });
-  return output;
 }

@@ -3420,20 +3420,9 @@ private fun EditorScreen(
         val rally = selectedRally ?: return
         val cut = if (side == "start") rally.cuts.minBy { it.keepStartMs }
             else rally.cuts.maxBy { it.keepEndMs }
-        updateCut(cut.id) { current ->
-            if (current.origin == CutOrigin.MANUAL) {
-                if (side == "start") {
-                    val start = valueMs.coerceIn(seed.gameStartMs, current.keepEndMs - MIN_MARK_MS)
-                    current.copy(coreStartMs = start, keepStartMs = start)
-                } else {
-                    val end = valueMs.coerceIn(current.keepStartMs + MIN_MARK_MS, seed.gameEndMs)
-                    current.copy(coreEndMs = end, keepEndMs = end)
-                }
-            } else if (side == "start") {
-                current.copy(keepStartMs = valueMs.coerceIn(seed.gameStartMs, current.coreStartMs))
-            } else {
-                current.copy(keepEndMs = valueMs.coerceIn(current.coreEndMs, seed.gameEndMs))
-            }
+        updateDraft { current ->
+            EditorMath.setKeepBoundary(current, cut.id, valueMs, side == "start",
+                seed.gameStartMs, seed.gameEndMs)
         }
     }
 
@@ -4209,11 +4198,8 @@ private fun EditorScreen(
                                 end - start < RALLY_MIN_DURATION_MS || overlaps) {
                                 false
                             } else {
-                                val cut = EditableCut(
-                                    id = EditorMath.nextId("M", draft.cuts.map { it.id }),
-                                    coreStartMs = start, coreEndMs = end, keepStartMs = start, keepEndMs = end,
-                                    confidence = 1f, included = true, origin = CutOrigin.MANUAL,
-                                )
+                                val cut = EditorMath.newManualCut(draft, start, end,
+                                    seed.gameStartMs, seed.gameEndMs)
                                 player.pause(); previewEndMs = null; selectedSuggestionId = null
                                 updateDraft { current -> current.copy(
                                     cuts = current.cuts + cut,
@@ -4625,6 +4611,8 @@ private fun EditorScreen(
                             MarkingTools(
                                 draft = draft,
                                 playbackPositionMs = playbackPositionMs,
+                                minimumMs = seed.gameStartMs,
+                                maximumMs = seed.gameEndMs,
                                 flat = true,
                                 onDraft = ::updateDraft,
                                 onManualCompleted = { cut ->
@@ -5028,11 +5016,7 @@ private fun EditorScreen(
                     }
                     if (selectedSuggestion == null) {
                     Text(
-                        if (selected.origin == CutOrigin.INFERRED) {
-                            "Orange outer handles adjust padding · green inner handles adjust rally length."
-                        } else {
-                            "Drag the green handles to adjust this rally's exact start and end."
-                        },
+                        "Orange outer handles adjust padding · green inner handles adjust rally length.",
                         fontSize = 12.sp,
                         color = Muted,
                     )
@@ -5076,6 +5060,8 @@ private fun EditorScreen(
             MarkingTools(
                 draft = draft,
                 playbackPositionMs = playbackPositionMs,
+                minimumMs = seed.gameStartMs,
+                maximumMs = seed.gameEndMs,
                 onDraft = ::updateDraft,
                 onManualCompleted = { cut ->
                     selectRally(cut.id)
@@ -7424,6 +7410,8 @@ private fun TimelineLabels(start: Long, middle: Long, end: Long) {
 private fun MarkingTools(
     draft: EditorDraft,
     playbackPositionMs: Long,
+    minimumMs: Long,
+    maximumMs: Long,
     flat: Boolean = false,
     onDraft: ((EditorDraft) -> EditorDraft) -> Unit,
     onManualCompleted: (EditableCut) -> Unit,
@@ -7447,12 +7435,7 @@ private fun MarkingTools(
                             val end = max(startMark, playbackPositionMs)
                             if (end - start < MIN_MARK_MS) onMessage("A rally must be at least 0.1 seconds")
                             else {
-                                val cut = EditableCut(
-                                    id = EditorMath.nextId("M", draft.cuts.map { it.id }),
-                                    coreStartMs = start, coreEndMs = end,
-                                    keepStartMs = start, keepEndMs = end,
-                                    confidence = 1f, included = true, origin = CutOrigin.MANUAL,
-                                )
+                                val cut = EditorMath.newManualCut(draft, start, end, minimumMs, maximumMs)
                                 onDraft { it.copy(pendingManualStartMs = null, cuts = it.cuts + cut) }
                                 onManualCompleted(cut)
                             }

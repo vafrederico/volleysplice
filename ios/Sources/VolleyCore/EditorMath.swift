@@ -55,7 +55,6 @@ public enum EditorMath {
         let window = gameWindow ?? TimeRange(startMs: 0, endMs: durationMs)
         result.beforePaddingMs = clamp(beforeMs, 0, 10_000); result.afterPaddingMs = clamp(afterMs, 0, 10_000)
         result.cuts = draft.cuts.map { cut in
-            guard cut.origin == .inferred else { return cut }
             var cut = cut
             cut.keepStartMs = max(window.startMs, cut.coreStartMs - result.beforePaddingMs)
             cut.keepEndMs = min(window.endMs, cut.coreEndMs + result.afterPaddingMs)
@@ -98,27 +97,25 @@ public enum EditorMath {
                             endMs: clamp(valueMs, cut.coreStartMs + minimumMarkMs, maximumMs),
                             bounds: .init(startMs: cut.keepStartMs, endMs: maximumMs))
     }
-    /// Outer handles change export padding. Manual ranges have no separate padding, so their core follows.
+    /// Outer handles change export padding without moving the rally's play markers.
     public static func setKeepBoundary(_ draft: EditorDraft, cutId: String, valueMs: Int64, isStart: Bool, bounds: TimeRange) -> EditorDraft {
         guard let index = draft.cuts.firstIndex(where: { $0.id == cutId }) else { return draft }
         var result = draft; var cut = draft.cuts[index]
         if isStart {
-            let maximum = cut.origin == .manual ? cut.keepEndMs - minimumMarkMs : cut.coreStartMs
+            let maximum = cut.coreStartMs
             guard maximum >= bounds.startMs else { return draft }
             cut.keepStartMs = clamp(valueMs, bounds.startMs, maximum)
-            if cut.origin == .manual { cut.coreStartMs = cut.keepStartMs }
         } else {
-            let minimum = cut.origin == .manual ? cut.keepStartMs + minimumMarkMs : cut.coreEndMs
+            let minimum = cut.coreEndMs
             guard minimum <= bounds.endMs else { return draft }
             cut.keepEndMs = clamp(valueMs, minimum, bounds.endMs)
-            if cut.origin == .manual { cut.coreEndMs = cut.keepEndMs }
         }
         if cut != draft.cuts[index] { result.cuts[index] = cut; result.userTouchedCutIds.insert(cutId) }
         return alignRallyServeMarkers(result)
     }
     public static func resetExtraTime(_ draft: EditorDraft, cutIds: Set<String>, bounds: TimeRange) -> EditorDraft {
         var result = draft
-        for index in result.cuts.indices where cutIds.contains(result.cuts[index].id) && result.cuts[index].origin == .inferred {
+        for index in result.cuts.indices where cutIds.contains(result.cuts[index].id) {
             let original = result.cuts[index]
             result.cuts[index].keepStartMs = max(bounds.startMs, original.coreStartMs - draft.beforePaddingMs)
             result.cuts[index].keepEndMs = min(bounds.endMs, original.coreEndMs + draft.afterPaddingMs)
@@ -159,7 +156,10 @@ public enum EditorMath {
         let end = clamp(max(startMs, endMs), bounds.startMs, bounds.endMs)
         guard end - start >= minimumMarkMs else { return draft }
         var result = draft
-        result.cuts.append(.init(id: nextId(prefix: "M", ids: draft.cuts.map(\.id)), coreStartMs: start, coreEndMs: end, origin: .manual))
+        result.cuts.append(.init(id: nextId(prefix: "M", ids: draft.cuts.map(\.id)),
+            coreStartMs: start, coreEndMs: end,
+            keepStartMs: max(bounds.startMs, start - draft.beforePaddingMs),
+            keepEndMs: min(bounds.endMs, end + draft.afterPaddingMs), origin: .manual))
         result.pendingManualStartMs = nil
         return result
     }

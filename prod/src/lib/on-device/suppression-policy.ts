@@ -16,10 +16,6 @@ export type ProductionComponentSource =
   | "all-labels-v2"
   | "previous-production";
 
-export type ProductionComponentInterval = OnDeviceInterval & {
-  source: ProductionComponentSource;
-};
-
 export type SuppressionSuggestion = {
   id: string;
   logicalId: string;
@@ -49,22 +45,6 @@ const POLICY_CONFIG: Record<
   conservative: { agreementPaddingMs: 2_000, joinGapMs: 500, overlapOnly: false },
   balanced: { agreementPaddingMs: 1_500, joinGapMs: 500, overlapOnly: false },
   aggressive: { agreementPaddingMs: 0, joinGapMs: 0, overlapOnly: true },
-};
-
-export const SUPPRESSION_POLICY_LABELS: Record<SuppressionPolicyId, string> = {
-  none: "No suppression",
-  conservative: "Conservative",
-  balanced: "Balanced",
-  aggressive: "Aggressive",
-};
-
-export const SUPPRESSION_POLICY_DIAGNOSTIC_NAMES: Record<
-  ActiveSuppressionPolicyId,
-  string
-> = {
-  conservative: "Zero non-exempt misses",
-  balanced: "Aggressive intermediate",
-  aggressive: "Raw connected",
 };
 
 function toMs(seconds: number): number {

@@ -59,7 +59,9 @@ final class RallyStartMarkerTests: XCTestCase {
         XCTAssertEqual(try tracking(EditorMath.setCoreStart(removed, cutId: "R001", valueMs: 12000, minimumMs: 0)), try tracking(removed))
         var manual = EditorDraft(sourceRevision: "fixture", cuts: [.init(id: "M001", coreStartMs: 10000, coreEndMs: 20000, origin: .manual)])
         manual.scoreTracking = try ScoreTracking(serveMarkers: [.init(id: "S001", timestampMs: 10000, side: .near, rallyId: "M001")]).jsonValue()
-        let moved = EditorMath.setKeepBoundary(manual, cutId: "M001", valueMs: 9000, isStart: true, bounds: bounds)
+        let padded = EditorMath.setKeepBoundary(manual, cutId: "M001", valueMs: 9000, isStart: true, bounds: bounds)
+        XCTAssertEqual(try tracking(padded).serveMarkers.first?.timestampMs, 10000)
+        let moved = EditorMath.setCoreStart(padded, cutId: "M001", valueMs: 9000, minimumMs: bounds.startMs)
         XCTAssertEqual(try tracking(moved).serveMarkers.first?.timestampMs, 9000)
     }
 
