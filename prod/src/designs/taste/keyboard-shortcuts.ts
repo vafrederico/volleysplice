@@ -4,7 +4,7 @@ export const KEYBOARD_SHORTCUTS = [
   { action: "playPause", keys: [" "], label: "Space", description: "Play / pause playback" },
   { action: "near", keys: ["n"], label: "N", description: "Set near serve" },
   { action: "far", keys: ["f"], label: "F", description: "Set far serve" },
-  { action: "review", keys: ["r"], label: "R", description: "Next review after playhead; cycles cleaned up → clips → serves" },
+  { action: "review", keys: ["r"], label: "R", description: "Next review after playhead in timeline order (clips, serves, cleanup)" },
   { action: "remove", keys: ["backspace"], label: "Backspace", description: "Remove current rally" },
   { action: "keep", keys: ["k"], label: "K", description: "Keep current rally" },
   { action: "back", keys: ["arrowleft"], label: "←", description: "Move playhead back 5 seconds" },
@@ -47,28 +47,22 @@ export function shortcutAction(event: {
 }
 
 export type ReviewItem = { kind: "cleanup" | "clip" | "serve"; id: string; time: number };
-const REVIEW_ORDER = { cleanup: 0, clip: 1, serve: 2 };
+const REVIEW_KIND_ORDER = { cleanup: 0, clip: 1, serve: 2 };
 function compareReviewItems(left: ReviewItem, right: ReviewItem) {
-  return REVIEW_ORDER[left.kind] - REVIEW_ORDER[right.kind] ||
-    left.time - right.time || left.id.localeCompare(right.id);
+  return left.time - right.time ||
+    REVIEW_KIND_ORDER[left.kind] - REVIEW_KIND_ORDER[right.kind] || left.id.localeCompare(right.id);
 }
 
-// Remember the category, but derive progress from the timeline so seeking back
-// revisits earlier pending items. Opening a rally at its padding must not repeat it.
+// Keep the opened item's timeline position even when opening it seeks to padding
+// or resolving it removes it from the queue. Tied items must each get a turn.
 export function nextReviewItem(
   items: ReviewItem[],
-  category: ReviewItem["kind"] | null,
+  current: ReviewItem | null,
   playhead: number,
-  currentId?: string,
 ) {
   const ordered = [...items].sort(compareReviewItems);
-  const kinds = ["cleanup", "clip", "serve"] as const;
-  const index = REVIEW_ORDER[category ?? "cleanup"];
-  const next = ordered.find((item) => item.kind === kinds[index] && item.time > playhead && item.id !== currentId);
-  if (next) return next;
-  for (let offset = 1; offset <= kinds.length; offset++) {
-    const first = ordered.find((item) => item.kind === kinds[(index + offset) % kinds.length]);
-    if (first) return first;
-  }
-  return null;
+  const time = Math.max(playhead, current?.time ?? playhead);
+  return ordered.find((item) => item.time > time ||
+    (current !== null && item.time === time && compareReviewItems(item, current) > 0)) ??
+    ordered[0] ?? null;
 }

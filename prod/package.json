@@ -15,6 +15,7 @@
     "test:score-recovery": "node scripts/test-score-specialists.mjs && node scripts/test-score-specialist-runtime.mjs && node scripts/test-score-recovery-ui.mjs && node scripts/test-score-recovery-cancellation-ui.mjs",
     "test:score-source-integration": "node --test scripts/test-score-source-integration-ui.mjs",
     "test:review-persistence": "node --experimental-strip-types scripts/test-review-persistence.mjs && node scripts/test-review-persistence-ui.mjs && node scripts/test-explicit-split-ui.mjs",
+    "test:review-navigation": "node scripts/test-review-navigation-ui.mjs",
     "test:side-switch-import": "node scripts/test-side-switch-import-ui.mjs",
     "test:project-roundtrip": "node scripts/test-app-project-roundtrip-ui.mjs",
     "test:reconnect-ui": "node scripts/test-app-reconnect-ui.mjs && node scripts/test-app-source-reuse-ui.mjs && node scripts/test-app-source-race-ui.mjs",
