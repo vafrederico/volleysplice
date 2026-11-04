@@ -18,6 +18,7 @@ Object.assign(globalThis, {
   requestAnimationFrame: (callback) => setTimeout(callback, 0), cancelAnimationFrame: clearTimeout,
 });
 Object.defineProperty(globalThis, "navigator", { value: dom.window.navigator, configurable: true });
+window.localStorage.setItem("volleysplice:review-workspace", "editor");
 window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
 dom.window.HTMLElement.prototype.scrollIntoView = () => {};
 dom.window.HTMLCanvasElement.prototype.getContext = () => null;

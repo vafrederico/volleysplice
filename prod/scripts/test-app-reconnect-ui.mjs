@@ -19,6 +19,7 @@ Object.assign(globalThis, { window: dom.window, document: dom.window.document,
   ResizeObserver: class { observe() {} disconnect() {} },
   requestAnimationFrame: callback => setTimeout(callback, 0), cancelAnimationFrame: clearTimeout });
 Object.defineProperty(globalThis, "navigator", { value: dom.window.navigator, configurable: true });
+window.localStorage.setItem("volleysplice:review-workspace", "editor");
 window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
 window.scrollTo = () => {}; window.isSecureContext = true;
 window.VideoDecoder = window.AudioDecoder = window.VideoFrame = class {};
@@ -74,7 +75,7 @@ try {
   window.localStorage.setItem("volleycut:rally-desk-tour:v1", "dismissed");
   await act(async () => root.render(React.createElement(App)));
   await waitFor(() => document.querySelector('.td-reconnect:has(input[type="file"])'));
-  await click(".td-stages button:last-child");
+  await click(".rw-workspace-tabs button:last-child");
   assert.equal([...document.querySelectorAll("button")].find(b => b.textContent === "Reconnect source for MP4").disabled, true);
   await waitFor(async () => (await store.listProjects()).find(p => p.id === first.id).reviewDraft);
   const saved = JSON.stringify((await store.listProjects()).find(p => p.id === first.id).reviewDraft);
@@ -102,7 +103,7 @@ try {
   await attach(oneRead);
   await waitFor(() => document.querySelector(".taste-rally-desk") && !document.querySelector('.td-reconnect:has(input[type="file"])'));
   assert.equal(reads, 1, "App must authoritatively validate once before the hook links a source");
-  await click(".td-stages button:last-child");
+  await click(".rw-workspace-tabs button:last-child");
   assert.equal([...document.querySelectorAll("button")].find(b => b.textContent === "Save MP4").disabled, false);
   assert.ok(linkedFiles.every(file => file === oneRead));
 

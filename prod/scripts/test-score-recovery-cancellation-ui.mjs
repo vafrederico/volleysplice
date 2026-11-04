@@ -43,6 +43,7 @@ async function withApp(test) {
   const previous = Object.fromEntries([...Object.keys(globals), "fetch"].map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
   for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { value, writable: true, configurable: true });
   window.cv = {};
+  window.localStorage.setItem("volleysplice:review-workspace", "editor");
   window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
   window.scrollTo = () => {};
   window.isSecureContext = true;

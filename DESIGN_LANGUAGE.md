@@ -12,15 +12,26 @@ This document defines the production web editor’s visual and interaction langu
 
 ## Layout
 
-- The desktop editor is a three-part workspace:
+- Ready projects expose **Rallies**, **Editor**, and **Export**. Rallies is the initial view; a browser remembers the user's choice between Rallies and Editor. Both views edit the same draft and share undo history, score tracking, export settings, and web keyboard bindings.
+- The full Editor is a three-part workspace:
   - left: match events and scrollable clip register;
   - center: video and seekable game timeline;
   - right: current-rally controls and range tools.
 - Columns use solid light surfaces and `1px` separators. The center and right areas are not wrapped in large cards.
-- Keep project selection, Review/Export navigation, review counts, settings, and Export in the top bar to preserve vertical space.
+- Keep project selection, workspace navigation, review counts, settings, and Export in the top bar to preserve vertical space.
 - Fine-tuning is secondary and belongs in the settings modal opened by the cogwheel beside Export.
 - Setup and Analyze use the same shell, project selector, grid, ruled surfaces, type scale, and action colors as the editor. Setup may use one concise orientation heading; analysis progress stays flat and operational rather than becoming a separate marketing page.
 - On mobile, place Serves & sides above the video and the Clip register after the editor controls. Lists remain bounded and scrollable.
+
+### Focused Rallies workspace
+
+- Follow the Android Courtside review layout and saved native tablet references: video on the left, a compact decision panel on the right from 720px, and stacked video/controls on phones. Short landscape windows retain the two-pane layout with a scrollable control panel.
+- Use the native IBM Plex Sans assets, a solid `#eef3f4` background, white panels, `#131416` ink, `#5d5f60` secondary text, and `#1b6c80` timeline accent. Panels have 16px corners, controls 6px corners, and workspace navigation uses a pill. These tokens apply to Rallies; the full Editor retains the language below.
+- Keep the selected rally open through Keep/Remove and serve decisions. Next review becomes available once that rally's decisions are resolved. Review uncertain serves outside detected rallies as footage rather than silently dropping them.
+- Show neighboring rally context, draggable core boundaries, one-second trim buttons, equal Keep/Remove buttons, Near/Far/Not a serve, and Previous rally/Next review/Next rally. A trim drag is one undo action. Put split and playhead boundary commands behind More editing tools.
+- Play the focused rally from its padded start through its padded end. All rallies and Add missing rally play the continuous source. Space, navigation, trimming, score edits, marking ranges, and undo/redo retain the existing web shortcuts.
+- All rallies pairs a scrollable list with a two-column recording overview. Playback and seeking reveal the current rally; scrolling the list manually suspends following until the user seeks or selects a rally. Keep Edit rally and Add missing rally visible below the list.
+- Reuse the existing source reconnection, local persistence, and export paths. A disconnected player shows a centered reconnect prompt, the expected filename, and a prominent file-picker button. Show checking and rejection messages in that prompt. Disable Play and speed controls, ignore Space, hide the video scoreboard, and stop playback when the source is unavailable. Never advance a disconnected playhead with a simulated timer. Reconnection preserves edits and enables playback after source verification succeeds.
 
 ## Color roles
 
@@ -65,7 +76,7 @@ Color always has a second cue: text, icon, border, pattern, or state label. Butt
 
 ## Components and states
 
-- **Top bar:** transparent VolleySplice mark, current-project selector, Review/Export stages, review counters, settings, and Export.
+- **Top bar:** transparent VolleySplice mark, current-project selector, Rallies/Editor/Export navigation, and settings. The full Editor also shows review counters.
 - **Timelines:** use green for retained rally core, pale green for padding, red/blue for teams, volleyball icons for serves, and arrows for side switches. Every marker is clickable and seekable.
 - **Scrollable registers:** automatically reveal and highlight the event or rally at the playhead. Do not leave a separate persistent selection that makes controls stale.
 - **Current rally:** follows the rally at the playhead, or the latest preceding rally when between rallies. Keep/Remove are joined equal-width buttons; green means kept, red means explicitly removed, and pale red means removed only by automatic cleanup.
@@ -80,7 +91,7 @@ Color always has a second cue: text, icon, border, pattern, or state label. Butt
 - Clicking any rally, serve, side switch, or timeline position seeks the video immediately.
 - Editing follows the current playhead context; do not require a separate selected rally or serve.
 - Final-cut playback and Keep/Remove state must use the same effective suppression rules as export.
-- Ready projects expose only Review and Export. New projects begin in Setup, then Analyze, and enter the editor when inference completes.
+- Ready projects expose Rallies, Editor, and Export. New projects begin in Setup, then Analyze, and enter the saved review workspace when inference completes.
 - Preserve draft changes automatically and keep source reconnection local to the browser.
 
 ## Accessibility and responsive behavior

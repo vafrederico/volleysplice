@@ -4,7 +4,7 @@ export const KEYBOARD_SHORTCUTS = [
   { action: "playPause", keys: [" "], label: "Space", description: "Play / pause playback" },
   { action: "near", keys: ["n"], label: "N", description: "Set near serve" },
   { action: "far", keys: ["f"], label: "F", description: "Set far serve" },
-  { action: "review", keys: ["r"], label: "R", description: "Next review after playhead in timeline order (clips, serves, cleanup)" },
+  { action: "review", keys: ["r"], label: "R", description: "Rallies: click Next review; Editor: next review after playhead in timeline order (clips, serves, cleanup)" },
   { action: "remove", keys: ["backspace"], label: "Backspace", description: "Remove current rally" },
   { action: "keep", keys: ["k"], label: "K", description: "Keep current rally" },
   { action: "back", keys: ["arrowleft"], label: "←", description: "Move playhead back 5 seconds" },

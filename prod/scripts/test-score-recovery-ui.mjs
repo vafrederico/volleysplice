@@ -44,6 +44,7 @@ Object.assign(globalThis, { window: dom.window, document: dom.window.document,
   indexedDB: new IDBFactory(), ResizeObserver: class { observe() {} disconnect() {} },
   requestAnimationFrame: (callback) => setTimeout(callback, 0), cancelAnimationFrame: clearTimeout });
 Object.defineProperty(globalThis, "navigator", { value: dom.window.navigator, configurable: true });
+window.localStorage.setItem("volleysplice:review-workspace", "editor");
 window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
 window.scrollTo = () => {};
 window.confirm = () => true;
@@ -93,7 +94,7 @@ try {
   const mount = async (project, reset = true, extras = []) => {
     if (root) await act(async () => { root.unmount(); await new Promise((resolve) => setTimeout(resolve, 30)); });
     if (reset) {
-      globalThis.indexedDB = new IDBFactory(); window.localStorage.clear();
+      globalThis.indexedDB = new IDBFactory(); window.localStorage.clear(); window.localStorage.setItem("volleysplice:review-workspace", "editor");
       Object.assign(project, await store.putProject(project, { expectedSource: null }));
       for (const extra of extras) Object.assign(extra, await store.putProject(extra, { expectedSource: null }));
       window.localStorage.setItem(store.SELECTED_PROJECT_STORAGE_KEY, project.id);
@@ -138,7 +139,7 @@ try {
   await click("Export");
   assert.match(text(), /Serve predictions are incomplete/);
   assert.doesNotMatch(text(), /All serve sides checked/);
-  await click("Review");
+  await click("Editor");
   await inputFile(document.querySelector('.td-reconnect input[type="file"]'), new File(["wrong"], "other.mp4", { lastModified: 100 }));
   await waitFor(() => /does not match/.test(text()));
   assert.match(text(), /does not match/);

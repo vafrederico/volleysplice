@@ -36,6 +36,7 @@ Object.defineProperty(globalThis, "navigator", {
   value: dom.window.navigator,
   configurable: true,
 });
+window.localStorage.setItem("volleysplice:review-workspace", "editor");
 window.matchMedia = () => ({
   matches: false,
   addEventListener() {},
@@ -63,7 +64,7 @@ const button = (text) =>
     (node) => node.textContent === text || node.querySelector("strong")?.textContent === text,
   );
 const click = async (text) => {
-  const target = button(text);
+  const target = button(text) ?? (text === "Review" ? button("Editor") : null);
   assert.ok(target, text);
   await act(async () => target.click());
 };
@@ -200,6 +201,7 @@ try {
   // Fully unmount and reopen from IndexedDB, with no local draft fallback.
   await act(async () => root.render(null));
   window.localStorage.clear();
+  window.localStorage.setItem("volleysplice:review-workspace", "editor");
   window.localStorage.setItem("volleycut:rally-desk-tour:v1", "dismissed");
   await act(async () => root.render(React.createElement(Editor, { savedProject: savedScoreProject })));
   await waitFor(() => button("Export"));
@@ -482,6 +484,7 @@ try {
   feedbackAnalysis = { ...feedbackAnalysis, id: projectAnalysisId(imported), recordingId: imported.id };
   await act(async () => root.render(null));
   window.localStorage.clear();
+  window.localStorage.setItem("volleysplice:review-workspace", "editor");
   window.localStorage.setItem("volleycut:rally-desk-tour:v1", "dismissed");
   window.localStorage.setItem("volleysplice:export:fade-scores", "false");
   Object.assign(imported, await putProject(imported, { expectedSource: null }));
@@ -535,6 +538,7 @@ try {
   await act(async () => { portableSaved = (await listProjects()).find((value) => value.id === imported.id); });
   await act(async () => root.render(null));
   window.localStorage.clear();
+  window.localStorage.setItem("volleysplice:review-workspace", "editor");
   window.localStorage.setItem("volleycut:rally-desk-tour:v1", "dismissed");
   window.localStorage.setItem("volleysplice:export:fade-scores", "false");
   await act(async () => root.render(React.createElement(Editor, { key: "portable-reopen", savedProject: portableSaved })));
@@ -575,6 +579,7 @@ try {
       feedbackAnalysis = { ...feedbackAnalysis, id: projectAnalysisId(resetProject), recordingId: resetProject.id };
       await act(async () => root.render(null));
       window.localStorage.clear();
+      window.localStorage.setItem("volleysplice:review-workspace", "editor");
       window.localStorage.setItem("volleycut:rally-desk-tour:v1", "dismissed");
       window.localStorage.setItem("volleycut:production-lab:rally-desk-tour:v1", "dismissed");
       Object.assign(resetProject, await putProject(resetProject, { expectedSource: null }));
@@ -660,6 +665,7 @@ try {
     feedbackAnalysis = { ...feedbackAnalysis, id: projectAnalysisId(savedProject), recordingId: savedProject.id };
     await act(async () => root.render(null));
     window.localStorage.clear();
+    window.localStorage.setItem("volleysplice:review-workspace", "editor");
     for (const prefix of ["volleycut", "volleycut:production-lab"]) {
       window.localStorage.setItem(`${prefix}:rally-desk-tour:v1`, "dismissed");
     }

@@ -18,6 +18,7 @@ Object.assign(globalThis, { window: dom.window, document: dom.window.document,
   ResizeObserver: class { observe() {} disconnect() {} },
   requestAnimationFrame: callback => setTimeout(callback, 0), cancelAnimationFrame: clearTimeout });
 Object.defineProperty(globalThis, "navigator", { value: dom.window.navigator, configurable: true });
+window.localStorage.setItem("volleysplice:review-workspace", "editor");
 window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
 window.scrollTo = () => {};
 window.isSecureContext = true;
@@ -68,7 +69,7 @@ try {
     createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" };
   window.localStorage.setItem("volleycut:rally-desk-tour:v1", "dismissed");
   const download = async () => {
-    await click(".td-stages button:last-child"); await click('input[value="feedback"]');
+    await click(".rw-workspace-tabs button:last-child"); await click('input[value="feedback"]');
     downloaded = undefined; await clickText("Save project"); assert.ok(downloaded);
     return JSON.parse(await downloaded.text());
   };

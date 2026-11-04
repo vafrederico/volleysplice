@@ -83,6 +83,8 @@ jobs:
           npm run test:web
           node --test scripts/browser-distilled-large-contract.test.mjs
           npm --prefix prod run test:review-persistence
+          npm --prefix prod run test:rally-workspace
+          npm --prefix prod run test:review-navigation
           npm --prefix prod run test:app-export
           npm --prefix prod run test:score-recovery
           npm --prefix prod run test:score-source-integration
