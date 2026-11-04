@@ -2813,8 +2813,8 @@ function RallyDeskSettingsModal({
 }
 
 function useRallyDeskShortcuts(state: Prototype, settingsOpen: boolean) {
-  const reviewCategory = useRef<ReviewItem["kind"] | null>(null);
-  useEffect(() => { reviewCategory.current = null; }, [state.selectedProjectId]);
+  const reviewCursor = useRef<{ item: ReviewItem; seekRequest: number } | null>(null);
+  useEffect(() => { reviewCursor.current = null; }, [state.selectedProjectId]);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target instanceof Element ? event.target : null;
@@ -2896,9 +2896,11 @@ function useRallyDeskShortcuts(state: Prototype, settingsOpen: boolean) {
           if (state.scoreEnabled) items.push(...state.activeScoreMarkers
             .filter((marker) => marker.side === "review")
             .map((marker): ReviewItem => ({ kind: "serve", id: marker.id, time: marker.timestamp })));
-          const next = nextReviewItem(items, reviewCategory.current, state.playhead,
-            reviewCategory.current === "serve" ? state.selectedScoreMarkerId : state.selectedId);
-          reviewCategory.current = next?.kind ?? null;
+          // A manual seek or another navigation action starts again at the playhead.
+          const current = reviewCursor.current?.seekRequest === state.seekRequest
+            ? reviewCursor.current.item : null;
+          const next = nextReviewItem(items, current, state.playhead);
+          reviewCursor.current = next ? { item: next, seekRequest: state.seekRequest + 1 } : null;
           if (next) {
             state.setFinalPreview(false);
             state.setPlaying(false);

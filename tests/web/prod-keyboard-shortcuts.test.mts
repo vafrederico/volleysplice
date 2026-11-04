@@ -56,39 +56,61 @@ const items: ReviewItem[] = [
   { kind: "cleanup", id: "x1", time: 10 },
 ];
 
-test("R starts with cleanup and visits every item before wrapping, without modifying the queue", () => {
+test("R interleaves clips, serves, and cleanup by time before wrapping, without modifying the queue", () => {
   let cursor: ReviewItem | null = null;
   const visited = [];
   for (let i = 0; i < 6; i++) {
-    cursor = nextReviewItem(items, cursor?.kind ?? null, cursor?.time ?? 0, cursor?.id);
+    cursor = nextReviewItem(items, cursor, cursor?.time ?? 0);
     visited.push(cursor?.id);
   }
-  assert.deepEqual(visited, ["x1", "x2", "c1", "s1", "s2", "x1"]);
+  assert.deepEqual(visited, ["c1", "s1", "x1", "s2", "x2", "c1"]);
   assert.equal(items[0].id, "s2");
 });
 
 test("review progression survives resolving the current item and skips empty queues", () => {
-  const previous = items.find((item) => item.id === "x2")!;
-  assert.equal(nextReviewItem(items.filter((item) => item.id !== "x2"), previous.kind, previous.time)?.id, "c1");
+  const previous = items.find((item) => item.id === "x1")!;
+  assert.equal(nextReviewItem(items.filter((item) => item.id !== previous.id), previous, previous.time)?.id, "s2");
   assert.equal(nextReviewItem(items.filter((item) => item.kind === "serve"), null, 0)?.id, "s1");
-  assert.equal(nextReviewItem([], previous.kind, previous.time), null);
+  assert.equal(nextReviewItem([], previous, previous.time), null);
   assert.equal(nextReviewItem([], null, 0), null);
   const withoutServes = items.filter((item) => item.kind !== "serve");
-  assert.equal(nextReviewItem(withoutServes, "serve", 50)?.id, "x1");
-  assert.equal(nextReviewItem(withoutServes, "clip", 1, "c1")?.id, "x1");
+  assert.equal(nextReviewItem(withoutServes, items[0], 50)?.id, "x2");
 });
 
-test("R uses the playhead within the current category after seeking backward or forward", () => {
-  assert.equal(nextReviewItem(items, "cleanup", 5)?.id, "x1");
-  assert.equal(nextReviewItem(items, "cleanup", 20)?.id, "x2");
-  assert.equal(nextReviewItem(items, "cleanup", 95)?.id, "c1");
-  assert.equal(nextReviewItem(items, "serve", 1)?.id, "s1");
-  assert.equal(nextReviewItem(items, "serve", 10)?.id, "s2");
-  assert.equal(nextReviewItem(items, null, 20)?.id, "x2");
+test("R uses the new playhead after seeking backward or forward", () => {
+  assert.equal(nextReviewItem(items, null, 0)?.id, "c1");
+  assert.equal(nextReviewItem(items, null, 1)?.id, "s1");
+  assert.equal(nextReviewItem(items, null, 5)?.id, "x1");
+  assert.equal(nextReviewItem(items, null, 20)?.id, "s2");
+  assert.equal(nextReviewItem(items, null, 95)?.id, "c1");
+  assert.equal(nextReviewItem(items, items[1], 20)?.id, "s2", "playback can advance beyond the opened item");
 });
 
-test("R skips the opened rally in its padding and advances after resolving it", () => {
-  assert.equal(nextReviewItem(items, "cleanup", 8, "x1")?.id, "x2");
-  assert.equal(nextReviewItem(items.filter(item => item.id !== "x1"), "cleanup", 8, "x1")?.id, "x2");
-  assert.equal(nextReviewItem(items, "cleanup", 88, "x2")?.id, "c1");
+test("R skips the opened rally and earlier items in its padding, even after resolving it", () => {
+  const current = items.find((item) => item.id === "x1")!;
+  const paddedItems: ReviewItem[] = [...items, { kind: "serve", id: "in-padding", time: 9 }];
+  assert.equal(nextReviewItem(paddedItems, current, 8)?.id, "s2");
+  assert.equal(nextReviewItem(paddedItems.filter(item => item.id !== current.id), current, 8)?.id, "s2");
+});
+
+test("R visits each item at a shared timestamp, including clip and serve IDs that collide", () => {
+  const tied: ReviewItem[] = [
+    { kind: "serve", id: "b", time: 10 },
+    { kind: "clip", id: "same", time: 10 },
+    { kind: "cleanup", id: "cleanup", time: 10 },
+    { kind: "serve", id: "same", time: 10 },
+    { kind: "clip", id: "later", time: 20 },
+  ];
+  let cursor: ReviewItem | null = null;
+  const visited = [];
+  for (let i = 0; i < 6; i++) {
+    cursor = nextReviewItem(tied, cursor, cursor?.time ?? 0);
+    visited.push([cursor?.kind, cursor?.id]);
+  }
+  assert.deepEqual(visited, [
+    ["cleanup", "cleanup"], ["clip", "same"], ["serve", "b"],
+    ["serve", "same"], ["clip", "later"], ["cleanup", "cleanup"],
+  ]);
+  const clip = tied[1];
+  assert.equal(nextReviewItem(tied.filter(item => item !== clip), clip, 8)?.id, "b");
 });
