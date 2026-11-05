@@ -19,6 +19,7 @@ Object.assign(globalThis, {
 });
 Object.defineProperty(globalThis, "navigator", { value: dom.window.navigator, configurable: true });
 window.localStorage.setItem("volleysplice:review-workspace", "editor");
+window.localStorage.setItem("volleycut:rally-desk-tour:v1", "dismissed");
 window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
 dom.window.HTMLElement.prototype.scrollIntoView = () => {};
 dom.window.HTMLCanvasElement.prototype.getContext = () => null;

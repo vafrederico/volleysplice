@@ -109,6 +109,47 @@ try {
   await key("r");
   assert.match(document.querySelector(".rw-complete").textContent, /All checked/);
 
+  const markerDraft = structuredClone(draft);
+  markerDraft.beforePaddingSeconds = 0; markerDraft.afterPaddingSeconds = 0;
+  markerDraft.cuts = markerDraft.cuts.map(cut => ({ ...cut, keepStart: cut.coreStart, keepEnd: cut.coreEnd }));
+  await act(async () => root.render(React.createElement(RallyDesk, { key: "timeline-markers", review: { ...review, draft: markerDraft } })));
+  await click("All rallies (2) →");
+  const playheadMarker = () => {
+    const markers = document.querySelectorAll(".rw-source-map [data-playhead-marker]");
+    assert.equal(markers.length, 1, "the source overview has exactly one playback circle");
+    return markers[0];
+  };
+  assert.equal(playheadMarker().dataset.playheadMarker, "1");
+  await click("Open rally 2");
+  assert.equal(document.querySelector('[aria-label="Source playhead"]').value, "30");
+  assert.equal(playheadMarker().dataset.playheadMarker, "2", "the exact midpoint belongs only to the second column");
+  for (let i = 0; i < 7; i++) await key("ArrowRight");
+  assert.equal(playheadMarker().dataset.playheadMarker, "2");
+  assert.equal(playheadMarker().style.top, "100%", "recording end retains one circle at the end of column two");
+  await click("Open rally 1");
+  assert.equal(playheadMarker().dataset.playheadMarker, "1", "seeking backward moves the same indicator back to column one");
+  const list = document.querySelector(".rw-rally-list");
+  Object.defineProperty(list, "clientHeight", { value: 100, configurable: true });
+  list.getBoundingClientRect = () => ({ top: 0, bottom: 100 });
+  list.children[0].getBoundingClientRect = () => ({ top: -80, bottom: 0 });
+  list.children[1].getBoundingClientRect = () => ({ top: 0, bottom: 80 });
+  const beforeScroll = document.querySelector('[aria-label="Source playhead"]').value;
+  const beforeScrollDraft = structuredClone(saved);
+  await act(async () => {
+    list.dispatchEvent(new window.WheelEvent("wheel", { bubbles: true, deltaY: 80 }));
+    list.dispatchEvent(new window.Event("scroll", { bubbles: true }));
+  });
+  for (const selector of [".rw-rally-list", ".rw-source-map", ".rw-source-slider"]) {
+    assert.equal(document.querySelector(`${selector} [data-rally-location]`).dataset.rallyLocation, "R002", "matching diamonds follow the centered list rally");
+  }
+  assert.equal(document.querySelector('[aria-label="Source playhead"]').value, beforeScroll, "list scrolling never seeks the video");
+  assert.deepEqual(saved, beforeScrollDraft, "list scrolling never edits the draft");
+  await click("Edit rally 1");
+  assert.equal(document.querySelector(".rw-bounds [data-rally-location]").dataset.rallyLocation, "R001");
+  await click("Editor");
+  assert.equal(document.querySelectorAll(".rd-timeline [data-rally-location]").length, 1);
+  assert.equal(document.querySelector(".rd-timeline [data-rally-location]").dataset.rallyLocation, "R001");
+
   let playRequests = 0;
   dom.window.HTMLMediaElement.prototype.play = async () => { playRequests++; };
   function ReconnectHarness({ available = true }) {

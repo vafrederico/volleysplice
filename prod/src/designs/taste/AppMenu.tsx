@@ -9,12 +9,14 @@ export function AppMenu({
   onResetLayout,
   projectName,
   onResetProject,
+  onRestartTour,
 }: {
   dark: boolean;
   onToggleTheme: () => void;
   onResetLayout: () => void;
   projectName: string;
   onResetProject: () => void;
+  onRestartTour?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
@@ -109,6 +111,7 @@ export function AppMenu({
           }}>
             Keyboard shortcuts
           </button>
+          {onRestartTour && <button type="button" onClick={() => select(onRestartTour)}>Restart tutorial</button>}
         </nav>
       )}
       <dialog

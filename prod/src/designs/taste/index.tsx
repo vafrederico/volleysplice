@@ -43,7 +43,7 @@ import {
   youtubeChaptersText,
 } from "@/lib/youtube-chapters";
 import { ScoreOverlay } from "@/components/ScoreOverlay";
-import { RallyDeskGuidedTour } from "@/components/GuidedTour";
+import { RalliesGuidedTour, type RalliesTourDestination } from "@/components/RalliesGuidedTour";
 import {
   createModelFeedbackBundle,
   modelFeedbackBlob,
@@ -61,7 +61,7 @@ import { AppMenu } from "./AppMenu";
 import { cleanupDecisionsForRally, cleanupReviewDecisions, normalizeCleanupDecisions } from "./cleanup-decisions";
 import { editHistoryKey, moveHistory, readEditHistory, recordEdit, writeEditHistory } from "./edit-history";
 import { nextReviewItem, shortcutAction, type ReviewItem } from "./keyboard-shortcuts";
-import { RallyReviewWorkspace } from "./RallyReviewWorkspace";
+import { RallyReviewWorkspace, type RalliesTourView } from "./RallyReviewWorkspace";
 
 import "./taste-designs.css";
 import "./rally-review.css";
@@ -1907,7 +1907,7 @@ function VideoStage({
             onClick={() => state.setPlaying(!state.playing)}
           />
         ) : (
-          <section className="td-video-reconnect" aria-labelledby="td-video-reconnect-title">
+          <section className="td-video-reconnect" data-tour="rw-reconnect" aria-labelledby="td-video-reconnect-title">
             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 9h18M3 15h18M7 5v14M17 5v14" /></svg>
             <h2 id="td-video-reconnect-title">Reconnect your video</h2>
             <p>Your project and edits are saved. Choose the original video to watch your clips.</p>
@@ -2819,6 +2819,7 @@ function RallyDeskTimeline({ state }: { state: Prototype }) {
               aria-label={`Side switch at ${formatPreciseTime(marker.timestamp)}`}
             >⇄</button>
           ))}
+          {state.selected && inRow((state.selected.start + state.selected.end) / 2) && <span className="rw-list-marker" role="img" aria-label="Selected rally location" data-rally-location={state.selected.id} style={{ left: `${timelinePercent((state.selected.start + state.selected.end) / 2 - start, duration)}%` }} />}
           {playheadInRow && <span className="rd-timeline-playhead" style={{ left: `${timelinePercent(state.playhead - start, duration)}%` }} />}
         </div>
         <div className="rd-timeline-times"><span>{formatTime(start)}</span><span>{formatTime((start + end) / 2)}</span><span>{formatTime(end)}</span></div>
@@ -2855,7 +2856,7 @@ function RallyDeskSettingsModal({
     <div className="rd-settings-backdrop" role="presentation" onMouseDown={(event) => {
       if (event.target === event.currentTarget) onClose();
     }}>
-      <section className="rd-settings-dialog" role="dialog" aria-modal="true" aria-labelledby="rd-settings-title">
+      <section className="rd-settings-dialog" data-tour="rw-settings" role="dialog" aria-modal="true" aria-labelledby="rd-settings-title">
         <header>
           <div><p className="td-kicker">Final cut settings</p><h2 id="rd-settings-title">Fine-tune final cut</h2></div>
           <button type="button" onClick={onClose} aria-label="Close final cut settings">×</button>
@@ -2997,8 +2998,22 @@ export function RallyDesk({
     try { window.localStorage.setItem("volleysplice:review-workspace", next); } catch { /* Session choice still works. */ }
   }
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [tourActive, setTourActive] = useState(false);
+  const [tourRestartToken, setTourRestartToken] = useState(0);
+  const [tourView, setTourView] = useState<RalliesTourView | null>(null);
+  function handleTourActive(active: boolean) {
+    setTourActive(active);
+    if (!active) setTourView(null);
+  }
+  function navigateTour(destination: RalliesTourDestination) {
+    state.setPlaying(false);
+    setSettingsOpen(destination === "settings");
+    setWorkspace(destination === "editor" ? "editor" : "rallies");
+    state.setStage(destination === "export" ? "deliver" : "review");
+    setTourView(destination === "browse" || destination === "add" || destination === "edit" ? destination : "review");
+  }
   const rallyNextReviewButton = useRef<HTMLButtonElement>(null);
-  useRallyDeskShortcuts(state, settingsOpen, workspace === "rallies" ? rallyNextReviewButton : undefined);
+  useRallyDeskShortcuts(state, settingsOpen || tourActive, workspace === "rallies" ? rallyNextReviewButton : undefined);
   const layoutPreferences = useWorkspaceLayout();
   return (
     <main className={`taste-root taste-rally-desk ${workspace === "rallies" && state.stage === "review" ? "is-rallies-workspace" : ""}`} data-theme={state.dark ? "dark" : "light"}>
@@ -3007,17 +3022,17 @@ export function RallyDesk({
         {state.stage === "review" && <RallyDeskProjectSelector state={state} className="rd-topbar-project" onDeleteProject={onDeleteProject} />}
         <nav className="rw-workspace-tabs" aria-label="VolleySplice workflow">
           <button type="button" aria-current={state.stage === "review" && workspace === "rallies" ? "page" : undefined} onClick={() => changeWorkspace("rallies")}>Rallies</button>
-          <button type="button" aria-current={state.stage === "review" && workspace === "editor" ? "page" : undefined} onClick={() => changeWorkspace("editor")}>Editor</button>
-          <button type="button" aria-current={state.stage === "deliver" ? "page" : undefined} onClick={() => state.setStage("deliver")}>Export</button>
+          <button type="button" data-tour="rw-editor-tab" aria-current={state.stage === "review" && workspace === "editor" ? "page" : undefined} onClick={() => changeWorkspace("editor")}>Editor</button>
+          <button type="button" data-tour="rw-export-tab" aria-current={state.stage === "deliver" ? "page" : undefined} onClick={() => state.setStage("deliver")}>Export</button>
         </nav>
         {state.stage === "review" && workspace === "editor" && <ReviewSummary state={state} reviewActions onOpenSettings={() => setSettingsOpen(true)} />}
         {state.stage === "review" && workspace === "rallies" && <div className="rw-top-actions"><button type="button" aria-label="Final cut settings" onClick={() => setSettingsOpen(true)}>Settings</button></div>}
-        <AppMenu projectName={state.projectName} onResetProject={state.resetProjectChanges} dark={state.dark} onToggleTheme={() => state.setDark(!state.dark)} onResetLayout={() => layoutPreferences.onLayoutChange({})} />
+        <AppMenu projectName={state.projectName} onResetProject={state.resetProjectChanges} dark={state.dark} onToggleTheme={() => state.setDark(!state.dark)} onResetLayout={() => layoutPreferences.onLayoutChange({})} onRestartTour={() => setTourRestartToken(token => token + 1)} />
       </header>
       {state.draftSaveFailed && <p className="rd-storage-alert" role="alert">{state.storageMessage}</p>}
       <ScoreRecoveryNotice state={state} />
       {state.stage === "review" && workspace === "rallies" ? (
-        <RallyReviewWorkspace state={state} nextReviewButtonRef={rallyNextReviewButton} renderVideo={range => <VideoStage state={state} rally playbackRange={range} />} renderTimeline={() => <RallyDeskTimeline state={state} />} />
+        <RallyReviewWorkspace state={state} tourView={tourView} nextReviewButtonRef={rallyNextReviewButton} renderVideo={range => <VideoStage state={state} rally playbackRange={range} />} renderTimeline={() => <RallyDeskTimeline state={state} />} />
       ) : state.stage === "review" ? (
         <ResizableWorkspace
           {...layoutPreferences}
@@ -3037,7 +3052,7 @@ export function RallyDesk({
       )}
       <HelpDrawer state={state} />
       {settingsOpen && <RallyDeskSettingsModal state={state} onClose={() => setSettingsOpen(false)} />}
-      {state.stage === "review" && workspace === "editor" && <RallyDeskGuidedTour />}
+      <RalliesGuidedTour hasRallies={state.clips.length > 0} scoreEnabled={state.scoreEnabled} sourceAvailable={state.playbackAvailable} restartToken={tourRestartToken} onNavigate={navigateTour} onActiveChange={handleTourActive} />
     </main>
   );
 }

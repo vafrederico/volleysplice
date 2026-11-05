@@ -67,7 +67,7 @@ function BoundsTimeline({ state, clip: sourceClip }: { state: Prototype; clip: C
     previewRef.current = null;
     setPreview(null);
   };
-  return <section className="rw-bounds" aria-label="Rally trim controls">
+  return <section className="rw-bounds" data-tour="rw-trim" aria-label="Rally trim controls">
     <div className="rw-bound-head">
       <div><span>Start</span><div><button type="button" aria-label="Move rally start 1 second earlier" onClick={() => state.updateSelected({ start: Math.max(state.gameStart, clip.start - 1) })}>−1s</button><button type="button" aria-label="Move rally start 1 second later" onClick={() => state.updateSelected({ start: Math.min(clip.end - .1, clip.start + 1) })}>+1s</button></div></div>
       <h2>Rally {index + 1}</h2>
@@ -87,6 +87,7 @@ function BoundsTimeline({ state, clip: sourceClip }: { state: Prototype; clip: C
           {item.id !== clip.id && <small>Rally {ordered.indexOf(item) + 1}</small>}
         </div>;
       })}
+      <span className="rw-list-marker rw-bounds-marker" role="img" aria-label={`Rally ${index + 1} location`} data-rally-location={clip.id} style={{ left: `${percent((clip.start + clip.end) / 2)}%` }} />
       {(["start", "end"] as const).map(boundary => <button key={boundary} type="button" className="rw-trim-handle" role="slider" aria-label={`Rally ${boundary}`} tabIndex={0}
         aria-valuemin={boundary === "start" ? state.gameStart : clip.start + .1} aria-valuemax={boundary === "start" ? clip.end - .1 : state.gameEnd} aria-valuenow={clip[boundary]} aria-valuetext={time(clip[boundary])}
         style={{ left: `${percent(clip[boundary])}%` }} onPointerDown={event => begin(event, boundary)}
@@ -104,11 +105,14 @@ function BoundsTimeline({ state, clip: sourceClip }: { state: Prototype; clip: C
   </section>;
 }
 
-export function RallyReviewWorkspace({ state, nextReviewButtonRef, renderVideo, renderTimeline }: {
+export type RalliesTourView = "review" | "edit" | "browse" | "add";
+
+export function RallyReviewWorkspace({ state, nextReviewButtonRef, renderVideo, renderTimeline, tourView }: {
   state: Prototype;
   nextReviewButtonRef: RefObject<HTMLButtonElement | null>;
   renderVideo: (range?: { start: number; end: number }) => ReactNode;
   renderTimeline: () => ReactNode;
+  tourView?: RalliesTourView | null;
 }) {
   const [mode, setMode] = useState<"review" | "browse" | "edit" | "add">("review");
   const [showTimeline, setShowTimeline] = useState(true);
@@ -125,11 +129,37 @@ export function RallyReviewWorkspace({ state, nextReviewButtonRef, renderVideo, 
   const browserSelected = browserClip ?? clip;
   const browserIndex = ordered.findIndex(item => item.id === browserSelected?.id);
   const [followingSource, setFollowingSource] = useState(true);
+  const [centeredId, setCenteredId] = useState<string | null>(null);
+  const centered = ordered.find(item => item.id === centeredId) ?? browserSelected ?? ordered[0];
+  const centeredIndex = ordered.findIndex(item => item.id === centered?.id);
+  const locationRally = mode === "browse" ? centered : clip;
+  const locationTime = locationRally ? (locationRally.start + locationRally.end) / 2 : null;
   const list = useRef<HTMLDivElement>(null);
   const initialized = useRef(false);
   const previousCount = useRef(state.clips.length);
   // A resolved item stays open until Next review, so the second decision never disappears.
   const [reviewingId, setReviewingId] = useState<string | null>(pending[0]?.id ?? null);
+  // The walkthrough only navigates. In particular, opening Add never marks a boundary.
+  useEffect(() => {
+    if (!tourView) return;
+    setMode(tourView);
+    setOrphanId(null);
+    setShowTimeline(true);
+  }, [tourView]);
+  function updateListCenter() {
+    const container = list.current;
+    if (!container || !container.clientHeight) return;
+    const rect = container.getBoundingClientRect();
+    const middle = rect.top + container.clientHeight / 2;
+    const rows = [...container.querySelectorAll<HTMLElement>("[data-rally-id]")];
+    const closest = rows.reduce<HTMLElement | null>((best, row) => {
+      const bounds = row.getBoundingClientRect();
+      const distance = Math.abs((bounds.top + bounds.bottom) / 2 - middle);
+      const bestBounds = best?.getBoundingClientRect();
+      return !bestBounds || distance < Math.abs((bestBounds.top + bestBounds.bottom) / 2 - middle) ? row : best;
+    }, null);
+    if (closest) setCenteredId(closest.dataset.rallyId ?? null);
+  }
   useEffect(() => {
     if (initialized.current) return;
     initialized.current = true;
@@ -143,9 +173,20 @@ export function RallyReviewWorkspace({ state, nextReviewButtonRef, renderVideo, 
   }, [state.selectedScoreMarkerId]);
   useEffect(() => {
     const selected = list.current?.querySelector<HTMLElement>('[aria-current="true"]');
-    if (followingSource && selected && list.current) scrollElementIntoContainer(list.current, selected, "auto");
+    if (followingSource && selected && list.current) {
+      scrollElementIntoContainer(list.current, selected, "auto");
+      setCenteredId(browserSelected?.id ?? null);
+    }
+    updateListCenter();
   }, [browserSelected?.id, mode, followingSource]);
-  useEffect(() => { if (state.manualStart !== null) setMode("add"); }, [state.manualStart]);
+  useEffect(() => {
+    const container = list.current;
+    if (!container) return;
+    const observer = new ResizeObserver(updateListCenter);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [mode, ordered.length]);
+  useEffect(() => { if (state.manualStart !== null && !tourView) setMode("add"); }, [state.manualStart, tourView]);
   useEffect(() => {
     if (state.clips.length > previousCount.current && mode === "add" && state.manualStart === null) setMode("edit");
     previousCount.current = state.clips.length;
@@ -171,9 +212,9 @@ export function RallyReviewWorkspace({ state, nextReviewButtonRef, renderVideo, 
     state.setRallyServe(clip?.id ?? "", side, markerId);
   }
   return <section className="rw-workspace" aria-label="Rally review workspace">
-    <header className="rw-heading">
+    <header className="rw-heading" data-tour="rw-review">
       <h1>{mode === "add" ? "Add missing rally" : mode === "browse" ? "All rallies" : mode === "edit" ? `Editing rally ${index + 1}` : `Reviewing ${pendingCount} ${pendingCount === 1 ? "rally" : "rallies"}`}</h1>
-      <button type="button" onClick={() => {
+      <button type="button" data-tour="rw-all-rallies" onClick={() => {
         state.setPlaying(false);
         if (state.manualStart !== null) state.cancelManualBoundary();
         if (mode === "review") setMode("browse");
@@ -183,38 +224,46 @@ export function RallyReviewWorkspace({ state, nextReviewButtonRef, renderVideo, 
       }}>{mode === "review" ? `All rallies (${ordered.length}) →` : "← Review rallies"}</button>
     </header>
     <div className="rw-body">
-      <div className="rw-player">{renderVideo(range)}<label className="rw-source-seek"><span>Source playhead</span><input aria-label="Source playhead" type="range" min={state.gameStart} max={state.gameEnd} step="any" value={state.playhead} onChange={event => { setFollowingSource(true); state.setPlayhead(Number(event.currentTarget.value)); }} /></label></div>
+      <div className="rw-player">{renderVideo(range)}<label className="rw-source-seek"><span>Source playhead</span><span className="rw-source-slider"><input aria-label="Source playhead" type="range" min={state.gameStart} max={state.gameEnd} step="any" value={state.playhead} onChange={event => { setFollowingSource(true); state.setPlayhead(Number(event.currentTarget.value)); }} />{locationTime !== null && <span className="rw-list-marker" role="img" aria-label={`Rally ${ordered.indexOf(locationRally!) + 1} location`} data-rally-location={locationRally!.id} style={{ left: `${(locationTime - state.gameStart) / Math.max(.1, state.gameEnd - state.gameStart) * 100}%` }} />}</span></label></div>
       <aside className="rw-panel" aria-label={mode === "browse" ? "All rallies browser" : "Rally decisions"}>
         {mode === "browse" ? <>
           <header className="rw-browser-heading"><h2>{ordered.length} rallies</h2><button type="button" onClick={() => setShowTimeline(!showTimeline)}>{showTimeline ? "Hide timeline" : "Show timeline"}</button></header>
           <p className="rw-browser-position">{browserClip ? `Rally ${ordered.indexOf(browserClip) + 1}` : "No rally"} at {time(state.playhead)}</p>
           <div className="rw-browser-content">
-            {showTimeline && <div className="rw-source-map" aria-label="Recording overview">
+            {showTimeline && <div className="rw-source-map" data-tour="rw-source" aria-label="Recording overview">
               {[0, 1].map(column => {
                 const start = state.gameStart + (state.gameEnd - state.gameStart) * column / 2;
                 const end = state.gameStart + (state.gameEnd - state.gameStart) * (column + 1) / 2;
+                const contains = (value: number) => value >= start && (value < end || column === 1 && value <= end);
+                const percent = (value: number) => (value - start) / Math.max(.1, end - start) * 100;
                 return <div className="rw-source-column" key={column}>
                   <span>{time(start).replace(/\.\d$/, "")}</span>
-                  <div><input type="range" aria-label={`Recording overview playhead ${column + 1}`} min={start} max={end} step="any" value={Math.max(start, Math.min(end, state.playhead))} onChange={event => { setFollowingSource(true); state.setPlayhead(Number(event.currentTarget.value)); }} />
-                  {ordered.filter(item => item.start >= start && item.start < end).map(item => <i key={item.id} data-kept={state.effectiveKeptIds.has(item.id)} data-pending={pending.some(clip => clip.id === item.id) || undefined} style={{ top: `${(item.start - start) / Math.max(.1, end - start) * 100}%` }} />)}</div>
+                  <div className="rw-source-track"><input type="range" aria-label={`Recording overview playhead ${column + 1}`} min={start} max={end} step="any" value={Math.max(start, Math.min(end, state.playhead))} onChange={event => { setFollowingSource(true); state.setPlayhead(Number(event.currentTarget.value)); }} />
+                    <div className="rw-source-marks" aria-hidden="true">
+                      {ordered.filter(item => item.end + state.afterPadding > start && item.start - state.beforePadding < end).map(item => <i key={item.id} data-kept={state.effectiveKeptIds.has(item.id)} data-pending={pending.some(clip => clip.id === item.id) || undefined} style={{ top: `${Math.max(0, percent(item.start - state.beforePadding))}%`, height: `${Math.min(100, percent(item.end + state.afterPadding)) - Math.max(0, percent(item.start - state.beforePadding))}%` }} />)}
+                      {contains(state.playhead) && <span className="rw-source-playhead" data-playhead-marker={column + 1} style={{ top: `${percent(state.playhead)}%` }} />}
+                      {locationTime !== null && contains(locationTime) && <span className="rw-list-marker rw-source-location" data-rally-location={centered?.id} style={{ top: `${percent(locationTime)}%` }} />}
+                    </div>
+                  </div>
                   <span>{time(end).replace(/\.\d$/, "")}</span>
                 </div>;
               })}
             </div>}
-            <div className="rw-rally-list" ref={list} onWheel={() => setFollowingSource(false)} onTouchMove={() => setFollowingSource(false)}>
+            <div className="rw-list-column" data-tour="rw-list"><div className="rw-browser-key"><span>● Play</span><span>◇ List · {centeredIndex >= 0 ? centeredIndex + 1 : "—"}</span></div>
+            <div className="rw-rally-list" ref={list} onScroll={updateListCenter} onWheel={() => setFollowingSource(false)} onTouchMove={() => setFollowingSource(false)} onPointerDown={() => setFollowingSource(false)} onKeyDown={() => setFollowingSource(false)}>
               {ordered.length === 0 && <p>No rallies yet. Add a missing rally below.</p>}
               {ordered.map((item, i) => {
                 const score = state.scoreEnabled ? deriveScoreAt(state.activeScoreTracking, item.start) : null;
-                return <button type="button" key={item.id} aria-current={browserSelected?.id === item.id ? "true" : undefined} aria-label={`Open rally ${i + 1}`} onClick={() => { setFollowingSource(true); state.setPlaying(false); state.selectClip(item.id); }} onDoubleClick={() => open(item.id)}>
-                  <span><strong>Rally {i + 1}</strong><small>{time(item.start)}–{time(item.end)}</small></span>
+                return <button type="button" key={item.id} data-rally-id={item.id} aria-current={browserSelected?.id === item.id ? "true" : undefined} aria-label={`Open rally ${i + 1}`} onClick={() => { setFollowingSource(true); state.setPlaying(false); state.selectClip(item.id); }} onDoubleClick={() => open(item.id)}>
+                  <span><strong>Rally {i + 1}{centered?.id === item.id && <i className="rw-list-marker" role="img" aria-label="Timeline list position" data-rally-location={item.id} />}</strong><small>{time(item.start)}–{time(item.end)}</small></span>
                   <span>{score && <strong>{score.team1Score} : {score.team2Score}</strong>}<small>{pending.some(clip => clip.id === item.id) ? "Needs review" : state.effectiveKeptIds.has(item.id) ? "Keep" : "Removed"}</small></span>
                 </button>;
               })}
-            </div>
+            </div></div>
           </div>
-          <footer className="rw-browser-actions"><button type="button" disabled={!browserSelected} onClick={() => browserSelected && open(browserSelected.id)}>Edit rally {browserIndex >= 0 ? browserIndex + 1 : ""}</button><button type="button" className="rw-primary" onClick={() => { state.setFinalPreview(false); setMode("add"); }}>+ Add missing rally</button></footer>
+          <footer className="rw-browser-actions"><button type="button" disabled={!browserSelected} onClick={() => browserSelected && open(browserSelected.id)}>Edit rally {browserIndex >= 0 ? browserIndex + 1 : ""}</button><button type="button" className="rw-primary" data-tour="rw-missing" onClick={() => { state.setFinalPreview(false); setMode("add"); }}>+ Add missing rally</button></footer>
         </> : mode === "add" ? <>
-          <div className="rw-add-heading"><p>{state.manualStart === null ? "Seek to the rally start, then mark it below." : "Seek to the rally end, then mark and add it below."}</p><button type="button" onClick={() => { state.cancelManualBoundary(); setMode("browse"); }}>Cancel</button></div>
+          <div className="rw-add-heading" data-tour="rw-add"><p>{state.manualStart === null ? "Seek to the rally start, then mark it below." : "Seek to the rally end, then mark and add it below."}</p><button type="button" onClick={() => { state.cancelManualBoundary(); setMode("browse"); }}>Cancel</button></div>
           <div className="rw-bound-times"><span>Start {state.manualStart === null ? "—" : time(state.manualStart)}</span><span>End {state.manualStart === null ? "—" : time(state.playhead)}</span></div>
           <div className="rw-missing-timeline">{renderTimeline()}</div>
           <button type="button" className="rw-primary" disabled={state.manualStart !== null && Math.abs(state.playhead - state.manualStart) < .3} onClick={() => {
@@ -234,11 +283,11 @@ export function RallyReviewWorkspace({ state, nextReviewButtonRef, renderVideo, 
         </> : reviewComplete || !clip ? <div className="rw-complete"><h2>{pendingCount === 0 ? "All checked." : "Continue reviewing"}</h2><p>{pendingCount === 0 ? "Browse the recording for anything missed." : `${pendingCount} rallies still need a decision.`}</p><button type="button" className="rw-primary" onClick={() => pendingCount ? nextReview() : setMode("browse")}>{pendingCount ? "Continue review" : "Browse rallies"}</button><button type="button" onClick={() => state.setStage("deliver")}>Export</button></div> : <>
           <BoundsTimeline state={state} clip={clip} />
           {state.suppressionReviewIds.has(clip.id) && <p className="rw-pending-note">Suggested for cleanup. Watch before deciding.</p>}
-          <div className="rw-choices" role="group" aria-label="Keep or remove rally">
+          <div className="rw-choices" data-tour="rw-decisions" role="group" aria-label="Keep or remove rally">
             <button type="button" aria-pressed={!state.clipReviewTaskIds.has(clip.id) && state.effectiveKeptIds.has(clip.id)} onClick={() => state.setCurrentRallyIncluded(true)}>Keep<kbd>K</kbd></button>
             <button type="button" aria-pressed={!state.clipReviewTaskIds.has(clip.id) && !state.effectiveKeptIds.has(clip.id)} onClick={() => state.setCurrentRallyIncluded(false)}>Remove<kbd>⌫</kbd></button>
           </div>
-          {state.scoreEnabled && (markers.length ? markers : [null]).map(marker => <div key={marker?.id ?? "no-serve"} className="rw-serve-group">
+          {state.scoreEnabled && (markers.length ? markers : [null]).map(marker => <div key={marker?.id ?? "no-serve"} className="rw-serve-group" data-tour="rw-serve">
             {markers.length > 1 && <span>Serve {time(marker!.timestamp)}</span>}
             <div className="rw-choices" role="group" aria-label={marker ? `Serve at ${time(marker.timestamp)}` : "Rally serve"}>
               <button type="button" aria-pressed={marker?.side === "near"} onClick={() => serve("near", marker?.id)}>Near<kbd>N</kbd></button>
@@ -246,7 +295,7 @@ export function RallyReviewWorkspace({ state, nextReviewButtonRef, renderVideo, 
               <button type="button" aria-pressed={!marker} onClick={() => serve(null, marker?.id)}>Not a serve</button>
             </div>
           </div>)}
-          <div className="rw-navigation"><button type="button" disabled={index <= 0} title="Shift + Left arrow" onClick={() => open(ordered[index - 1].id)}>Previous rally</button><button ref={nextReviewButtonRef} type="button" className="rw-primary" disabled={unresolved} title="R" aria-keyshortcuts="R" onClick={nextReview}>Next review</button><button type="button" disabled={index < 0 || index >= ordered.length - 1} title="Shift + Right arrow" onClick={() => open(ordered[index + 1].id)}>Next rally</button></div>
+          <div className="rw-navigation" data-tour="rw-navigation"><button type="button" disabled={index <= 0} title="Shift + Left arrow" onClick={() => open(ordered[index - 1].id)}>Previous rally</button><button ref={nextReviewButtonRef} type="button" className="rw-primary" disabled={unresolved} title="R" aria-keyshortcuts="R" onClick={nextReview}>Next review</button><button type="button" disabled={index < 0 || index >= ordered.length - 1} title="Shift + Right arrow" onClick={() => open(ordered[index + 1].id)}>Next rally</button></div>
           <details className="rw-more"><summary>More editing tools</summary><div><button type="button" onClick={() => state.setSelectedBoundaryAtPlayhead("start")}>Set start to playhead<kbd>Ctrl + Shift + S</kbd></button><button type="button" onClick={() => state.setSelectedBoundaryAtPlayhead("end")}>Set end to playhead<kbd>Ctrl + Shift + E</kbd></button><button type="button" onClick={state.splitSelectedAtPlayhead}>Split at playhead<kbd>Shift + S</kbd></button></div></details>
         </>}
         <p className="rw-status" role="status">{state.reviewMessage}</p>
