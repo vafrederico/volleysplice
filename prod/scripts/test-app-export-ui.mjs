@@ -40,6 +40,7 @@ Object.assign(globalThis, {
   requestAnimationFrame: callback => setTimeout(callback, 0), cancelAnimationFrame: clearTimeout,
 });
 Object.defineProperty(globalThis, "navigator", { value: dom.window.navigator, configurable: true });
+window.localStorage.setItem("volleysplice:review-workspace", "editor");
 window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
 window.scrollTo = () => {};
 window.confirm = () => true;
@@ -78,7 +79,7 @@ const attach = async (project, sourceFile = new File(["video"], project.source.n
   Object.defineProperty(input, "files", { value: [sourceFile], configurable: true });
   await act(async () => input.dispatchEvent(new window.Event("change", { bubbles: true })));
   // Missing score predictions can retain a panel with the same visual style.
-  await waitFor(() => document.querySelector(".taste-rally-desk") && !document.querySelector('.td-reconnect input[type="file"]') && document.querySelector(".td-stages button"));
+  await waitFor(() => document.querySelector(".taste-rally-desk") && !document.querySelector('.td-reconnect input[type="file"]') && document.querySelector(".rw-workspace-tabs button"));
 };
 const deferred = () => {
   let resolve;
@@ -161,7 +162,7 @@ try {
 
   for (const race of ["fingerprint", "instance"]) {
     await act(async () => root.render(null));
-    indexedDB = new IDBFactory(); window.localStorage.clear();
+    indexedDB = new IDBFactory(); window.localStorage.clear(); window.localStorage.setItem("volleysplice:review-workspace", "editor");
     const project = fixture(`synthetic-export-${race}-guard`);
     project.reviewDraft = createCutDraft({ analysisId: store.projectAnalysisId(project), recordingId: project.id,
       duration: project.info.duration, rallies: project.analysis.intervals, ignoredIntervals: [] });
@@ -212,7 +213,7 @@ try {
   const staleStatusFailures = [];
   for (const failureMode of ["conflict", "storage"]) {
     await act(async () => root.render(null));
-    indexedDB = new IDBFactory(); window.localStorage.clear();
+    indexedDB = new IDBFactory(); window.localStorage.clear(); window.localStorage.setItem("volleysplice:review-workspace", "editor");
     const project = fixture(`synthetic-export-status-${failureMode}`);
     Object.assign(project, await store.putProject(project, { expectedSource: null }));
     window.localStorage.setItem(store.SELECTED_PROJECT_STORAGE_KEY, project.id);
@@ -286,7 +287,7 @@ try {
   const staleDeleteFailures = [];
   for (const outcome of ["conflict", "storage", "success"]) {
     await act(async () => root.render(null));
-    indexedDB = new IDBFactory(); window.localStorage.clear();
+    indexedDB = new IDBFactory(); window.localStorage.clear(); window.localStorage.setItem("volleysplice:review-workspace", "editor");
     const project = fixture(`synthetic-delete-${outcome}`);
     project.reviewDraft = createCutDraft({ analysisId: store.projectAnalysisId(project), recordingId: project.id,
       duration: project.info.duration, rallies: project.analysis.intervals, ignoredIntervals: [] });

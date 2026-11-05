@@ -1,11 +1,15 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
   type ChangeEvent,
+  type Dispatch,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
+  type RefObject,
+  type SetStateAction,
 } from "react";
 
 import {
@@ -39,7 +43,7 @@ import {
   youtubeChaptersText,
 } from "@/lib/youtube-chapters";
 import { ScoreOverlay } from "@/components/ScoreOverlay";
-import { RallyDeskGuidedTour } from "@/components/GuidedTour";
+import { RalliesGuidedTour, type RalliesTourDestination } from "@/components/RalliesGuidedTour";
 import {
   createModelFeedbackBundle,
   modelFeedbackBlob,
@@ -57,8 +61,10 @@ import { AppMenu } from "./AppMenu";
 import { cleanupDecisionsForRally, cleanupReviewDecisions, normalizeCleanupDecisions } from "./cleanup-decisions";
 import { editHistoryKey, moveHistory, readEditHistory, recordEdit, writeEditHistory } from "./edit-history";
 import { nextReviewItem, shortcutAction, type ReviewItem } from "./keyboard-shortcuts";
+import { RallyReviewWorkspace, type RalliesTourView } from "./RallyReviewWorkspace";
 
 import "./taste-designs.css";
+import "./rally-review.css";
 
 export type TasteDesignMeta = {
   slug: string;
@@ -100,7 +106,7 @@ type ExportKind = "video" | "chapters" | "feedback";
 type Side = "near" | "far";
 type MarkerSide = Side | "review";
 
-type Clip = {
+export type Clip = {
   id: string;
   label: string;
   start: number;
@@ -295,7 +301,7 @@ function usePrototype(
   const [expectedSourceName, setExpectedSourceName] = useState(review.sourceName);
   const [needsSource, setNeedsSource] = useState(review.sourceNeedsReconnect);
   const [videoUrl, setVideoUrl] = useState<string | null>(review.videoUrl);
-  const [sourceStatus, setSourceStatus] = useState("Saved analysis and review edits loaded from the live app.");
+  const [sourceStatus, setSourceStatus] = useState(review.videoUrl ? "Video connected." : "Playback is paused until you reconnect the original video.");
   const [gameStart, setGameStart] = useState(review.gameStart);
   const [gameEnd, setGameEnd] = useState(review.gameEnd);
   const [windowError, setWindowError] = useState<string | null>(null);
@@ -317,7 +323,11 @@ function usePrototype(
   const initialPlayhead = firstClip?.start ?? review.gameStart;
   const [playhead, setPlayheadValue] = useState(initialPlayhead);
   const [seekRequest, setSeekRequest] = useState({ revision: 0, target: initialPlayhead });
-  const [playing, setPlaying] = useState(false);
+  const playbackAvailable = Boolean(videoUrl) && !needsSource;
+  const [playing, setPlayingState] = useState(false);
+  const setPlaying = useCallback<Dispatch<SetStateAction<boolean>>>((action) => {
+    setPlayingState(current => playbackAvailable && (typeof action === "function" ? action(current) : action));
+  }, [playbackAvailable]);
   const [playbackRate, setPlaybackRate] = useState(review.draft.playbackRate);
   const [finalPreview, setFinalPreview] = useState(review.draft.cutPreviewEnabled);
   const [beforePadding, setBeforePadding] = useState(review.draft.beforePaddingSeconds);
@@ -661,28 +671,10 @@ function usePrototype(
   }, [analysisProgress]);
 
   useEffect(() => {
-    if (!playing || videoUrl) return;
-    const timer = window.setInterval(() => {
-      setPlayheadValue((current) => {
-        if (!finalPreview) return current >= gameEnd ? gameStart : current + 1;
-        const ranges = clips
-          .filter((clip) => clip.included)
-          .map((clip) => ({
-            start: Math.max(gameStart, clip.start - beforePadding),
-            end: Math.min(gameEnd, clip.end + afterPadding),
-          }))
-          .sort((left, right) => left.start - right.start);
-        if (ranges.length === 0) return gameStart;
-        const next = current + 1;
-        const excluded = excludedRanges.find((range) => next >= range.start && next < range.end);
-        if (excluded) return excluded.end;
-        const active = ranges.find((range) => current >= range.start && current < range.end);
-        if (active && next <= active.end) return next;
-        return ranges.find((range) => range.start > current)?.start ?? ranges[0].start;
-      });
-    }, 1000);
-    return () => window.clearInterval(timer);
-  }, [afterPadding, beforePadding, clips, excludedRanges, finalPreview, gameEnd, gameStart, playing, videoUrl]);
+    if (playbackAvailable) return;
+    setPlayingState(false);
+    videoElementRef.current?.pause();
+  }, [playbackAvailable]);
 
   useEffect(() => {
     setExportProgress(0);
@@ -1004,6 +996,12 @@ function usePrototype(
     setSelectedId(id);
     setPlayhead(target);
     setOpenedClipId(id);
+    if (!followPlayhead) {
+      const marker = activeScoreMarkers.find(marker => marker.rallyId === id)
+        ?? activeScoreMarkers.find(marker => !marker.rallyId && marker.timestamp >= clip.start && marker.timestamp <= clip.end);
+      setSelectedScoreMarkerId(marker?.id ?? "");
+      setSelectedSideSwitchId("");
+    }
     setReviewMessage(`${clip.id} opened at its ${formatTime(target)} padded start.`);
   }
 
@@ -1223,6 +1221,11 @@ function usePrototype(
     if (!marker) return;
     setSelectedScoreMarkerId(id);
     setSelectedSideSwitchId("");
+    if (!followPlayhead) {
+      const clip = clips.find(clip => clip.id === marker.rallyId)
+        ?? clips.find(clip => marker.timestamp >= clip.start && marker.timestamp <= clip.end);
+      if (clip) setSelectedId(clip.id);
+    }
     setPlayhead(marker.timestamp);
     setScoreMessage(`Serve ${marker.id} selected at ${formatPreciseTime(marker.timestamp)}.`);
   }
@@ -1247,6 +1250,31 @@ function usePrototype(
     setSelectedScoreMarkerId(id);
     setSelectedSideSwitchId("");
     setScoreMessage(`Serve marker added at ${formatTime(playhead)} on the ${servingSide} court. The previous rally was recalculated.`);
+  }
+
+  function setRallyServe(clipId: string, side: Side | null, markerId?: string) {
+    const clip = clips.find(clip => clip.id === clipId);
+    if (!clip || !scoreEnabled) return;
+    const marker = markerId ? scoreMarkers.find(marker => marker.id === markerId)
+      : scoreMarkers.find(marker => marker.rallyId === clipId || (!marker.rallyId && marker.timestamp >= clip.start && marker.timestamp <= clip.end));
+    if (side === null) {
+      if (!marker) return;
+      removeServeById(marker.id);
+    } else if (marker) updateScoreMarkerSide(marker.id, side);
+    else {
+      let sequence = 1;
+      while (scoreMarkers.some(marker => marker.id === `manual-serve-${sequence}`)) sequence++;
+      const id = `manual-serve-${sequence}`;
+      setScoreMarkers(current => [...current, { id, timestamp: clip.start, side, ignorePreviousPoint: false, origin: "manual", rallyId: clipId }]);
+      setSelectedScoreMarkerId(id);
+    }
+  }
+
+  function removeServeById(id: string) {
+    const next = removeServeMarker(workingDraft.scoreTracking, id);
+    setScoreMarkers(next.serveMarkers);
+    setRemovedModelMarkerIds(next.removedModelMarkerIds);
+    setSelectedScoreMarkerId("");
   }
 
   function addSideSwitchAtPlayhead() {
@@ -1413,7 +1441,7 @@ function usePrototype(
     suppressionDecisions, suppressionPending, suppressionReviewIds,
     playhead, setPlayhead, trackPlayhead: setPlayheadValue, videoElementRef,
     seekRequest: seekRequest.revision, seekTarget: seekRequest.target,
-    playing, setPlaying, finalPreview, setFinalPreview,
+    playing, setPlaying, playbackAvailable, finalPreview, setFinalPreview,
     playbackRate, setPlaybackRate,
     beforePadding, setBeforePadding,
     afterPadding, setAfterPadding, joinGap, setJoinGap, cleanup, setCleanup: selectCleanup, cleanupAvailable, cleanupUnavailableReason,
@@ -1451,13 +1479,13 @@ function usePrototype(
     reviewNextSuppression, applySuppressionToSimilar,
     chooseServingSide, updateScoreMarkerSide, setScoreMarkerReplay,
     selectScoreMarker, selectSideSwitch,
-    addServeAtPlayhead, addSideSwitchAtPlayhead,
+    addServeAtPlayhead, addSideSwitchAtPlayhead, setRallyServe, removeServeById,
     removeLastScoreMarker, toggleLastPointReplay, removeSelectedEvent,
     downloadChapters, copyChapters, prepareExport,
   };
 }
 
-type Prototype = ReturnType<typeof usePrototype>;
+export type Prototype = ReturnType<typeof usePrototype>;
 
 function Brand({ compact = false, logo = false }: { compact?: boolean; logo?: boolean }) {
   return (
@@ -1799,13 +1827,18 @@ function VideoStage({
   minimal = false,
   desk = false,
   resizeControl,
+  rally = false,
+  playbackRange,
 }: {
   state: Prototype;
   minimal?: boolean;
   desk?: boolean;
   resizeControl?: ReactNode;
+  rally?: boolean;
+  playbackRange?: { start: number; end: number };
 }) {
   const videoRef = state.videoElementRef;
+  const reconnectInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -1825,14 +1858,21 @@ function VideoStage({
     const video = videoRef.current;
     if (!video || !state.videoUrl) return;
     if (state.playing) {
+      if (playbackRange && (video.currentTime < playbackRange.start || video.currentTime >= playbackRange.end - .04)) video.currentTime = playbackRange.start;
       void video.play().catch(() => state.setPlaying(false));
     } else {
       video.pause();
     }
-  }, [state.playing, state.setPlaying, state.videoUrl]);
+  }, [state.playing, state.setPlaying, state.videoUrl, playbackRange?.start, playbackRange?.end]);
 
   function updateFromVideo(video: HTMLVideoElement) {
     let next = video.currentTime;
+    if (playbackRange && next >= playbackRange.end) {
+      video.pause();
+      next = playbackRange.end;
+      video.currentTime = next;
+      state.setPlaying(false);
+    }
     if (state.finalPreview) {
       const ranges = state.finalIntervals;
       if (!ranges.some((range) => range.start <= next && next < range.end)) {
@@ -1844,12 +1884,12 @@ function VideoStage({
   }
 
   return (
-    <section className={`td-video ${minimal ? "is-minimal" : ""} ${desk ? "is-rally-desk" : ""}`} data-tour={desk ? "rd-video" : undefined} aria-label="Current volleyball video review">
-      <div className="td-video-picture" data-video={state.videoUrl ? true : undefined}>
-        {state.videoUrl ? (
+    <section className={`td-video ${minimal ? "is-minimal" : ""} ${desk ? "is-rally-desk" : ""} ${rally ? "is-rally-review" : ""}`} data-tour={desk ? "rd-video" : undefined} aria-label="Current volleyball video review">
+      <div className="td-video-picture" data-video={state.playbackAvailable || undefined} data-disconnected={!state.playbackAvailable || undefined}>
+        {state.playbackAvailable ? (
           <video
             ref={videoRef}
-            src={state.videoUrl}
+            src={state.videoUrl ?? undefined}
             playsInline
             preload="metadata"
             aria-label={`${state.fileName} review video`}
@@ -1867,12 +1907,17 @@ function VideoStage({
             onClick={() => state.setPlaying(!state.playing)}
           />
         ) : (
-          <>
-            <div className="td-court" aria-hidden="true"><i /><i /><i /></div>
-            <p>{state.fileName}</p>
-          </>
+          <section className="td-video-reconnect" data-tour="rw-reconnect" aria-labelledby="td-video-reconnect-title">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 9h18M3 15h18M7 5v14M17 5v14" /></svg>
+            <h2 id="td-video-reconnect-title">Reconnect your video</h2>
+            <p>Your project and edits are saved. Choose the original video to watch your clips.</p>
+            <strong className="td-video-reconnect-filename">{state.expectedSourceName}</strong>
+            <button type="button" onClick={() => reconnectInput.current?.click()}>Reconnect video</button>
+            <input ref={reconnectInput} type="file" accept="video/*,.mkv,.webm,.mov,.mp4,.m4v" aria-label="Original video to reconnect" hidden onChange={state.chooseVideo} />
+            <p className="td-video-reconnect-status" role="status">{state.sourceStatus}</p>
+          </section>
         )}
-        {state.scoreEnabled && state.previewScoreOverlay && (
+        {state.playbackAvailable && state.scoreEnabled && state.previewScoreOverlay && (
           <ScoreOverlay
             prepared={state.preparedScoreOverlay}
             timestamp={state.playhead}
@@ -1881,13 +1926,23 @@ function VideoStage({
             className="td-production-score-overlay"
           />
         )}
-        <output>{formatTime(state.playhead)}</output>
+        {state.playbackAvailable && <output>{formatTime(state.playhead)}</output>}
       </div>
-      <div className={desk ? "rd-player-controls" : undefined}>
+      {rally ? <div className="rw-transport">
+        <button type="button" className="rw-play" disabled={!state.playbackAvailable} title={state.playbackAvailable ? "Space" : "Reconnect your video to play"} aria-label={state.playing ? "Pause" : "Play"} aria-keyshortcuts="Space" onClick={() => {
+          if (!state.playing && playbackRange && (state.playhead < playbackRange.start || state.playhead >= playbackRange.end - .04)) state.setPlayhead(playbackRange.start);
+          state.setPlaying(!state.playing);
+        }}><span aria-hidden="true">{state.playing ? "Ⅱ" : "▶"}</span></button>
+        <output>{formatPreciseTime(state.playhead)}</output>
+        <span>{playbackRange ? `${(playbackRange.end - playbackRange.start).toFixed(1)} s` : `${formatTime(state.gameEnd - state.gameStart)} source`}</span>
+        <select aria-label="Playback speed" disabled={!state.playbackAvailable} value={state.playbackRate} onChange={event => state.setPlaybackRate(Number(event.currentTarget.value))}>
+          {[...new Set<number>([...PLAYBACK_RATES, state.playbackRate])].sort((a, b) => a - b).map(rate => <option key={rate} value={rate}>{rate}×</option>)}
+        </select>
+      </div> : <div className={desk ? "rd-player-controls" : undefined}>
         <div className="td-transport">
           <div className="td-playback-buttons">
             <button type="button" onClick={() => state.setPlayhead(Math.max(state.gameStart, state.playhead - 1))}>Back 1s</button>
-            <button className="td-play" type="button" onClick={() => state.setPlaying(!state.playing)} aria-pressed={state.playing}>{state.playing ? "Pause" : "Play"}</button>
+            <button className="td-play" type="button" disabled={!state.playbackAvailable} title={state.playbackAvailable ? "Space" : "Reconnect your video to play"} onClick={() => state.setPlaying(!state.playing)} aria-pressed={state.playing}>{state.playing ? "Pause" : "Play"}</button>
             <button type="button" onClick={() => state.setPlayhead(Math.min(state.gameEnd, state.playhead + 1))}>Ahead 1s</button>
             <label className="td-playhead-control">
               <span>Playhead</span>
@@ -1901,6 +1956,7 @@ function VideoStage({
                   <span>Speed</span>
                   <select
                     aria-label="Playback speed"
+                    disabled={!state.playbackAvailable}
                     value={state.playbackRate}
                     onChange={(event) => state.setPlaybackRate(Number(event.currentTarget.value))}
                   >
@@ -1927,8 +1983,8 @@ function VideoStage({
           </div>
         </div>
         {resizeControl}
-      </div>
-      {!desk && (
+      </div>}
+      {!desk && !rally && (
         <label className="td-final-preview">
           <input type="checkbox" checked={state.finalPreview} onChange={(event) => state.setFinalPreview(event.currentTarget.checked)} />
           <span><strong>Play final cut only</strong><small>{state.finalPreview ? "Removed and excluded footage is skipped." : "Playing the continuous source window."}</small></span>
@@ -2763,6 +2819,7 @@ function RallyDeskTimeline({ state }: { state: Prototype }) {
               aria-label={`Side switch at ${formatPreciseTime(marker.timestamp)}`}
             >⇄</button>
           ))}
+          {state.selected && inRow((state.selected.start + state.selected.end) / 2) && <span className="rw-list-marker" role="img" aria-label="Selected rally location" data-rally-location={state.selected.id} style={{ left: `${timelinePercent((state.selected.start + state.selected.end) / 2 - start, duration)}%` }} />}
           {playheadInRow && <span className="rd-timeline-playhead" style={{ left: `${timelinePercent(state.playhead - start, duration)}%` }} />}
         </div>
         <div className="rd-timeline-times"><span>{formatTime(start)}</span><span>{formatTime((start + end) / 2)}</span><span>{formatTime(end)}</span></div>
@@ -2799,7 +2856,7 @@ function RallyDeskSettingsModal({
     <div className="rd-settings-backdrop" role="presentation" onMouseDown={(event) => {
       if (event.target === event.currentTarget) onClose();
     }}>
-      <section className="rd-settings-dialog" role="dialog" aria-modal="true" aria-labelledby="rd-settings-title">
+      <section className="rd-settings-dialog" data-tour="rw-settings" role="dialog" aria-modal="true" aria-labelledby="rd-settings-title">
         <header>
           <div><p className="td-kicker">Final cut settings</p><h2 id="rd-settings-title">Fine-tune final cut</h2></div>
           <button type="button" onClick={onClose} aria-label="Close final cut settings">×</button>
@@ -2812,7 +2869,7 @@ function RallyDeskSettingsModal({
   );
 }
 
-function useRallyDeskShortcuts(state: Prototype, settingsOpen: boolean) {
+function useRallyDeskShortcuts(state: Prototype, settingsOpen: boolean, rallyNextReviewButton?: RefObject<HTMLButtonElement | null>) {
   const reviewCursor = useRef<{ item: ReviewItem; seekRequest: number } | null>(null);
   useEffect(() => { reviewCursor.current = null; }, [state.selectedProjectId]);
   useEffect(() => {
@@ -2848,6 +2905,7 @@ function useRallyDeskShortcuts(state: Prototype, settingsOpen: boolean) {
         case "far":
           if (state.scoreEnabled && state.selectedScoreMarker)
             state.updateScoreMarkerSide(state.selectedScoreMarker.id, action);
+          else if (state.scoreEnabled && state.selected) state.setRallyServe(state.selected.id, action);
           break;
         case "keep": state.setCurrentRallyIncluded(true); break;
         case "remove": state.setCurrentRallyIncluded(false); break;
@@ -2888,6 +2946,10 @@ function useRallyDeskShortcuts(state: Prototype, settingsOpen: boolean) {
           break;
         }
         case "review": {
+          if (rallyNextReviewButton) {
+            rallyNextReviewButton.current?.click();
+            break;
+          }
           const items: ReviewItem[] = state.clips.flatMap((clip) => {
             const kind = state.suppressionReviewIds.has(clip.id) ? "cleanup"
               : state.reviewClipIds.has(clip.id) ? "clip" : null;
@@ -2923,22 +2985,63 @@ export function RallyDesk({
   review: ReadyDesignReview;
   onDeleteProject?: () => void;
 }) {
-  const state = usePrototype(review, "review", false, true);
+  const [workspace, setWorkspace] = useState<"rallies" | "editor">(() => {
+    try { return window.localStorage.getItem("volleysplice:review-workspace") === "editor" ? "editor" : "rallies"; }
+    catch { return "rallies"; }
+  });
+  const state = usePrototype(review, "review", false, workspace === "editor");
+  function changeWorkspace(next: "rallies" | "editor") {
+    if (state.selected) state.selectClip(state.selected.id);
+    state.setPlaying(false);
+    setWorkspace(next);
+    state.setStage("review");
+    try { window.localStorage.setItem("volleysplice:review-workspace", next); } catch { /* Session choice still works. */ }
+  }
   const [settingsOpen, setSettingsOpen] = useState(false);
-  useRallyDeskShortcuts(state, settingsOpen);
+  const [tourActive, setTourActive] = useState(false);
+  const [tourRestartToken, setTourRestartToken] = useState(0);
+  const [tourView, setTourView] = useState<RalliesTourView | null>(null);
+  function handleTourActive(active: boolean) {
+    setTourActive(active);
+    if (!active) setTourView(null);
+  }
+  function navigateTour(destination: RalliesTourDestination) {
+    state.setPlaying(false);
+    setSettingsOpen(destination === "settings");
+    setWorkspace(destination === "editor" ? "editor" : "rallies");
+    state.setStage(destination === "export" ? "deliver" : "review");
+    setTourView(destination === "browse" || destination === "add" || destination === "edit" ? destination : "review");
+  }
+  const rallyNextReviewButton = useRef<HTMLButtonElement>(null);
+  useRallyDeskShortcuts(state, settingsOpen || tourActive, workspace === "rallies" ? rallyNextReviewButton : undefined);
   const layoutPreferences = useWorkspaceLayout();
+  function resizeRalliesSidebar(width: number | undefined) {
+    layoutPreferences.onLayoutChange(current => {
+      const next = { ...current };
+      if (width === undefined) delete next.rallies;
+      else next.rallies = width;
+      return next;
+    });
+  }
   return (
-    <main className="taste-root taste-rally-desk" data-theme={state.dark ? "dark" : "light"}>
+    <main className={`taste-root taste-rally-desk ${workspace === "rallies" && state.stage === "review" ? "is-rallies-workspace" : ""}`} data-theme={state.dark ? "dark" : "light"}>
       <header className="rd-topbar" data-review={state.stage === "review" || undefined}>
         <Brand logo />
         {state.stage === "review" && <RallyDeskProjectSelector state={state} className="rd-topbar-project" onDeleteProject={onDeleteProject} />}
-        <StageButtons state={state} editorOnly />
-        {state.stage === "review" && <ReviewSummary state={state} reviewActions onOpenSettings={() => setSettingsOpen(true)} />}
-        <AppMenu projectName={state.projectName} onResetProject={state.resetProjectChanges} dark={state.dark} onToggleTheme={() => state.setDark(!state.dark)} onResetLayout={() => layoutPreferences.onLayoutChange({})} />
+        <nav className="rw-workspace-tabs" aria-label="VolleySplice workflow">
+          <button type="button" aria-current={state.stage === "review" && workspace === "rallies" ? "page" : undefined} onClick={() => changeWorkspace("rallies")}>Rallies</button>
+          <button type="button" data-tour="rw-editor-tab" aria-current={state.stage === "review" && workspace === "editor" ? "page" : undefined} onClick={() => changeWorkspace("editor")}>Editor</button>
+          <button type="button" data-tour="rw-export-tab" aria-current={state.stage === "deliver" ? "page" : undefined} onClick={() => state.setStage("deliver")}>Export</button>
+        </nav>
+        {state.stage === "review" && workspace === "editor" && <ReviewSummary state={state} reviewActions onOpenSettings={() => setSettingsOpen(true)} />}
+        {state.stage === "review" && workspace === "rallies" && <div className="rw-top-actions"><button type="button" aria-label="Final cut settings" onClick={() => setSettingsOpen(true)}>Settings</button></div>}
+        <AppMenu projectName={state.projectName} onResetProject={state.resetProjectChanges} dark={state.dark} onToggleTheme={() => state.setDark(!state.dark)} onResetLayout={() => layoutPreferences.onLayoutChange({})} onRestartTour={() => setTourRestartToken(token => token + 1)} />
       </header>
       {state.draftSaveFailed && <p className="rd-storage-alert" role="alert">{state.storageMessage}</p>}
       <ScoreRecoveryNotice state={state} />
-      {state.stage === "review" ? (
+      {state.stage === "review" && workspace === "rallies" ? (
+        <RallyReviewWorkspace state={state} tourView={tourView} sidebarWidth={layoutPreferences.savedLayout.rallies} onSidebarWidthChange={resizeRalliesSidebar} nextReviewButtonRef={rallyNextReviewButton} renderVideo={range => <VideoStage state={state} rally playbackRange={range} />} renderTimeline={() => <RallyDeskTimeline state={state} />} />
+      ) : state.stage === "review" ? (
         <ResizableWorkspace
           {...layoutPreferences}
           ledger={<><RallyDeskEventRail state={state} /><RallyDeskClipRegister state={state} /></>}
@@ -2957,7 +3060,7 @@ export function RallyDesk({
       )}
       <HelpDrawer state={state} />
       {settingsOpen && <RallyDeskSettingsModal state={state} onClose={() => setSettingsOpen(false)} />}
-      {state.stage === "review" && <RallyDeskGuidedTour />}
+      <RalliesGuidedTour hasRallies={state.clips.length > 0} scoreEnabled={state.scoreEnabled} sourceAvailable={state.playbackAvailable} restartToken={tourRestartToken} onNavigate={navigateTour} onActiveChange={handleTourActive} />
     </main>
   );
 }

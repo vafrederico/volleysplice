@@ -24,6 +24,7 @@ class CodecCapabilities { static async isConfigSupported(config) { return { supp
 globalThis.VideoDecoder = window.VideoDecoder = CodecCapabilities;
 globalThis.AudioDecoder = window.AudioDecoder = CodecCapabilities;
 window.VideoFrame = class {};
+window.localStorage.setItem("volleysplice:review-workspace", "editor");
 window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
 window.scrollTo = () => {}; window.isSecureContext = true;
 dom.window.HTMLElement.prototype.scrollIntoView = () => {};
@@ -103,7 +104,7 @@ try {
   assert.equal(urls.length, beforeRejectedReuse, "Rejected setup reuse must not link the candidate to the saved project");
   assert.deepEqual(await savedProject(project.id), immutableBefore, "Rejected setup reuse must not overwrite saved identity, analysis or review");
   await select(project.id); await waitFor(() => document.querySelector('.td-reconnect:has(input[type="file"])'));
-  await act(async () => document.querySelector(".td-stages button:last-child").click());
+  await act(async () => document.querySelector(".rw-workspace-tabs button:last-child").click());
   assert.equal([...document.querySelectorAll("button")].find(b => b.textContent === "Reconnect source for MP4").disabled, true);
 
   // The same setup with verified bytes reopens the immutable project, without inference.
@@ -114,7 +115,7 @@ try {
   assert.deepEqual(verifiedSaved.analysis, project.analysis);
   assert.deepEqual(verifiedSaved.reviewDraft.reviewedCutIds, ["R001"]);
   assert.equal(verifiedSaved.reviewDraft.scoreTracking.team1Name, "Retained team");
-  await act(async () => document.querySelector(".td-stages button:last-child").click());
+  await act(async () => document.querySelector(".rw-workspace-tabs button:last-child").click());
   assert.equal([...document.querySelectorAll("button")].find(b => b.textContent === "Save MP4").disabled, false);
 
   // Legacy records retain their prior metadata-only contract through the setup path.

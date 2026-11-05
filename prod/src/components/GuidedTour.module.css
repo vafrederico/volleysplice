@@ -180,6 +180,18 @@
     monospace;
 }
 
+.ralliesDialog { font-family: "Courtside Sans", system-ui, sans-serif; color: #131416; background: #fff; border-color: #cdced1; max-height: calc(100dvh - 32px); overflow-y: auto; }
+.ralliesDialog h2 { font-size: 24px; letter-spacing: -.02em; }
+.ralliesDialog p, .ralliesDialog .escapeHint, .ralliesDialog .skip { color: #5d5f60; }
+.ralliesDialog .kicker { color: #1b6c80; }
+.ralliesDialog .next { color: #fff; background: #131416; border-radius: 6px; }
+.ralliesDialog .close { color: #131416; background: #fff; border-color: #cdced1; }
+.ralliesDialog .progress i { background: #e8eaec; }
+.ralliesDialog .progress i[data-active="true"] { background: #1b6c80; }
+.ralliesDialog[data-side="left"] { left: 16px; right: auto; }
+.ralliesDialog[data-position="top"] { top: 16px; bottom: auto; }
+.ralliesDialog .skip:disabled { opacity: .45; cursor: default; }
+
 @media (max-width: 560px) {
   .dialog {
     left: 16px;

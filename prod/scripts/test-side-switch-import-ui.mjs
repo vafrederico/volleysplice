@@ -22,6 +22,7 @@ Object.assign(globalThis, {
   requestAnimationFrame: callback => setTimeout(callback, 0), cancelAnimationFrame: clearTimeout,
 });
 Object.defineProperty(globalThis, "navigator", { value: dom.window.navigator, configurable: true });
+window.localStorage.setItem("volleysplice:review-workspace", "editor");
 window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
 dom.window.HTMLElement.prototype.scrollIntoView = () => {};
 dom.window.HTMLCanvasElement.prototype.getContext = () => null;
@@ -98,7 +99,7 @@ try {
     assert.ok([...document.querySelectorAll('.rd-event-list [data-kind="switch"]')].some(node => /0:40.*manual/.test(node.textContent)));
 
     const downloadProject = async () => {
-      await click('.td-stages button:last-child');
+      await click('.rw-workspace-tabs button:last-child');
       await click('input[value="feedback"]');
       downloaded = undefined;
       await clickText("Save project");
@@ -112,7 +113,7 @@ try {
     assert.equal(before.source.generateSideSwitchMarkers, scenario !== "disabled");
     assert.deepEqual(before.corrections.scoreTracking, bundle.corrections.scoreTracking);
     assert.ok(before.finalExportIntervals.length > 0);
-    await click('.td-stages button:first-child');
+    await click('.rw-workspace-tabs button:nth-child(2)');
 
     await click('button[aria-label="App menu"]');
     await click('.rd-menu-panel button:nth-of-type(3)');

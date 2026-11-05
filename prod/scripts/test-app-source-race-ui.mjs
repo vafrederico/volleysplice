@@ -23,6 +23,7 @@ class CodecCapabilities { static async isConfigSupported(config) { return { supp
 globalThis.VideoDecoder = window.VideoDecoder = CodecCapabilities;
 globalThis.AudioDecoder = window.AudioDecoder = CodecCapabilities;
 window.VideoFrame = class {};
+window.localStorage.setItem("volleysplice:review-workspace", "editor");
 window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
 window.scrollTo = () => {}; window.isSecureContext = true;
 dom.window.HTMLElement.prototype.scrollIntoView = () => {};
@@ -82,7 +83,7 @@ try {
   base.reviewDraft.reviewedCutIds = ["R001"];
   for (const status of ["ready", "waiting"]) for (const path of ["attach", "setup"]) for (const timing of ["before", "during"]) {
     await act(async () => root.render(null));
-    indexedDB = new IDBFactory(); window.localStorage.clear(); codecSupported = true;
+    indexedDB = new IDBFactory(); window.localStorage.clear(); window.localStorage.setItem("volleysplice:review-workspace", "editor"); codecSupported = true;
     const legacy = { ...structuredClone(base), status, ...(status === "waiting" ? { analysis: null } : {}) };
     Object.assign(legacy, await store.putProject(legacy));
     window.localStorage.setItem(store.SELECTED_PROJECT_STORAGE_KEY, legacy.id);
@@ -121,7 +122,7 @@ try {
     assert.deepEqual(persisted.reviewDraft.reviewedCutIds, ["R001"]);
     if (status === "ready" && path === "attach") {
       assert.ok(document.querySelector('.td-reconnect:has(input[type="file"])'));
-      await act(async () => document.querySelector(".td-stages button:last-child").click());
+      await act(async () => document.querySelector(".rw-workspace-tabs button:last-child").click());
       assert.equal([...document.querySelectorAll("button")].find(b => b.textContent === "Reconnect source for MP4").disabled, true);
     }
     // Correct original bytes retry against the reconciled authoritative record.
@@ -135,7 +136,7 @@ try {
       ? document.querySelector(".taste-rally-desk") && !document.querySelector('.td-reconnect:has(input[type="file"])')
       : [...document.querySelectorAll("button")].some(b => b.textContent === "Try again"));
     if (status === "ready") {
-      await act(async () => document.querySelector(".td-stages button:last-child").click());
+      await act(async () => document.querySelector(".rw-workspace-tabs button:last-child").click());
       assert.equal([...document.querySelectorAll("button")].find(b => b.textContent === "Save MP4").disabled, false);
     }
     assert.ok(linked.slice(before).every(value => value === original));
@@ -143,7 +144,7 @@ try {
   }
   for (const status of ["ready", "waiting"]) for (const path of ["attach", "setup"]) {
     await act(async () => root.render(null));
-    indexedDB = new IDBFactory(); window.localStorage.clear(); codecSupported = true;
+    indexedDB = new IDBFactory(); window.localStorage.clear(); window.localStorage.setItem("volleysplice:review-workspace", "editor"); codecSupported = true;
     const legacy = { ...structuredClone(base), status, ...(status === "waiting" ? { analysis: null } : {}) };
     Object.assign(legacy, await store.putProject(legacy));
     window.localStorage.setItem(store.SELECTED_PROJECT_STORAGE_KEY, legacy.id);
@@ -184,7 +185,7 @@ try {
   // Pause a genuine App run inside media probing, recreate the same ID/source,
   // then let the old run fail. The new ready instance must remain untouched.
   await act(async () => root.render(null));
-  indexedDB = new IDBFactory(); window.localStorage.clear(); codecSupported = true;
+  indexedDB = new IDBFactory(); window.localStorage.clear(); window.localStorage.setItem("volleysplice:review-workspace", "editor"); codecSupported = true;
   const old = await store.putProject({ ...structuredClone(base), source: { ...source, fingerprint }, status: "waiting", analysis: null });
   window.localStorage.setItem(store.SELECTED_PROJECT_STORAGE_KEY, old.id);
   window.localStorage.setItem("volleycut:rally-desk-tour:v1", "dismissed");
@@ -228,7 +229,7 @@ try {
   // A successful old run's first fingerprint completion must not even start
   // analyzing a replacement instance. Final success/failure writes share this fence.
   await act(async () => root.render(null));
-  indexedDB = new IDBFactory(); window.localStorage.clear(); codecSupported = true;
+  indexedDB = new IDBFactory(); window.localStorage.clear(); window.localStorage.setItem("volleysplice:review-workspace", "editor"); codecSupported = true;
   const unverified = await store.putProject({ ...structuredClone(base), status: "waiting", analysis: null });
   window.localStorage.setItem(store.SELECTED_PROJECT_STORAGE_KEY, unverified.id);
   window.localStorage.setItem("volleycut:rally-desk-tour:v1", "dismissed");
@@ -260,7 +261,7 @@ try {
   // confirmation for both attachment and setup, whether ready or pending.
   for (const status of ["ready", "waiting"]) for (const path of ["attach", "setup"]) {
     await act(async () => root.render(null));
-    indexedDB = new IDBFactory(); window.localStorage.clear(); codecSupported = true;
+    indexedDB = new IDBFactory(); window.localStorage.clear(); window.localStorage.setItem("volleysplice:review-workspace", "editor"); codecSupported = true;
     const captured = await store.putProject({ ...structuredClone(base), source: { ...source, fingerprint }, status,
       ...(status === "waiting" ? { analysis: null } : {}) });
     window.localStorage.setItem(store.SELECTED_PROJECT_STORAGE_KEY, captured.id);

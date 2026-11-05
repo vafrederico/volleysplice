@@ -68,20 +68,21 @@ test("shared frames still use the frozen production feature and inference paths"
 });
 
 test("the task-focused tutorial remains available in setup and review", async () => {
-  const [app, editor, tutorial] = await Promise.all([
+  const [app, editor, tutorial, ralliesTutorial] = await Promise.all([
     source("App.tsx"),
     source("designs/taste/index.tsx"),
     source("components/GuidedTour.tsx"),
+    source("components/RalliesGuidedTour.tsx"),
   ]);
 
   assert.match(app, /<GuidedTour stage="source"/);
-  assert.match(editor, /<RallyDeskGuidedTour/);
+  assert.match(editor, /<RalliesGuidedTour/);
   assert.match(tutorial, /Restart tutorial/);
   assert.match(tutorial, /Choose your video/);
-  assert.match(tutorial, /Start with what needs attention/);
-  assert.match(tutorial, /Add a rally VolleySplice missed/);
-  assert.match(tutorial, /Check serves and side switches/);
-  assert.match(tutorial, /Export when the review is ready/);
+  assert.match(ralliesTutorial, /Review one rally at a time/);
+  assert.match(ralliesTutorial, /Mark a missing rally explicitly/);
+  assert.match(ralliesTutorial, /Check the serving side/);
+  assert.match(ralliesTutorial, /Save the finished game/);
   assert.doesNotMatch(tutorial, /Choose a suppression policy/);
   assert.doesNotMatch(tutorial, /queue inference/);
 });
