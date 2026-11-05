@@ -1,11 +1,11 @@
-export type WorkspaceLayout = { left?: number; right?: number; video?: number };
+export type WorkspaceLayout = { left?: number; right?: number; video?: number; rallies?: number };
 
 export function readLayout(raw: string | null): WorkspaceLayout {
   try {
     const data: unknown = JSON.parse(raw ?? "{}");
     if (!data || typeof data !== "object" || Array.isArray(data)) return {};
     const result: WorkspaceLayout = {};
-    for (const key of ["left", "right", "video"] as const) {
+    for (const key of ["left", "right", "video", "rallies"] as const) {
       const value = (data as Record<string, unknown>)[key];
       if (typeof value === "number" && Number.isFinite(value) && value > 0)
         result[key] = value;

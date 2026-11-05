@@ -17,7 +17,7 @@ import {
 
 const STORAGE_KEY = "volleysplice:rally-desk-layout:v1";
 
-function ResizeHandle({
+export function ResizeHandle({
   axis,
   label,
   value,
@@ -91,9 +91,11 @@ function ResizeHandle({
         const positive = axis === "horizontal" ? "ArrowRight" : "ArrowDown";
         if (event.key === "Home" || event.key === "End") {
           event.preventDefault();
+          event.stopPropagation();
           update(event.key === "Home" ? min : max);
         } else if (event.key === negative || event.key === positive) {
           event.preventDefault();
+          event.stopPropagation();
           update(
             value +
               (event.key === positive ? 1 : -1) *

@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type ReactNode, type PointerEvent, type RefObject } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type PointerEvent, type RefObject } from "react";
 import { deriveScoreAt } from "@/lib/score-tracking";
 import { scrollElementIntoContainer } from "@/lib/scroll-container";
 import type { Clip, Prototype } from "./index";
+import { ResizeHandle } from "./ResizableWorkspace";
 
 function time(value: number) {
   const tenths = Math.round(Math.max(0, value) * 10);
@@ -107,15 +108,31 @@ function BoundsTimeline({ state, clip: sourceClip }: { state: Prototype; clip: C
 
 export type RalliesTourView = "review" | "edit" | "browse" | "add";
 
-export function RallyReviewWorkspace({ state, nextReviewButtonRef, renderVideo, renderTimeline, tourView }: {
+export function RallyReviewWorkspace({ state, nextReviewButtonRef, renderVideo, renderTimeline, tourView, sidebarWidth, onSidebarWidthChange }: {
   state: Prototype;
   nextReviewButtonRef: RefObject<HTMLButtonElement | null>;
   renderVideo: (range?: { start: number; end: number }) => ReactNode;
   renderTimeline: () => ReactNode;
   tourView?: RalliesTourView | null;
+  sidebarWidth?: number;
+  onSidebarWidthChange: (width: number | undefined) => void;
 }) {
   const [mode, setMode] = useState<"review" | "browse" | "edit" | "add">("review");
   const [showTimeline, setShowTimeline] = useState(true);
+  const body = useRef<HTMLDivElement>(null);
+  const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight, available: window.innerWidth - 32 });
+  useEffect(() => {
+    const measure = () => setViewport({ width: window.innerWidth, height: window.innerHeight, available: body.current?.clientWidth || window.innerWidth - 32 });
+    const observer = new ResizeObserver(measure);
+    if (body.current) observer.observe(body.current);
+    window.addEventListener("resize", measure);
+    measure();
+    return () => { observer.disconnect(); window.removeEventListener("resize", measure); };
+  }, []);
+  const sidebarDefault = viewport.width > 1100 ? 416 : viewport.height < 480 ? 340 : 360;
+  // Keep room for the player, and retain the saved width when a smaller screen clamps it.
+  const sidebarMax = Math.max(320, Math.min(640, viewport.available - 332));
+  const fittedSidebarWidth = Math.max(320, Math.min(sidebarMax, sidebarWidth ?? sidebarDefault));
   const pending = reviewRallies(state);
   const orphanServes = state.scoreEnabled ? state.activeScoreMarkers.filter(marker => marker.side === "review" &&
     !state.clips.some(clip => clip.id === marker.rallyId || (!marker.rallyId && marker.timestamp >= clip.start && marker.timestamp <= clip.end))) : [];
@@ -223,8 +240,10 @@ export function RallyReviewWorkspace({ state, nextReviewButtonRef, renderVideo, 
         else { setOrphanId(null); setReviewingId(null); setMode("review"); }
       }}>{mode === "review" ? `All rallies (${ordered.length}) →` : "← Review rallies"}</button>
     </header>
-    <div className="rw-body">
+    <div className="rw-body" ref={body} style={{ "--rw-sidebar-width": `${fittedSidebarWidth}px` } as CSSProperties}>
       <div className="rw-player">{renderVideo(range)}<label className="rw-source-seek"><span>Source playhead</span><span className="rw-source-slider"><input aria-label="Source playhead" type="range" min={state.gameStart} max={state.gameEnd} step="any" value={state.playhead} onChange={event => { setFollowingSource(true); state.setPlayhead(Number(event.currentTarget.value)); }} />{locationTime !== null && <span className="rw-list-marker" role="img" aria-label={`Rally ${ordered.indexOf(locationRally!) + 1} location`} data-rally-location={locationRally!.id} style={{ left: `${(locationTime - state.gameStart) / Math.max(.1, state.gameEnd - state.gameStart) * 100}%` }} />}</span></label></div>
+      <ResizeHandle axis="horizontal" label="Resize rallies sidebar" className="rw-sidebar-resize" direction={-1}
+        value={fittedSidebarWidth} min={320} max={sidebarMax} onChange={onSidebarWidthChange} onReset={() => onSidebarWidthChange(undefined)} />
       <aside className="rw-panel" aria-label={mode === "browse" ? "All rallies browser" : "Rally decisions"}>
         {mode === "browse" ? <>
           <header className="rw-browser-heading"><h2>{ordered.length} rallies</h2><button type="button" onClick={() => setShowTimeline(!showTimeline)}>{showTimeline ? "Hide timeline" : "Show timeline"}</button></header>

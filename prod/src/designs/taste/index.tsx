@@ -3015,6 +3015,14 @@ export function RallyDesk({
   const rallyNextReviewButton = useRef<HTMLButtonElement>(null);
   useRallyDeskShortcuts(state, settingsOpen || tourActive, workspace === "rallies" ? rallyNextReviewButton : undefined);
   const layoutPreferences = useWorkspaceLayout();
+  function resizeRalliesSidebar(width: number | undefined) {
+    layoutPreferences.onLayoutChange(current => {
+      const next = { ...current };
+      if (width === undefined) delete next.rallies;
+      else next.rallies = width;
+      return next;
+    });
+  }
   return (
     <main className={`taste-root taste-rally-desk ${workspace === "rallies" && state.stage === "review" ? "is-rallies-workspace" : ""}`} data-theme={state.dark ? "dark" : "light"}>
       <header className="rd-topbar" data-review={state.stage === "review" || undefined}>
@@ -3032,7 +3040,7 @@ export function RallyDesk({
       {state.draftSaveFailed && <p className="rd-storage-alert" role="alert">{state.storageMessage}</p>}
       <ScoreRecoveryNotice state={state} />
       {state.stage === "review" && workspace === "rallies" ? (
-        <RallyReviewWorkspace state={state} tourView={tourView} nextReviewButtonRef={rallyNextReviewButton} renderVideo={range => <VideoStage state={state} rally playbackRange={range} />} renderTimeline={() => <RallyDeskTimeline state={state} />} />
+        <RallyReviewWorkspace state={state} tourView={tourView} sidebarWidth={layoutPreferences.savedLayout.rallies} onSidebarWidthChange={resizeRalliesSidebar} nextReviewButtonRef={rallyNextReviewButton} renderVideo={range => <VideoStage state={state} rally playbackRange={range} />} renderTimeline={() => <RallyDeskTimeline state={state} />} />
       ) : state.stage === "review" ? (
         <ResizableWorkspace
           {...layoutPreferences}

@@ -23,8 +23,10 @@
 .rw-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 52px; padding: 0 8px; }
 .rw-heading h1 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: 0; }
 .rw-heading > button { border: 0; background: transparent; padding-inline: 0; }
-/* At 1440: 16 + 1028 player + 12 gutter + 368 decisions + 16 = 1440. */
-.rw-body { display: grid; grid-template-columns: minmax(0, 1fr) 368px; gap: 12px; height: calc(100dvh - 134px); min-height: 440px; align-items: start; }
+/* At 1440: 16 + 980 player + 12 divider + 416 decisions + 16 = 1440. */
+.rw-body { display: grid; grid-template-columns: minmax(0, 1fr) 12px var(--rw-sidebar-width, 416px); height: calc(100dvh - 134px); min-height: 440px; align-items: start; }
+.rw-sidebar-resize { align-self: stretch; cursor: col-resize; }
+.rw-sidebar-resize::after { top: calc(50% - 32px); left: calc(50% - 1.5px); width: 3px; height: 64px; }
 .rw-player { min-width: 0; height: 100%; display: flex; flex-direction: column; background: #17191a; }
 .rw-player .td-video.is-rally-review { flex: 1; display: flex; flex-direction: column; min-height: 0; border: 0; border-radius: 0; background: #17191a; padding: 0; gap: 0; }
 .rw-player .td-video-picture { flex: 1; min-height: 0; height: auto; aspect-ratio: auto; border: 0; border-radius: 0; background: #000; }
@@ -125,11 +127,10 @@
 .rw-missing-timeline .rd-timeline > header, .rw-missing-timeline .rd-score-timeline { display: none; }
 .rw-missing-timeline .rd-timeline-key { font-size: 10px; }
 @media (max-width: 1100px) {
-  .rw-body { grid-template-columns: minmax(0, 1fr) 340px; }
   .is-rallies-workspace .rd-topbar[data-review] { grid-template-columns: auto minmax(100px, 1fr) auto auto auto; }
   .rw-workspace { padding-inline: 8px; }
 }
-@media (max-width: 719px) and (min-height: 480px) {
+@media (max-width: 719px) and (min-height: 480px), (max-width: 559px) {
   .is-rallies-workspace .rd-topbar[data-review] { grid-template-columns: 36px minmax(0, 1fr) auto auto; gap: 4px 8px; padding: 8px; }
   .is-rallies-workspace .rd-topbar[data-review] .td-brand > img { width: 32px; }
   .is-rallies-workspace .rd-topbar[data-review] > .td-brand { grid-column: 1; grid-row: 1; }
@@ -145,6 +146,7 @@
   .rw-heading h1 { font-size: 14px; }
   .rw-heading > button { font-size: 12px; }
   .rw-body { display: flex; flex-direction: column; height: auto; min-height: 0; gap: 8px; }
+  .rw-sidebar-resize { display: none; }
   .rw-player { width: 100%; height: clamp(230px, 38dvh, 440px); flex: none; }
   .rw-panel { width: 100%; max-height: none; padding: 12px; gap: 10px; }
   .rw-rally-list { max-height: 360px; }
@@ -154,7 +156,7 @@
   .rw-bound-head h2 { font-size: 14px; }
 }
 @media (max-height: 479px) and (min-width: 560px) {
-  .rw-body { grid-template-columns: minmax(0, 1fr) 320px; height: calc(100dvh - 114px); min-height: 220px; }
+  .rw-body { height: calc(100dvh - 114px); min-height: 220px; }
   .is-rallies-workspace .rd-topbar[data-review] { min-height: 54px; padding-block: 4px; }
   .rw-heading { min-height: 44px; }
   .rw-rally-list { max-height: calc(100dvh - 280px); }

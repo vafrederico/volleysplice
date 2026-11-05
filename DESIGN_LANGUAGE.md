@@ -26,6 +26,7 @@ This document defines the production web editor’s visual and interaction langu
 ### Focused Rallies workspace
 
 - Follow the Android Courtside review layout and saved native tablet references: video on the left, a compact decision panel on the right from 720px, and stacked video/controls on phones. Short landscape windows retain the two-pane layout with a scrollable control panel.
+- The Rallies sidebar defaults to 416px on wide screens and can be resized with the divider beside the video. Save its width with the workspace layout, clamp it to leave room for the player on smaller screens, and hide the divider when stacked. Support keyboard resizing, double-click to reset, and the app menu's Reset layout action.
 - Use the native IBM Plex Sans assets, a solid `#eef3f4` background, white panels, `#131416` ink, `#5d5f60` secondary text, and `#1b6c80` timeline accent. Panels have 16px corners, controls 6px corners, and workspace navigation uses a pill. These tokens apply to Rallies; the full Editor retains the language below.
 - Keep the selected rally open through Keep/Remove and serve decisions. Next review becomes available once that rally's decisions are resolved. Review uncertain serves outside detected rallies as footage rather than silently dropping them.
 - Show neighboring rally context, draggable core boundaries, one-second trim buttons, equal Keep/Remove buttons, Near/Far/Not a serve, and Previous rally/Next review/Next rally. A trim drag is one undo action. Put split and playhead boundary commands behind More editing tools.

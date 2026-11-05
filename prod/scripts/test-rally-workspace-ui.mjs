@@ -9,6 +9,7 @@ const server = await createServer({ root: fileURLToPath(new URL("..", import.met
   resolve: { dedupe: ["react", "react-dom"] }, server: { middlewareMode: true, hmr: false, ws: false }, appType: "custom" });
 const dom = new JSDOM('<div id="root"></div>', { url: "https://example.test", pretendToBeVisual: true });
 Object.assign(globalThis, { window: dom.window, document: dom.window.document, Element: dom.window.Element,
+  localStorage: dom.window.localStorage,
   HTMLElement: dom.window.HTMLElement, Node: dom.window.Node, IS_REACT_ACT_ENVIRONMENT: true,
   ResizeObserver: class { observe() {} disconnect() {} }, requestAnimationFrame: callback => setTimeout(callback, 0), cancelAnimationFrame: clearTimeout });
 Object.defineProperty(globalThis, "navigator", { value: dom.window.navigator, configurable: true });
@@ -38,6 +39,24 @@ try {
     draft, modelDraft: draft, draftSeed: seed, cleanupSuggestions: [], projects: [], workActivity: [], exportJob: null,
     selectProject() {}, attachSource() {}, queueVideoExport() {}, saveDraft(value) { saved = value; return { ok: true }; } };
   await act(async () => root.render(React.createElement(RallyDesk, { review })));
+  const sidebar = () => document.querySelector('[role="separator"][aria-label="Resize rallies sidebar"]');
+  const defaultSidebarWidth = sidebar().getAttribute("aria-valuenow");
+  const beforeResize = structuredClone(saved);
+  const beforeResizePlayhead = document.querySelector('[aria-label="Source playhead"]').value;
+  await act(async () => sidebar().dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true })));
+  const resizedWidth = Number(defaultSidebarWidth) + 10;
+  assert.equal(Number(sidebar().getAttribute("aria-valuenow")), resizedWidth, "Left widens the sidebar on the right");
+  assert.equal(JSON.parse(window.localStorage.getItem("volleysplice:rally-desk-layout:v1")).rallies, resizedWidth);
+  assert.equal(document.querySelector('[aria-label="Source playhead"]').value, beforeResizePlayhead, "resize arrow keys never seek the video");
+  assert.deepEqual(saved, beforeResize, "layout resizing never changes the project draft");
+  await act(async () => root.render(React.createElement(RallyDesk, { key: "resized-layout", review })));
+  assert.equal(Number(sidebar().getAttribute("aria-valuenow")), resizedWidth, "sidebar width survives remounting");
+  await act(async () => sidebar().dispatchEvent(new window.MouseEvent("dblclick", { bubbles: true })));
+  assert.equal(sidebar().getAttribute("aria-valuenow"), defaultSidebarWidth, "double-click restores the responsive default");
+  await act(async () => sidebar().dispatchEvent(new window.KeyboardEvent("keydown", { key: "End", bubbles: true })));
+  assert.equal(sidebar().getAttribute("aria-valuenow"), sidebar().getAttribute("aria-valuemax"));
+  await click("App menu"); await click("Reset layout");
+  assert.equal(sidebar().getAttribute("aria-valuenow"), defaultSidebarWidth, "Reset layout includes the Rallies sidebar");
   assert.match(document.querySelector(".rw-heading").textContent, /Reviewing 2 rallies/);
   assert.match(document.querySelector(".td-video-reconnect").textContent, /Reconnect your video.*Practice.mp4/s);
   assert.equal(button("Play").disabled, true, "Play is disabled without a video URL, even before a reconnect flag is set");
