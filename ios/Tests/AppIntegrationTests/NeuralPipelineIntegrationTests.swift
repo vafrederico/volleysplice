@@ -202,6 +202,16 @@ final class NeuralPipelineIntegrationTests: XCTestCase {
             ]
             let bytes = try JSONSerialization.data(withJSONObject: receipt, options: [.sortedKeys])
             print("NEURAL_PIPELINE_BENCHMARK " + String(decoding: bytes, as: UTF8.self))
+            // Optional private evidence, written after the measured workload.
+            // Retain actual values, not just counts, for decoder parity checks.
+            if let path = environment["VOLLEYCUT_IOS_BENCHMARK_RETAIN"], !path.isEmpty {
+                let destination = URL(fileURLWithPath: path).appendingPathComponent(model.rawValue)
+                try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+                let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
+                try encoder.encode(result).write(to: destination.appendingPathComponent("analysis.json"), options: .atomic)
+                try exported.write(to: destination.appendingPathComponent("project.json"), options: .atomic)
+                try FileManager.default.copyItem(at: cache, to: destination.appendingPathComponent("cache"))
+            }
         }
     }
 }

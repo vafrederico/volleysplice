@@ -85,6 +85,39 @@ library implementations from the simulator, so the full timing difference is not
 a pure measure of the GPU decoder. Do not extrapolate to iPhone throughput or
 model accuracy from these lab timings.
 
+## Exact decoder parity
+
+Matching counts cannot establish matching inference. Add
+`--retain-outputs "$PRIVATE_OUTPUTS"` to a run to retain each model's complete
+`AnalysisResult`, project document and cache directory. The destination must be
+new. These files contain private source information and must remain outside Git.
+Retention happens after the timed workload; production analysis code is unchanged.
+An older test build that does not export the requested outputs fails the runner.
+
+Run the same simulator build and input once with software decoding and once with
+hardware decoding, verifying the decoder externally. Compare the private results:
+
+```sh
+python3 scripts/compare-decoder-parity.py "$PRIVATE_SOFTWARE_OUTPUTS" \
+  "$PRIVATE_HARDWARE_OUTPUTS" --output "$PARITY_REPORT"
+```
+
+The comparison requires exact numerical equality for all analysis fields,
+including probabilities, labels, interval boundaries/confidence, serving-side and
+side-switch results, features and timestamps. It compares decoded cache plists,
+including binary embedding data. Only `stageSeconds`,
+`allLabels.profileMilliseconds` and `previous.profileMilliseconds` are excluded.
+The report contains counts and maximum errors, not source names, private paths
+or raw predictions. The retained project document is for inspection; its
+run-specific metadata is not part of the numerical parity verdict.
+
+On 2026-11-15, all three models matched exactly on the 0–120-second window of
+`recording-2026111401`: simulator software versus both the original macbox hardware
+bridge and its pipelined shared-allocator implementation. Source algorithms and
+model assets remained at `20eb7ac5`; only the test harness gained retention.
+This qualifies that fixture and runtime, not arbitrary videos, native-macOS
+inference parity, physical devices or model accuracy.
+
 ## Verified run
 
 On 2026-11-14, macOS 26.7.3 x86-64, GTX 970M / NVIDIA 580.196.07,
