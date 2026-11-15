@@ -131,7 +131,65 @@ for test_name, folder, ui_test in [('VolleySpliceTests', 'Tests/AppIntegrationTe
     test_target = obj(test_name + ':target', f'isa = PBXNativeTarget; name = {test_name}; productName = {test_name}; productType = "{product_type}"; productReference = {test_product}; buildConfigurationList = {config_list}; buildPhases = ({phase}); dependencies = ({dependency}); buildRules = ();')
     test_targets.append(test_target)
     test_references.append(f'<BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{test_target}" BuildableName="{test_name}.xctest" BlueprintName="{test_name}" ReferencedContainer="container:VolleySplice.xcodeproj"/>')
-project = obj('project', f'isa = PBXProject; mainGroup = {group}; buildConfigurationList = {configList}; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; knownRegions = (en,Base); projectDirPath = ""; projectRoot = ""; targets = ({",".join([target] + test_targets)}); packageReferences = ({ort_package}); attributes = {{LastUpgradeCheck = 2630;}};')
+# Native macOS benchmark hosts the unchanged analysis code and the same tests.
+# Keep UIKit, storage/UI entry points and export code out of this target.
+mac_app_files = [
+    'AnalysisPipeline', 'AnalysisVideoColor', 'MediaDecoder', 'NeuralRallyRuntime',
+    'NeuralServingRuntime', 'ProjectSession', 'ScoreAnalysis', 'ServingSideFeatureExtractor',
+    'SideSwitchFeatureExtractor', 'SpecialistFrameDecoder', 'SpecialistFrameReader',
+    'VisualFeatureExtractor',
+]
+mac_sources = sorted((root / 'Sources/VolleyCore').glob('*.swift'))
+mac_sources += [root / 'App' / (name + '.swift') for name in mac_app_files]
+mac_sources += [root / 'App' / (name + '.mm') for name in
+                ['OpenCVBridge', 'ServingSideBridge', 'SideSwitchBridge', 'VideoPreprocessingBridge']]
+mac_sources += [root / 'Tests/MacBenchmark/BenchmarkHost.swift']
+mac_builds = []
+for file in mac_sources:
+    relative = file.relative_to(root).as_posix()
+    # Separate references avoid changing the existing iOS target's membership.
+    ref = obj('mac-ref:' + relative, f'isa = PBXFileReference; path = {quote(relative)}; sourceTree = "<group>"; lastKnownFileType = {"sourcecode.cpp.objcpp" if file.suffix == ".mm" else "sourcecode.swift"};')
+    mac_builds.append(obj('mac-build:' + relative, f'isa = PBXBuildFile; fileRef = {ref};'))
+mac_product = obj('mac-product', 'isa = PBXFileReference; path = VolleySpliceBenchmark.app; sourceTree = BUILT_PRODUCTS_DIR; explicitFileType = wrapper.application;')
+mac_source_phase = obj('mac-sources', f'isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = ({",".join(mac_builds)}); runOnlyForDeploymentPostprocessing = 0;')
+mac_resource_phase = obj('mac-resources', f'isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = ({",".join(resources)}); runOnlyForDeploymentPostprocessing = 0;')
+mac_ort = obj('mac-ort-product', f'isa = XCSwiftPackageProductDependency; package = {ort_package}; productName = onnxruntime;')
+mac_ort_build = obj('mac-ort-build', f'isa = PBXBuildFile; productRef = {mac_ort};')
+mac_framework_phase = obj('mac-frameworks', f'isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = ({mac_ort_build}); runOnlyForDeploymentPostprocessing = 0;')
+mac_configs, mac_test_configs = [], []
+for config in ['Debug', 'Release']:
+    common = {'SDKROOT': 'macosx', 'SUPPORTED_PLATFORMS': 'macosx',
+        'MACOSX_DEPLOYMENT_TARGET': '14.0', 'SWIFT_VERSION': '5.0',
+        'SWIFT_OPTIMIZATION_LEVEL': '-O', 'ENABLE_TESTABILITY': 'YES',
+        'SWIFT_ACTIVE_COMPILATION_CONDITIONS': 'DEBUG', 'CODE_SIGNING_ALLOWED': 'NO',
+        'GENERATE_INFOPLIST_FILE': 'YES', 'INFOPLIST_FILE': '',
+        'SWIFT_OBJC_BRIDGING_HEADER': '', 'OTHER_LDFLAGS': '', 'CLANG_CXX_LANGUAGE_STANDARD': 'c++17',
+        'CLANG_ENABLE_MODULES': 'YES'}
+    values = dict(common, PRODUCT_NAME='VolleySpliceBenchmark', PRODUCT_MODULE_NAME='VolleySplice',
+        PRODUCT_BUNDLE_IDENTIFIER='com.volleysplice.benchmark', INFOPLIST_KEY_LSUIElement='YES',
+        SWIFT_OBJC_BRIDGING_HEADER='App/OpenCVBridge.h',
+        HEADER_SEARCH_PATHS='$(inherited) $(VOLLEYCUT_MACOS_OPENCV_ROOT)/include/opencv4',
+        LIBRARY_SEARCH_PATHS='$(inherited) $(VOLLEYCUT_MACOS_OPENCV_ROOT)/lib',
+        OTHER_LDFLAGS='-lc++ -lz -lopencv_video -lopencv_imgproc -lopencv_core -framework Accelerate -framework AVFoundation -framework CoreMedia -framework CoreVideo -framework CoreGraphics -framework AppKit -framework Foundation -framework ImageIO -framework QuartzCore -framework VideoToolbox')
+    mac_configs.append(obj('mac-config:' + config, 'isa = XCBuildConfiguration; name = '+config+'; buildSettings = {'+''.join(f'{k} = {quote(v)};' for k,v in values.items())+'};'))
+    values = dict(common, PRODUCT_NAME='VolleySpliceMacTests', PRODUCT_BUNDLE_IDENTIFIER='com.volleysplice.benchmark.tests',
+        TEST_HOST='$(BUILT_PRODUCTS_DIR)/VolleySpliceBenchmark.app/Contents/MacOS/VolleySpliceBenchmark',
+        BUNDLE_LOADER='$(TEST_HOST)')
+    mac_test_configs.append(obj('mac-test-config:' + config, 'isa = XCBuildConfiguration; name = '+config+'; buildSettings = {'+''.join(f'{k} = {quote(v)};' for k,v in values.items())+'};'))
+mac_config_list = obj('mac-configs', f'isa = XCConfigurationList; buildConfigurations = ({",".join(mac_configs)}); defaultConfigurationIsVisible = 0; defaultConfigurationName = Debug;')
+mac_target = obj('mac-target', f'isa = PBXNativeTarget; name = VolleySpliceBenchmark; productName = VolleySpliceBenchmark; productType = "com.apple.product-type.application"; productReference = {mac_product}; buildConfigurationList = {mac_config_list}; buildPhases = ({mac_source_phase},{mac_framework_phase},{mac_resource_phase}); packageProductDependencies = ({mac_ort}); dependencies = (); buildRules = ();')
+mac_test_builds = []
+for name in ['NeuralPipelineIntegrationTests', 'NeuralRuntimeGoldenTests', 'FeatureExtractionIntegrationTests']:
+    relative = 'Tests/AppIntegrationTests/' + name + '.swift'
+    ref = obj('mac-test-ref:' + relative, f'isa = PBXFileReference; path = {quote(relative)}; sourceTree = "<group>"; lastKnownFileType = sourcecode.swift;')
+    mac_test_builds.append(obj('mac-test-build:' + relative, f'isa = PBXBuildFile; fileRef = {ref};'))
+mac_test_product = obj('mac-test-product', 'isa = PBXFileReference; path = VolleySpliceMacTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; explicitFileType = wrapper.cfbundle;')
+mac_test_phase = obj('mac-test-sources', f'isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = ({",".join(mac_test_builds)}); runOnlyForDeploymentPostprocessing = 0;')
+mac_proxy = obj('mac-test-proxy', f'isa = PBXContainerItemProxy; containerPortal = {ident("project")}; proxyType = 1; remoteGlobalIDString = {mac_target}; remoteInfo = VolleySpliceBenchmark;')
+mac_dependency = obj('mac-test-dependency', f'isa = PBXTargetDependency; target = {mac_target}; targetProxy = {mac_proxy};')
+mac_test_config_list = obj('mac-test-configs', f'isa = XCConfigurationList; buildConfigurations = ({",".join(mac_test_configs)}); defaultConfigurationIsVisible = 0; defaultConfigurationName = Debug;')
+mac_test_target = obj('mac-test-target', f'isa = PBXNativeTarget; name = VolleySpliceMacTests; productName = VolleySpliceMacTests; productType = "com.apple.product-type.bundle.unit-test"; productReference = {mac_test_product}; buildConfigurationList = {mac_test_config_list}; buildPhases = ({mac_test_phase}); dependencies = ({mac_dependency}); buildRules = ();')
+project = obj('project', f'isa = PBXProject; mainGroup = {group}; buildConfigurationList = {configList}; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; knownRegions = (en,Base); projectDirPath = ""; projectRoot = ""; targets = ({",".join([target] + test_targets + [mac_target, mac_test_target])}); packageReferences = ({ort_package}); attributes = {{LastUpgradeCheck = 2630;}};')
 path = root / 'VolleySplice.xcodeproj'
 path.mkdir(exist_ok=True)
 (path / 'project.pbxproj').write_text('// !$*UTF8*$!\n{archiveVersion = 1; classes = {}; objectVersion = 56; objects = {\n'+'\n'.join(objects)+f'\n}}; rootObject = {project};}}\n')
@@ -142,3 +200,8 @@ test_action = '<TestAction buildConfiguration="Debug" selectedDebuggerIdentifier
 (scheme / 'VolleySplice.xcscheme').write_text(f'''<?xml version="1.0" encoding="UTF-8"?>
 <Scheme LastUpgradeVersion="2630" version="1.3"><BuildAction parallelizeBuildables="YES" buildImplicitDependencies="YES"><BuildActionEntries><BuildActionEntry buildForRunning="YES" buildForTesting="YES" buildForProfiling="YES" buildForArchiving="YES" buildForAnalyzing="YES">{reference}</BuildActionEntry></BuildActionEntries></BuildAction>{test_action}<LaunchAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB"><BuildableProductRunnable runnableDebuggingMode="0">{reference}</BuildableProductRunnable></LaunchAction><ArchiveAction buildConfiguration="Release" revealArchiveInOrganizer="YES"/></Scheme>''')
 print(f'{len(sources)} sources in {path}')
+
+mac_reference = f'<BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{mac_target}" BuildableName="VolleySpliceBenchmark.app" BlueprintName="VolleySpliceBenchmark" ReferencedContainer="container:VolleySplice.xcodeproj"/>'
+mac_test_reference = f'<BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{mac_test_target}" BuildableName="VolleySpliceMacTests.xctest" BlueprintName="VolleySpliceMacTests" ReferencedContainer="container:VolleySplice.xcodeproj"/>'
+(scheme / 'VolleySpliceBenchmark.xcscheme').write_text(f'''<?xml version="1.0" encoding="UTF-8"?>
+<Scheme LastUpgradeVersion="2630" version="1.3"><BuildAction parallelizeBuildables="NO" buildImplicitDependencies="YES"><BuildActionEntries><BuildActionEntry buildForRunning="YES" buildForTesting="YES" buildForProfiling="YES" buildForArchiving="NO" buildForAnalyzing="YES">{mac_reference}</BuildActionEntry></BuildActionEntries></BuildAction><TestAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB"><Testables><TestableReference skipped="NO">{mac_test_reference}</TestableReference></Testables></TestAction></Scheme>''')

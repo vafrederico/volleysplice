@@ -67,6 +67,13 @@ Tests skip when it is absent. Import does not run analysis.
 Reference UI tests require that imported project. Do not commit personal videos,
 project snapshots or generated receipts as test fixtures.
 
+## Native macOS pipeline benchmark
+
+The headless `VolleySpliceBenchmark` target shares the iOS analysis sources and
+benchmark tests. See [native benchmark setup](NATIVE-BENCHMARK.md) for native
+OpenCV, correctness checks and a matched 120-second workload. This allows macOS
+hardware decoding when available; model inference still uses the CPU provider.
+
 ## Physical device checks
 
 The reusable scripts use the existing lab WDA connection and fresh UI state.

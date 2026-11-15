@@ -1,4 +1,4 @@
-"""Run the optional bounded video benchmark using an already-built simulator app.
+"""Run the optional bounded video benchmark using an already-built simulator or native macOS test host.
 
 Inputs and raw Xcode logs remain external. The JSON report uses a ledger index,
 never the source filename. No model fitting or selection occurs here.
@@ -6,6 +6,7 @@ never the source filename. No model fitting or selection occurs here.
 import argparse
 import json
 import plistlib
+import platform
 from pathlib import Path
 import subprocess
 import tempfile
@@ -17,20 +18,26 @@ def main():
     parser.add_argument('--source', type=Path, required=True)
     parser.add_argument('--source-index', required=True)
     parser.add_argument('--seconds', type=float, default=30)
-    parser.add_argument('--destination', required=True, help='Simulator UDID')
+    parser.add_argument('--platform', choices=['simulator', 'macos'], default='simulator')
+    parser.add_argument('--destination', help='Simulator UDID; omitted for native macOS')
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     if not args.source.is_file() or not 0 < args.seconds <= 120:
         parser.error('Provide an existing source and a duration in (0, 120]')
     if not args.source_index.startswith('recording-') or not args.source_index[10:].isdigit():
         parser.error('Source index must come from the recording ledger')
+    if args.platform == 'simulator' and not args.destination:
+        parser.error('--destination is required for the simulator')
+    if args.platform == 'macos' and args.destination:
+        parser.error('--destination is only valid for the simulator')
+    target_name = 'VolleySpliceMacTests' if args.platform == 'macos' else 'VolleySpliceTests'
     run = plistlib.loads(args.xctestrun.read_bytes())
-    target = run['VolleySpliceTests']
-    target['EnvironmentVariables'].update(
+    target = run[target_name]
+    target.setdefault('EnvironmentVariables', {}).update(
         VOLLEYCUT_IOS_BENCHMARK_SOURCE=str(args.source.resolve()),
         VOLLEYCUT_IOS_BENCHMARK_SECONDS=str(args.seconds))
     target['OnlyTestIdentifiers'] = ['NeuralPipelineIntegrationTests/testOptionalVideoBenchmark']
-    run = {'VolleySpliceTests': target, '__xctestrun_metadata__': run['__xctestrun_metadata__']}
+    run = {target_name: target, '__xctestrun_metadata__': run['__xctestrun_metadata__']}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     log = args.output.with_suffix('.private.log')
     # Preserve __TESTROOT__ resolution by placing the temporary plan beside the original.
@@ -40,7 +47,7 @@ def main():
     try:
         with log.open('w') as stream:
             completed = subprocess.run(['xcodebuild', 'test-without-building', '-xctestrun', str(temporary),
-                '-destination', 'id=' + args.destination, '-parallel-testing-enabled', 'NO'],
+                '-destination', 'platform=macOS,arch=' + platform.machine() if args.platform == 'macos' else 'id=' + args.destination, '-parallel-testing-enabled', 'NO'],
                 stdout=stream, stderr=subprocess.STDOUT, check=False)
         rows = []
         for line in log.read_text().splitlines():
@@ -51,7 +58,10 @@ def main():
         if completed.returncode or len(rows) != 3 or not expected.issubset({row['modelId'] for row in rows}):
             raise RuntimeError('Video benchmark did not pass all three model runs; inspect the external private log')
         report = {'schemaVersion': 1, 'sourceIndex': args.source_index,
-            'scope': 'CPU simulator only; not physical-device throughput or model-accuracy qualification', 'runs': rows}
+            'platform': args.platform,
+            'scope': ('Native macOS; decoder selection must be verified separately; ONNX CPU inference'
+                      if args.platform == 'macos' else 'iOS Simulator; ONNX CPU inference')
+                     + '; not physical-device throughput or model-accuracy qualification', 'runs': rows}
         args.output.write_text(json.dumps(report, indent=2) + '\n')
         print(json.dumps(report))
     finally:

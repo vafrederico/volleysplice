@@ -2,9 +2,17 @@ import Foundation
 import XCTest
 @testable import VolleySplice
 
-/// Bounded software-decoder/CPU inference qualification. These small synthetic
+/// Bounded media pipeline/CPU inference qualification. These small synthetic
 /// clips validate contracts and cache reuse, not real-device GPU throughput.
 final class NeuralPipelineIntegrationTests: XCTestCase {
+    private var benchmarkPlatform: String {
+#if os(macOS)
+        return "native macOS"
+#else
+        return "iOS Simulator"
+#endif
+    }
+
     private func source() throws -> URL {
         try XCTUnwrap(Bundle.main.url(forResource: "ios-editor-fixture", withExtension: "mp4"))
     }
@@ -24,7 +32,7 @@ final class NeuralPipelineIntegrationTests: XCTestCase {
             "windowSeconds": end - start, "elapsedSeconds": Date().timeIntervalSince(began),
             "stageSeconds": result.stageSeconds, "rallies": result.intervals.count,
             "analysisRows": result.times.count, "avCacheHit": result.cacheHit,
-            "scope": "CPU simulator correctness; score specialists disabled"]
+            "scope": "\(benchmarkPlatform); CPU inference; score specialists disabled"]
         let bytes = try JSONSerialization.data(withJSONObject: receipt, options: [.sortedKeys])
         print("NEURAL_PIPELINE_BENCHMARK " + String(decoding: bytes, as: UTF8.self))
         return result
@@ -190,7 +198,7 @@ final class NeuralPipelineIntegrationTests: XCTestCase {
                 "sideSwitchFeatureBytes": switches.features.count * MemoryLayout<Double>.size,
                 "neuralScoreBytes": (result.neuralScores?.probabilities.count ?? 0) * MemoryLayout<Float>.size,
                 "embeddingCacheBytes": embeddingBytes, "projectJSONBytes": exported.count,
-                "scope": "CPU simulator; cold cache per model; serve-side and side-switch included"
+                "scope": "\(benchmarkPlatform); CPU inference; cold cache per model; serve-side and side-switch included"
             ]
             let bytes = try JSONSerialization.data(withJSONObject: receipt, options: [.sortedKeys])
             print("NEURAL_PIPELINE_BENCHMARK " + String(decoding: bytes, as: UTF8.self))
