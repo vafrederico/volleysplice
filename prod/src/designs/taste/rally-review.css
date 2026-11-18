@@ -79,6 +79,8 @@
 .rw-more summary { color: var(--td-muted); font-size: 12px; cursor: pointer; min-height: 32px; align-content: center; }
 .rw-more > div { display: grid; gap: 6px; padding-top: 8px; }
 .rw-more button { display: flex; justify-content: space-between; align-items: center; text-align: left; font-size: 12px; }
+.rw-replay-control { display: flex; align-items: center; gap: 8px; min-height: 44px; padding-inline: 12px; font-size: 13px; }
+.rw-replay-control input { margin: 0; }
 .rw-status { margin: 0; color: var(--td-muted); font-size: 11px; line-height: 1.5; }
 .rw-pending-note { margin: 0; font-size: 12px; color: var(--td-muted); }
 .rw-complete { display: grid; gap: 12px; padding-block: 8px; }

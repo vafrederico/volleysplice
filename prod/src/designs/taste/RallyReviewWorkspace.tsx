@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type PointerEvent, type RefObject } from "react";
-import { deriveScoreAt } from "@/lib/score-tracking";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type PointerEvent, type RefObject } from "react";
+import { deriveScoreAt, orderedServeMarkers, type ServeMarker } from "@/lib/score-tracking";
 import { scrollElementIntoContainer } from "@/lib/scroll-container";
 import type { Clip, Prototype } from "./index";
 import { ResizeHandle } from "./ResizableWorkspace";
@@ -8,6 +8,10 @@ function time(value: number) {
   const tenths = Math.round(Math.max(0, value) * 10);
   const seconds = Math.floor(tenths / 10);
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}.${tenths % 10}`;
+}
+
+function serveBelongsToRally(marker: ServeMarker, rally: Clip) {
+  return marker.rallyId === rally.id || (!marker.rallyId && marker.timestamp >= rally.start && marker.timestamp <= rally.end);
 }
 
 // One decision per rally, even when both the clip and its serve need attention.
@@ -139,7 +143,7 @@ export function RallyReviewWorkspace({ state, nextReviewButtonRef, renderVideo, 
   const [orphanId, setOrphanId] = useState<string | null>(null);
   const orphan = state.activeScoreMarkers.find(marker => marker.id === orphanId);
   const pendingCount = pending.length + orphanServes.length;
-  const ordered = [...state.clips].sort((a, b) => a.start - b.start);
+  const ordered = useMemo(() => [...state.clips].sort((a, b) => a.start - b.start), [state.clips]);
   const clip = state.selected;
   const index = ordered.findIndex(item => item.id === clip?.id);
   const browserClip = ordered.find(item => state.playhead >= Math.max(state.gameStart, item.start - state.beforePadding) && state.playhead < Math.min(state.gameEnd, item.end + state.afterPadding));
@@ -211,7 +215,20 @@ export function RallyReviewWorkspace({ state, nextReviewButtonRef, renderVideo, 
   const sourcePlayback = mode === "browse" || mode === "add";
   const cut = state.workingDraft.cuts.find(item => item.id === clip?.id);
   const range = sourcePlayback ? undefined : orphan ? { start: Math.max(state.gameStart, orphan.timestamp - 2), end: Math.min(state.gameEnd, orphan.timestamp + 5) } : cut ? { start: cut.keepStart, end: cut.keepEnd } : undefined;
-  const markers = clip && state.scoreEnabled ? state.activeScoreMarkers.filter(marker => marker.rallyId === clip.id || (!marker.rallyId && marker.timestamp >= clip.start && marker.timestamp <= clip.end)) : [];
+  const markers = clip && state.scoreEnabled ? state.activeScoreMarkers.filter(marker => serveBelongsToRally(marker, clip)) : [];
+  const firstServeByRally = useMemo(() => {
+    const firstServes = new Map<string, ServeMarker>();
+    if (!state.scoreEnabled) return firstServes;
+    // At a shared boundary, an unlinked serve starts the later rally.
+    const latestRalliesFirst = [...ordered].reverse();
+    for (const marker of orderedServeMarkers({ serveMarkers: state.scoreMarkers })) {
+      const rallyId = marker.rallyId ?? latestRalliesFirst.find(rally => serveBelongsToRally(marker, rally))?.id;
+      // Only the first serve of a rally records the preceding rally's point.
+      if (rallyId && !firstServes.has(rallyId)) firstServes.set(rallyId, marker);
+    }
+    return firstServes;
+  }, [ordered, state.scoreEnabled, state.scoreMarkers]);
+  const replayServe = clip && index > 0 ? firstServeByRally.get(clip.id) : undefined;
   const unresolved = clip ? pending.some(item => item.id === clip.id) : false;
   const reviewComplete = mode === "review" && pending.length === 0 && reviewingId !== clip?.id;
   function open(id: string, nextMode: "edit" | "review" = "edit") {
@@ -273,8 +290,14 @@ export function RallyReviewWorkspace({ state, nextReviewButtonRef, renderVideo, 
               {ordered.length === 0 && <p>No rallies yet. Add a missing rally below.</p>}
               {ordered.map((item, i) => {
                 const score = state.scoreEnabled ? deriveScoreAt(state.activeScoreTracking, item.start) : null;
-                return <button type="button" key={item.id} data-rally-id={item.id} aria-current={browserSelected?.id === item.id ? "true" : undefined} aria-label={`Open rally ${i + 1}`} onClick={() => { setFollowingSource(true); state.setPlaying(false); state.selectClip(item.id); }} onDoubleClick={() => open(item.id)}>
-                  <span><strong>Rally {i + 1}{centered?.id === item.id && <i className="rw-list-marker" role="img" aria-label="Timeline list position" data-rally-location={item.id} />}</strong><small>{time(item.start)}–{time(item.end)}</small></span>
+                const replayLabel = i > 0 && firstServeByRally.get(item.id)?.ignorePreviousPoint ? `Replay of rally ${i}` : undefined;
+                const replayLabelId = replayLabel ? `rw-replay-label-${i}` : undefined;
+                return <button type="button" key={item.id} data-rally-id={item.id} aria-current={browserSelected?.id === item.id ? "true" : undefined} aria-label={`Open rally ${i + 1}`} aria-describedby={replayLabelId} onClick={() => { setFollowingSource(true); state.setPlaying(false); state.selectClip(item.id); }} onDoubleClick={() => open(item.id)}>
+                  <span>
+                    <strong>Rally {i + 1}{centered?.id === item.id && <i className="rw-list-marker" role="img" aria-label="Timeline list position" data-rally-location={item.id} />}</strong>
+                    <small>{time(item.start)}–{time(item.end)}</small>
+                    {replayLabel && <small id={replayLabelId}>{replayLabel}</small>}
+                  </span>
                   <span>{score && <strong>{score.team1Score} : {score.team2Score}</strong>}<small>{pending.some(clip => clip.id === item.id) ? "Needs review" : state.effectiveKeptIds.has(item.id) ? "Keep" : "Removed"}</small></span>
                 </button>;
               })}
@@ -315,7 +338,23 @@ export function RallyReviewWorkspace({ state, nextReviewButtonRef, renderVideo, 
             </div>
           </div>)}
           <div className="rw-navigation" data-tour="rw-navigation"><button type="button" disabled={index <= 0} title="Shift + Left arrow" onClick={() => open(ordered[index - 1].id)}>Previous rally</button><button ref={nextReviewButtonRef} type="button" className="rw-primary" disabled={unresolved} title="R" aria-keyshortcuts="R" onClick={nextReview}>Next review</button><button type="button" disabled={index < 0 || index >= ordered.length - 1} title="Shift + Right arrow" onClick={() => open(ordered[index + 1].id)}>Next rally</button></div>
-          <details className="rw-more"><summary>More editing tools</summary><div><button type="button" onClick={() => state.setSelectedBoundaryAtPlayhead("start")}>Set start to playhead<kbd>Ctrl + Shift + S</kbd></button><button type="button" onClick={() => state.setSelectedBoundaryAtPlayhead("end")}>Set end to playhead<kbd>Ctrl + Shift + E</kbd></button><button type="button" onClick={state.splitSelectedAtPlayhead}>Split at playhead<kbd>Shift + S</kbd></button></div></details>
+          <details className="rw-more">
+            <summary>More editing tools</summary>
+            <div>
+              <button type="button" onClick={() => state.setSelectedBoundaryAtPlayhead("start")}>Set start to playhead<kbd>Ctrl + Shift + S</kbd></button>
+              <button type="button" onClick={() => state.setSelectedBoundaryAtPlayhead("end")}>Set end to playhead<kbd>Ctrl + Shift + E</kbd></button>
+              <button type="button" onClick={state.splitSelectedAtPlayhead}>Split at playhead<kbd>Shift + S</kbd></button>
+              {state.scoreEnabled && index > 0 && <>
+                <label className="rw-replay-control">
+                  <input type="checkbox" checked={replayServe?.ignorePreviousPoint ?? false} disabled={!replayServe}
+                    aria-describedby={replayServe ? undefined : "rw-replay-hint"}
+                    onChange={event => replayServe && state.setScoreMarkerReplay(replayServe.id, event.currentTarget.checked)} />
+                  Replaying previous rally
+                </label>
+                {!replayServe && <p className="rw-pending-note" id="rw-replay-hint">Choose Near or Far to add a serve first.</p>}
+              </>}
+            </div>
+          </details>
         </>}
         <p className="rw-status" role="status">{state.reviewMessage}</p>
       </aside>
