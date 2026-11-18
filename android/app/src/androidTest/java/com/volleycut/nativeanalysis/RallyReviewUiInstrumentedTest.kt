@@ -835,6 +835,43 @@ class RallyReviewUiInstrumentedTest {
     }
 
     @Test
+    fun rallySideSwitchCanBeAddedAndRemovedFromTheSourceTimeline() = withProject(paddingMs = 500, configureDraft = { draft ->
+        draft.copy(scoreTracking = draft.scoreTracking.copy(
+            serveMarkers = draft.scoreTracking.serveMarkers.map { marker ->
+                if (marker.id == "S2") marker.copy(side = ServingSide.FAR) else marker
+            } + ServeMarker("early-serve", 11_750, ServingSide.FAR, ServeMarkerOrigin.MANUAL),
+            sideSwitchMarkers = listOf(SideSwitchMarker("existing-switch", 17_000, ServeMarkerOrigin.MODEL)),
+        ))
+    }) { f ->
+        compose.onNodeWithTag("rally-browse-all").performClick()
+        selectBrowserRally("R002")
+        compose.onNodeWithTag("edit-selected-rally").performClick()
+        compose.onNodeWithContentDescription("More editing tools").performClick()
+        compose.onNodeWithText("Add team switch before this rally").performClick()
+        awaitDraft(f) { draft ->
+            draft.scoreTracking.sideSwitchMarkers.any { it.timestampMs == 11_499L } &&
+                ScoreReducer.deriveAt(draft.scoreTracking, 11_750).team1Score == 1
+        }
+        compose.onNodeWithContentDescription("Side switch at 0:11.5").assertIsDisplayed()
+        compose.onNodeWithContentDescription("More editing tools").performClick()
+        compose.onNodeWithText("Team switch before this rally added").assertIsNotEnabled()
+        compose.onNodeWithText("Replaying previous rally").performClick()
+
+        compose.onNodeWithTag("rally-return-review").performClick()
+        compose.onNodeWithTag("rally-browse-all").performClick()
+        compose.onNodeWithContentDescription("Side switch at 0:11.5").performClick()
+        compose.onNodeWithText("Remove side switch").performClick()
+        awaitDraft(f) {
+            it.scoreTracking.sideSwitchMarkers.map { marker -> marker.id } == listOf("existing-switch") &&
+                ScoreReducer.deriveAt(it.scoreTracking, 11_750).team2Score == 1
+        }
+        compose.onNodeWithContentDescription("Side switch at 0:11.5").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Side switch at 0:17.0").performClick()
+        compose.onNodeWithText("Remove side switch").performClick()
+        awaitDraft(f) { it.scoreTracking.sideSwitchMarkers.isEmpty() && "existing-switch" in it.scoreTracking.removedModelMarkerIds }
+    }
+
+    @Test
     fun openingAPendingRallyFromTheBrowserReturnsToReviewMode() = withProject { f ->
         compose.onNodeWithTag("rally-browse-all").performClick()
         compose.onNodeWithTag("rally-card-R002").performScrollTo().performClick()

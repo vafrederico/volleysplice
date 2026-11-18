@@ -28,6 +28,7 @@ import { InferenceProgressPanel } from "@/components/InferenceProgressPanel";
 import { GOOGLE_PLAY_URL } from "@/lib/android-app";
 import { timelinePercent } from "@/lib/edit-list";
 import {
+  addSideSwitchMarker,
   alignServeMarkersToRallyStarts,
   deriveScoreAt,
   removeServeMarker,
@@ -1287,6 +1288,26 @@ function usePrototype(
     setScoreMessage(`Team side switch added at ${formatTime(playhead)}. Later serve markers were remapped to teams.`);
   }
 
+  function addSideSwitchBeforeRally(timestamp: number) {
+    setSideSwitchMarkers((current) => {
+      if (current.some((marker) => marker.timestamp === timestamp)) return current;
+      return addSideSwitchMarker({ ...workingDraft.scoreTracking, sideSwitchMarkers: current }, timestamp).sideSwitchMarkers;
+    });
+    setReviewMessage(`Team side switch added at ${formatPreciseTime(timestamp)}.`);
+  }
+
+  function removeSideSwitchById(id: string) {
+    const marker = sideSwitchMarkers.find((candidate) => candidate.id === id);
+    if (!marker) return;
+    const next = removeSideSwitchMarker(workingDraft.scoreTracking, id);
+    setSideSwitchMarkers(next.sideSwitchMarkers);
+    setRemovedModelMarkerIds(next.removedModelMarkerIds);
+    setSelectedSideSwitchId("");
+    const message = `Side switch at ${formatTime(marker.timestamp)} removed.`;
+    setScoreMessage(message);
+    setReviewMessage(message);
+  }
+
   function removeLastScoreMarker() {
     const manual = [...scoreMarkers].reverse().find((marker) => marker.origin === "manual");
     if (!manual) {
@@ -1324,13 +1345,7 @@ function usePrototype(
       setScoreMessage(`Serve at ${formatTime(selectedScoreMarker.timestamp)} removed.`);
       return;
     }
-    if (selectedSideSwitch) {
-      const next = removeSideSwitchMarker(workingDraft.scoreTracking, selectedSideSwitch.id);
-      setSideSwitchMarkers(next.sideSwitchMarkers);
-      setRemovedModelMarkerIds(next.removedModelMarkerIds);
-      setSelectedSideSwitchId("");
-      setScoreMessage(`Side switch at ${formatTime(selectedSideSwitch.timestamp)} removed.`);
-    }
+    if (selectedSideSwitch) removeSideSwitchById(selectedSideSwitch.id);
   }
 
   function downloadChapters() {
@@ -1479,7 +1494,7 @@ function usePrototype(
     reviewNextSuppression, applySuppressionToSimilar,
     chooseServingSide, updateScoreMarkerSide, setScoreMarkerReplay,
     selectScoreMarker, selectSideSwitch,
-    addServeAtPlayhead, addSideSwitchAtPlayhead, setRallyServe, removeServeById,
+    addServeAtPlayhead, addSideSwitchAtPlayhead, addSideSwitchBeforeRally, removeSideSwitchById, setRallyServe, removeServeById,
     removeLastScoreMarker, toggleLastPointReplay, removeSelectedEvent,
     downloadChapters, copyChapters, prepareExport,
   };

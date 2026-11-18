@@ -26,11 +26,11 @@ const key = async (key, options = {}) => act(async () => window.dispatchEvent(ne
 let saved;
 try {
   const { RallyDesk } = await server.ssrLoadModule("/src/designs/taste/index.tsx");
-  const { createCutDraft } = await server.ssrLoadModule("/src/lib/cut-draft.ts");
+  const { applyPaddingToCachedCuts, createCutDraft } = await server.ssrLoadModule("/src/lib/cut-draft.ts");
+  const { deriveScoreAt } = await server.ssrLoadModule("/src/lib/score-tracking.ts");
   const seed = { analysisId: "synthetic-rally-workspace", recordingId: "synthetic-rally-workspace", duration: 60,
     rallies: [{ id: "R001", start: 10, end: 20, confidence: .4, included: true }, { id: "R002", start: 30, end: 40, confidence: .4, included: true }], ignoredIntervals: [] };
-  const draft = createCutDraft(seed);
-  draft.beforePaddingSeconds = 1; draft.afterPaddingSeconds = 1;
+  const draft = applyPaddingToCachedCuts(createCutDraft(seed), 1, 1, seed.duration);
   draft.scoreTracking.enabled = true;
   draft.scoreTracking.serveMarkers = [{ id: "S1", timestamp: 10, rallyId: "R001", side: "review", origin: "model", ignorePreviousPoint: false }];
   const review = { state: "ready", projectId: seed.recordingId, projectName: "Practice", sourceName: "Practice.mp4",
@@ -102,8 +102,29 @@ try {
   assert.equal(moreTools.open, false);
   await act(async () => moreTools.querySelector("summary").click());
   assert.equal(replayCheckbox().disabled, true, "a replay needs a serve marker on the selected rally");
+  const addSwitch = "Add team switch before this rally";
+  assert.equal(button(addSwitch).nextElementSibling.querySelector("input"), replayCheckbox());
+  await click(addSwitch);
+  assert.deepEqual(saved.scoreTracking.sideSwitchMarkers.map(marker => [marker.timestamp, marker.origin]), [[28.999, "manual"]]);
+  const focusedSwitch = () => document.querySelector(".rw-bounds-switch");
+  assert.equal(focusedSwitch().getAttribute("aria-label"), "Side switch at 0:29.0");
+  assert.ok(parseFloat(focusedSwitch().style.getPropertyValue("--rw-switch-position")) <
+    parseFloat(document.querySelector('.rw-context-rally[data-current]').style.left));
+  assert.equal(button("Team switch before this rally added").disabled, true);
   await key("n");
   assert.equal(saved.scoreTracking.serveMarkers.find(marker => marker.rallyId === "R002").side, "near", "N can add a missing rally serve");
+  await click("← Review rallies");
+  await click("All rallies (2) →");
+  assert.match(button("Open rally 2").textContent, /0 : 1/);
+  await click("Side switch at 0:29.0");
+  assert.equal(document.querySelector('[aria-label="Source playhead"]').value, "28.999");
+  await click("Remove side switch");
+  assert.equal(button("Side switch at 0:29.0"), undefined);
+  assert.deepEqual(saved.scoreTracking.sideSwitchMarkers, []);
+  assert.match(button("Open rally 2").textContent, /1 : 0/);
+  await click("Edit rally 2");
+  assert.equal(focusedSwitch(), null);
+  assert.equal(button(addSwitch).disabled, false);
   await act(async () => replayCheckbox().click());
   assert.deepEqual(saved.scoreTracking.serveMarkers.map(marker => marker.ignorePreviousPoint), [false, true], "the selected rally's serve suppresses the previous point");
   assert.ok(saved.cuts.every(cut => cut.included), "marking a replay keeps both clips included");
@@ -144,6 +165,29 @@ try {
   assert.equal(saved.scoreTracking.serveMarkers[0].side, "far");
   await key("r");
   assert.match(document.querySelector(".rw-complete").textContent, /All checked/);
+
+  for (const [serveTime, switchTime, ignoredIntervals] of [
+    [29.5, 28.999, []],
+    [28.75, 28.749, []],
+    [29.5, 27.999, [{ id: "ignored-gap", start: 28, end: 29, reason: "non-game-content" }]],
+  ]) {
+    const earlyServeDraft = structuredClone(draft);
+    earlyServeDraft.ignoredIntervals = ignoredIntervals;
+    earlyServeDraft.scoreTracking.serveMarkers = [
+      { ...draft.scoreTracking.serveMarkers[0], side: "far" },
+      { id: "early-serve", timestamp: serveTime, side: "near", origin: "manual", ignorePreviousPoint: false },
+    ];
+    await act(async () => root.render(React.createElement(RallyDesk, { key: `early-serve-${switchTime}`, review: { ...review, draft: earlyServeDraft } })));
+    await click("All rallies (2) →");
+    await click("Open rally 2");
+    await click("Edit rally 2");
+    await act(async () => document.querySelector(".rw-more summary").click());
+    const pointWinner = () => deriveScoreAt(saved.scoreTracking, serveTime).points[0].winnerTeamId;
+    assert.equal(pointWinner(), "team-1");
+    await click(addSwitch);
+    assert.equal(saved.scoreTracking.sideSwitchMarkers[0].timestamp, switchTime);
+    assert.equal(pointWinner(), "team-2", "the early serve awards the point to the switched team");
+  }
 
   const markerDraft = structuredClone(draft);
   markerDraft.beforePaddingSeconds = 0; markerDraft.afterPaddingSeconds = 0;

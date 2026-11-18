@@ -182,6 +182,8 @@ internal fun RallyReviewWorkspace(
     onServe: (ServeMarker, ServingSide?) -> Unit,
     onNewServe: (EditableRallyGroup, ServingSide) -> Unit,
     onReplay: (String, Boolean) -> Unit,
+    onAddSideSwitch: (Long) -> Unit,
+    onRemoveSideSwitch: (String) -> Unit,
     onSplit: () -> Unit,
     onAdd: (Long, Long) -> String?,
     onExport: () -> Unit,
@@ -194,6 +196,7 @@ internal fun RallyReviewWorkspace(
     val rally = if (!state.browsing && !state.editingRally && focus?.rallyId == null) null else selected
     val pending = queue.firstOrNull { it.key == focus?.key }
     val index = rallies.indexOfFirst { it.id == rally?.id }
+    val sideSwitches = if (tracking.enabled) scoreOverlay.tracking.sideSwitchMarkers else emptyList()
     val firstServes = remember(rallies, tracking) { firstServeByRally(rallies, tracking) }
     val occupied = rallies.map { it.keepStartMs to it.keepEndMs } + ignored.map { it.startMs to it.endMs }
     val start = (rally?.keepStartMs ?: focus?.startMs ?: seed.gameStartMs).coerceAtLeast(seed.gameStartMs)
@@ -308,13 +311,29 @@ internal fun RallyReviewWorkspace(
                                 if (rally != null) {
                                     val first = rally.cuts.minBy { it.coreStartMs }
                                     val last = rally.cuts.maxBy { it.coreEndMs }
+                                    val replayServe = firstServes[rally.id]
+                                    val previousRallyEnd = rallies.getOrNull(index - 1)?.coreEndMs
+                                    val earlyServe = previousRallyEnd?.let { end ->
+                                        scoreOverlay.tracking.serveMarkers.filter { it.rallyId == null && it.timestampMs > end }
+                                            .minOfOrNull { it.timestampMs }
+                                    }
+                                    val switchDeadline = minOf(rally.coreStartMs, replayServe?.timestampMs ?: Long.MAX_VALUE, earlyServe ?: Long.MAX_VALUE)
+                                    // A serve in the leading padding must see the switched sides too.
+                                    val switchTime = ignored.sortedByDescending { it.startMs }.fold(
+                                        (minOf(rally.keepStartMs, switchDeadline) - 1).coerceAtLeast(seed.gameStartMs),
+                                    ) { time, span ->
+                                        if (time >= span.startMs && time < span.endMs) (span.startMs - 1).coerceAtLeast(seed.gameStartMs)
+                                        else time
+                                    }
+                                    val switchWindowStart = minOf(previousRallyEnd ?: switchTime, switchTime)
+                                    val showReplay = tracking.enabled && index > 0
                                     RallyBoundsTimeline(rallies, rally, rally.coreStartMs, rally.coreEndMs,
                                         seed.gameStartMs, seed.gameEndMs, positionMs, effectiveIds,
                                         pending?.clipReview == true, onSeek, onTrim, onScrubbingChange,
                                         startMax = first.coreEndMs, endMin = last.coreStartMs,
+                                        sideSwitches = sideSwitches, switchTime = switchTime.takeIf { showReplay },
                                         title = {
                                             Text("Rally " + (index + 1), fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-                                            val replayServe = firstServes[rally.id]
                                             RallyEditingMenu(
                                                 rally.id,
                                                 canSetStart = positionMs <= first.coreEndMs - MIN_MARK_MS,
@@ -322,12 +341,15 @@ internal fun RallyReviewWorkspace(
                                                 canSplit = rally.cuts.any {
                                                     positionMs in (it.coreStartMs + MIN_MARK_MS)..(it.coreEndMs - MIN_MARK_MS)
                                                 },
-                                                showReplay = tracking.enabled && index > 0,
+                                                showReplay = showReplay,
                                                 replayServe = replayServe,
+                                                hasSwitch = sideSwitches.any { it.timestampMs in switchWindowStart..maxOf(switchTime, switchDeadline) },
+                                                canAddSwitch = ignored.none { switchTime >= it.startMs && switchTime < it.endMs },
                                                 onSetStart = { onTrim("start", positionMs) },
                                                 onSetEnd = { onTrim("end", positionMs) },
                                                 onSplit = onSplit,
                                                 onReplay = onReplay,
+                                                onAddSwitch = { onAddSideSwitch(switchTime) },
                                             )
                                         })
                                 } else Text("Review footage", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
@@ -448,7 +470,7 @@ internal fun RallyReviewWorkspace(
                     Row(Modifier.weight(1f)) {
                         video(Modifier.weight(1f).fillMaxHeight())
                         if (state.browsing && !state.addingMissing) {
-                            RallyBrowser(state, seed, rallies, effectiveIds, queue, scoreOverlay, tracking.enabled, firstServes,
+                            RallyBrowser(state, seed, rallies, effectiveIds, queue, scoreOverlay, tracking.enabled, firstServes, sideSwitches, onRemoveSideSwitch,
                                 selected, positionMs, ::seekSource, onScrubbingChange, {
                                     state.following = true; onSelectRally(it)
                                 }, ::editRally,
@@ -464,7 +486,7 @@ internal fun RallyReviewWorkspace(
                     video(if (state.addingMissing) Modifier.height(missingPlayerHeight).fillMaxWidth()
                         else Modifier.weight(if (state.browsing) .95f else 1f).fillMaxWidth())
                     if (state.browsing && !state.addingMissing) {
-                        RallyBrowser(state, seed, rallies, effectiveIds, queue, scoreOverlay, tracking.enabled, firstServes,
+                        RallyBrowser(state, seed, rallies, effectiveIds, queue, scoreOverlay, tracking.enabled, firstServes, sideSwitches, onRemoveSideSwitch,
                             selected, positionMs, ::seekSource, onScrubbingChange, {
                                 state.following = true; onSelectRally(it)
                             }, ::editRally,
@@ -658,13 +680,15 @@ private fun RallyBoundsTimeline(
     onSeek: (Long) -> Unit, onTrim: (String, Long) -> Unit,
     onScrubbingChange: (Boolean) -> Unit,
     startMax: Long, endMin: Long,
+    sideSwitches: List<SideSwitchMarker>, switchTime: Long?,
     title: @Composable RowScope.() -> Unit,
 ) {
     val identity = rally.id
-    val context = rallyTimelineContext(rallies, rally, effectiveIds, sourceStart, sourceEnd)
+    val context = rallyTimelineContext(rallies, rally, effectiveIds, sourceStart, sourceEnd, includeTimeMs = switchTime)
     var scale by remember(identity) { mutableStateOf(RallyTimelineScale(context.window)) }
     val windowStart = scale.startMs
     val windowEnd = scale.endMs
+    val visibleSwitches = sideSwitches.filter { it.timestampMs in windowStart..windowEnd }
     var dragging by remember(identity) { mutableStateOf(false) }
     val liveStart by rememberUpdatedState(startMs)
     val liveEnd by rememberUpdatedState(endMs)
@@ -720,7 +744,7 @@ private fun RallyBoundsTimeline(
         neighbour.id to labelMeasurer.measure("Rally " + (rallies.indexOfFirst { it.id == neighbour.id } + 1),
             style = TextStyle(fontFamily = CourtsideFont, fontSize = 11.sp, color = CourtsideMuted))
     }
-    Box(Modifier.fillMaxWidth().height(64.dp)) {
+    BoxWithConstraints(Modifier.fillMaxWidth().height(64.dp)) {
         Canvas(Modifier.fillMaxSize().testTag("rally-bounds-timeline").clip(RoundedCornerShape(9.dp)).background(TimelineTrackColor)
             .semantics {
                 contentDescription = "Rally timeline. Start " + preciseTime(startMs) + "; end " + preciseTime(endMs)
@@ -815,6 +839,20 @@ private fun RallyBoundsTimeline(
                     lineTo(p, 2.dp.toPx()); lineTo(p, 14.dp.toPx()); close()
                 }, Orange)
             }
+            visibleSwitches.forEach { marker ->
+                val at = x(marker.timestampMs)
+                drawLine(CourtsideInk, Offset(at, 18.dp.toPx()), Offset(at, 56.dp.toPx()), 1.dp.toPx())
+            }
+        }
+        val trackWidth = (maxWidth - 44.dp).coerceAtLeast(0.dp)
+        visibleSwitches.forEach { marker ->
+            SideSwitchBadge(selected = false, modifier = Modifier
+                .offset(x = 12.dp + trackWidth * scale.fraction(marker.timestampMs), y = 2.dp)
+                .size(20.dp)
+                .clearAndSetSemantics {
+                    contentDescription = "Side switch at " + preciseTime(marker.timestampMs)
+                    role = Role.Image
+                })
         }
     }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -835,8 +873,10 @@ private fun RallyEditingMenu(
     rallyId: String,
     canSetStart: Boolean, canSetEnd: Boolean, canSplit: Boolean,
     showReplay: Boolean, replayServe: ServeMarker?,
+    hasSwitch: Boolean, canAddSwitch: Boolean,
     onSetStart: () -> Unit, onSetEnd: () -> Unit, onSplit: () -> Unit,
     onReplay: (String, Boolean) -> Unit,
+    onAddSwitch: () -> Unit,
 ) {
     var expanded by remember(rallyId) { mutableStateOf(false) }
     Box {
@@ -859,6 +899,11 @@ private fun RallyEditingMenu(
                 onClick = { expanded = false; onSplit() })
             if (showReplay) {
                 HorizontalDivider()
+                DropdownMenuItem(
+                    text = { Text(if (hasSwitch) "Team switch before this rally added" else "Add team switch before this rally") },
+                    enabled = canAddSwitch && !hasSwitch,
+                    onClick = { expanded = false; onAddSwitch() },
+                )
                 val checked = replayServe?.ignorePreviousPoint == true
                 DropdownMenuItem(
                     text = {
@@ -894,12 +939,15 @@ private fun RallyBrowser(
     state: RallyWorkspaceState, seed: EditorSeed, rallies: List<EditableRallyGroup>, effectiveIds: Set<String>,
     queue: List<RallyReviewItem>, scoreOverlay: PreparedScoreOverlay, scoresEnabled: Boolean,
     firstServes: Map<String, ServeMarker>,
+    sideSwitches: List<SideSwitchMarker>, onRemoveSideSwitch: (String) -> Unit,
     selectedRally: EditableRallyGroup?, positionMs: Long,
     onSeek: (Long) -> Unit, onScrubbingChange: (Boolean) -> Unit, onSelect: (EditableRallyGroup) -> Unit,
     onEdit: (EditableRallyGroup) -> Unit, onAdd: () -> Unit, modifier: Modifier,
     compact: Boolean = false,
     guidedTourTargets: GuidedTourTargets? = null,
 ) {
+    var selectedSwitchId by remember { mutableStateOf<String?>(null) }
+    val selectedSwitch = sideSwitches.firstOrNull { it.id == selectedSwitchId }
     val list = state.list
     val hit = rallyAtTime(rallies, positionMs)
     val target = nearestRallyIndex(rallies, positionMs)
@@ -933,8 +981,16 @@ private fun RallyBrowser(
                 Text(sourceLabel, color = if (hit == null) CourtsideAccent else CourtsideMuted,
                     fontSize = 12.sp, lineHeight = 16.sp, modifier = Modifier.testTag("rally-source-status"))
             }
-            TextButton(onClick = { state.showTimeline = !state.showTimeline }) {
+            TextButton(onClick = { state.showTimeline = !state.showTimeline; selectedSwitchId = null }) {
                 Text(if (state.showTimeline) "Hide timeline" else "Show timeline", fontSize = 12.sp)
+            }
+        }
+        if (state.showTimeline && selectedSwitch != null) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Side switch at " + preciseTime(selectedSwitch.timestampMs), Modifier.weight(1f), fontSize = 12.sp)
+                TextButton(onClick = { onRemoveSideSwitch(selectedSwitch.id); selectedSwitchId = null }) {
+                    Text("Remove side switch", color = Danger, fontSize = 12.sp)
+                }
             }
         }
         Row(Modifier.weight(1f)) {
@@ -952,6 +1008,7 @@ private fun RallyBrowser(
                         }
                     }
                     RallySourceTimeline(seed, rallies, queue, effectiveIds, positionMs, centerTime, centerIndex, onSeek, onScrubbingChange,
+                        sideSwitches, selectedSwitchId, { marker -> selectedSwitchId = marker.id; onSeek(marker.timestampMs) },
                         Modifier.weight(1f).fillMaxWidth().guidedTourTarget("rally-tour-source", guidedTourTargets))
                     Row(Modifier.fillMaxWidth()) {
                         columns.forEachIndexed { index, window ->
@@ -1066,69 +1123,99 @@ private fun DrawScope.drawRallyListMarker(at: Offset) {
 private fun RallySourceTimeline(
     seed: EditorSeed, rallies: List<EditableRallyGroup>, queue: List<RallyReviewItem>, effectiveIds: Set<String>,
     positionMs: Long, listTime: Long?, listIndex: Int?, onSeek: (Long) -> Unit,
-    onScrubbingChange: (Boolean) -> Unit, modifier: Modifier,
+    onScrubbingChange: (Boolean) -> Unit, sideSwitches: List<SideSwitchMarker>, selectedSwitchId: String?,
+    onSelectSideSwitch: (SideSwitchMarker) -> Unit, modifier: Modifier,
 ) {
     val seek by rememberUpdatedState(onSeek)
     val scrub by rememberUpdatedState(onScrubbingChange)
     val columns = remember(seed.gameStartMs, seed.gameEndMs) {
         rallySourceTimelineColumns(seed.gameStartMs, seed.gameEndMs)
     }
-    Canvas(modifier.testTag("rally-vertical-timeline").semantics {
-        contentDescription = "Full recording timeline in ${columns.size} columns"
-        stateDescription = "Playback " + preciseTime(positionMs) + "; list center rally " + (listIndex?.plus(1) ?: 0)
-        progressBarRangeInfo = ProgressBarRangeInfo(positionMs.toFloat(), seed.gameStartMs.toFloat()..seed.gameEndMs.toFloat())
-        setProgress { value ->
-            if (!value.isFinite()) false else {
-                onSeek(value.toLong().coerceIn(seed.gameStartMs, seed.gameEndMs)); true
-            }
-        }
-    }.pointerInput(seed.gameStartMs, seed.gameEndMs) {
-        awaitEachGesture {
-            val down = awaitFirstDown(requireUnconsumed = false)
-            if (columns.isEmpty()) return@awaitEachGesture
-            fun at(point: Offset): Long {
-                val column = (point.x / size.width.coerceAtLeast(1) * columns.size).toInt().coerceIn(columns.indices)
-                return RallyTimelineScale(columns[column]).time(point.y / size.height.coerceAtLeast(1))
-            }
-            scrub(true)
-            try {
-                down.consume(); seek(at(down.position))
-                while (true) {
-                    val pointer = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
-                    seek(at(pointer.position)); pointer.consume()
-                    if (!pointer.pressed) break
+    BoxWithConstraints(modifier) {
+        Canvas(Modifier.matchParentSize().testTag("rally-vertical-timeline").semantics {
+            contentDescription = "Full recording timeline in ${columns.size} columns"
+            stateDescription = "Playback " + preciseTime(positionMs) + "; list center rally " + (listIndex?.plus(1) ?: 0)
+            progressBarRangeInfo = ProgressBarRangeInfo(positionMs.toFloat(), seed.gameStartMs.toFloat()..seed.gameEndMs.toFloat())
+            setProgress { value ->
+                if (!value.isFinite()) false else {
+                    onSeek(value.toLong().coerceIn(seed.gameStartMs, seed.gameEndMs)); true
                 }
-            } finally { scrub(false) }
+            }
+        }.pointerInput(seed.gameStartMs, seed.gameEndMs) {
+            awaitEachGesture {
+                val down = awaitFirstDown(requireUnconsumed = false)
+                if (columns.isEmpty()) return@awaitEachGesture
+                fun at(point: Offset): Long {
+                    val column = (point.x / size.width.coerceAtLeast(1) * columns.size).toInt().coerceIn(columns.indices)
+                    return RallyTimelineScale(columns[column]).time(point.y / size.height.coerceAtLeast(1))
+                }
+                scrub(true)
+                try {
+                    down.consume(); seek(at(down.position))
+                    while (true) {
+                        val pointer = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+                        seek(at(pointer.position)); pointer.consume()
+                        if (!pointer.pressed) break
+                    }
+                } finally { scrub(false) }
+            }
+        }) {
+            val columnWidth = size.width / columns.size.coerceAtLeast(1)
+            columns.forEachIndexed { index, window ->
+                val scale = RallyTimelineScale(window)
+                fun y(time: Long) = scale.fraction(time) * size.height
+                fun contains(time: Long) = time >= window.startMs &&
+                    (time < window.endMs || index == columns.lastIndex && time <= window.endMs)
+                val left = columnWidth * index
+                val middle = left + columnWidth / 2
+                drawRoundRect(CourtsideControl, Offset(middle - 2.dp.toPx(), 0f), Size(4.dp.toPx(), size.height), CornerRadius(2.dp.toPx()))
+                rallies.filter { it.keepStartMs < window.endMs && it.keepEndMs > window.startMs }.forEach { rally ->
+                    val color = when {
+                        queue.any { it.rallyId == rally.id } -> CourtsideAccent
+                        rally.cutIds.any { it in effectiveIds } -> Color(0xFF879296)
+                        else -> Danger
+                    }
+                    drawRoundRect(color, Offset(middle - 9.dp.toPx(), y(rally.keepStartMs)),
+                        Size(18.dp.toPx(), (y(rally.keepEndMs) - y(rally.keepStartMs)).coerceAtLeast(2.dp.toPx())), CornerRadius(1.dp.toPx()))
+                }
+                if (contains(positionMs)) {
+                    val play = y(positionMs)
+                    drawLine(CourtsideAccent, Offset(left + 5.dp.toPx(), play), Offset(middle, play), 2.dp.toPx())
+                    drawCircle(CourtsideAccent, 4.dp.toPx(), Offset(left + 5.dp.toPx(), play))
+                }
+                listTime?.takeIf(::contains)?.let {
+                    val cy = y(it); val cx = left + columnWidth - 6.dp.toPx()
+                    drawLine(CourtsideInk, Offset(middle + 3.dp.toPx(), cy), Offset(cx, cy), 1.dp.toPx())
+                    drawRallyListMarker(Offset(cx, cy))
+                }
+            }
         }
-    }) {
-        val columnWidth = size.width / columns.size.coerceAtLeast(1)
+        val columnWidth = maxWidth / columns.size.coerceAtLeast(1)
+        val markerSize = 24.dp
         columns.forEachIndexed { index, window ->
             val scale = RallyTimelineScale(window)
-            fun y(time: Long) = scale.fraction(time) * size.height
-            fun contains(time: Long) = time >= window.startMs &&
-                (time < window.endMs || index == columns.lastIndex && time <= window.endMs)
-            val left = columnWidth * index
-            val middle = left + columnWidth / 2
-            drawRoundRect(CourtsideControl, Offset(middle - 2.dp.toPx(), 0f), Size(4.dp.toPx(), size.height), CornerRadius(2.dp.toPx()))
-            rallies.filter { it.keepStartMs < window.endMs && it.keepEndMs > window.startMs }.forEach { rally ->
-                val color = when {
-                    queue.any { it.rallyId == rally.id } -> CourtsideAccent
-                    rally.cutIds.any { it in effectiveIds } -> Color(0xFF879296)
-                    else -> Danger
-                }
-                drawRoundRect(color, Offset(middle - 9.dp.toPx(), y(rally.keepStartMs)),
-                    Size(18.dp.toPx(), (y(rally.keepEndMs) - y(rally.keepStartMs)).coerceAtLeast(2.dp.toPx())), CornerRadius(1.dp.toPx()))
-            }
-            if (contains(positionMs)) {
-                val play = y(positionMs)
-                drawLine(CourtsideAccent, Offset(left + 5.dp.toPx(), play), Offset(middle, play), 2.dp.toPx())
-                drawCircle(CourtsideAccent, 4.dp.toPx(), Offset(left + 5.dp.toPx(), play))
-            }
-            listTime?.takeIf(::contains)?.let {
-                val cy = y(it); val cx = left + columnWidth - 6.dp.toPx()
-                drawLine(CourtsideInk, Offset(middle + 3.dp.toPx(), cy), Offset(cx, cy), 1.dp.toPx())
-                drawRallyListMarker(Offset(cx, cy))
+            sideSwitches.filter { it.timestampMs >= window.startMs &&
+                (it.timestampMs < window.endMs || index == columns.lastIndex && it.timestampMs == window.endMs) }.forEach { marker ->
+                val selected = marker.id == selectedSwitchId
+                val y = (maxHeight * scale.fraction(marker.timestampMs) - markerSize / 2)
+                    .coerceIn(0.dp, (maxHeight - markerSize).coerceAtLeast(0.dp))
+                SideSwitchBadge(selected, Modifier.offset(x = columnWidth * (index + .5f) - markerSize / 2, y = y)
+                    .size(markerSize)
+                    .clickable(role = Role.Button) { onSelectSideSwitch(marker) }
+                    .semantics {
+                        contentDescription = "Side switch at " + preciseTime(marker.timestampMs)
+                        this.selected = selected
+                    }.testTag("rally-source-switch-${marker.id}"))
             }
         }
+    }
+}
+
+@Composable
+private fun SideSwitchBadge(selected: Boolean, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(4.dp)
+    Box(modifier.clip(shape).background(if (selected) CourtsideInk else Color.White)
+        .border(1.dp, CourtsideInk, shape), contentAlignment = Alignment.Center) {
+        Text("⇄", color = if (selected) Color.White else CourtsideInk, fontSize = 14.sp, lineHeight = 14.sp)
     }
 }

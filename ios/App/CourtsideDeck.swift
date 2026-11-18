@@ -134,6 +134,8 @@ struct CourtsideDeckWorkspace<Video: View>: View {
     let onSetBoundary: (Bool) -> Void
     let onSplit: () -> Void
     let onReplay: (String, Bool) -> Void
+    let onAddSideSwitch: (Int64) -> Void
+    let onRemoveSideSwitch: (String) -> Void
     let onNeighbor: (Int) -> Void
     let onReview: () -> Void
     let onResumeReview: () -> Void
@@ -141,6 +143,7 @@ struct CourtsideDeckWorkspace<Video: View>: View {
     let onAdd: (TimeRange) -> Void
     @ViewBuilder var video: () -> Video
     @State private var listCenters: [String: CGFloat] = [:]
+    @State private var selectedSwitchId: String?
     @State private var listInteractionObserved = false
     @State private var splitDragStart: Double?
     @State private var editingToolsExpanded = false
@@ -153,6 +156,22 @@ struct CourtsideDeckWorkspace<Video: View>: View {
     private var index: Int { rallies.firstIndex { $0.id == rally?.id } ?? -1 }
     private var mode: RallyDeckMode { navigation.mode(selected: rally, queue: queue) }
     private var score: ScoreTracking { presentation.score }
+    private var sideSwitches: [SideSwitchMarker] { score.enabled ? presentation.visibleScore.sideSwitchMarkers : [] }
+    private var sideSwitchPlacement: (timestampMs: Int64, existingWindow: ClosedRange<Int64>)? {
+        guard score.enabled, let rally, index > 0 else { return nil }
+        let firstServe = presentation.firstServeByRally[rally.id]
+        let previousRallyEnd = rallies[index - 1].coreEndMs
+        let earlyServe = presentation.visibleScore.serveMarkers.filter { $0.rallyId == nil && $0.timestampMs > previousRallyEnd }
+            .map(\.timestampMs).min()
+        let deadline = min(rally.coreStartMs, firstServe?.timestampMs ?? Int64.max, earlyServe ?? Int64.max)
+        // A serve in the leading padding must see the switched sides too.
+        let boundary = max(bounds.startMs, min(rally.keepStartMs, deadline) - 1)
+        let timestamp = draft.ignoredIntervals.sorted { $0.startMs > $1.startMs }.reduce(boundary) { time, span in
+            time >= span.startMs && time < span.endMs ? max(bounds.startMs, span.startMs - 1) : time
+        }
+        let windowStart = min(previousRallyEnd, timestamp)
+        return (timestamp, windowStart...max(timestamp, deadline))
+    }
     private var activeServes: [ServeMarker] {
         if let rally { return RallyReview.serves(for: rally, in: presentation.visibleScore.serveMarkers) }
         return presentation.visibleScore.serveMarkers.filter { navigation.focus?.serveIds.contains($0.id) == true }
@@ -318,7 +337,8 @@ struct CourtsideDeckWorkspace<Video: View>: View {
                 }
                 CourtsideTimeline(rallies: rallies, effectiveIds: presentation.keptIds,
                     reviewIds: presentation.pendingConfidenceIds, removedIds: presentation.userRemovedCleanupCutIds, ignored: draft.ignoredIntervals,
-                    bounds: bounds, playhead: playhead, selected: rally, onSeek: onSeek, onTrim: onTrim)
+                    bounds: bounds, playhead: playhead, selected: rally, sideSwitches: sideSwitches,
+                    switchTime: sideSwitchPlacement?.timestampMs, onSeek: onSeek, onTrim: onTrim)
                 HStack { Text("Start \(deckTime(rally.coreStartMs))"); Spacer(); Text("End \(deckTime(rally.coreEndMs))") }
                     .font(.system(size: 12)).monospacedDigit().foregroundStyle(CourtsidePalette.muted)
             }.guidedTourTarget("deck-trim")
@@ -328,7 +348,7 @@ struct CourtsideDeckWorkspace<Video: View>: View {
                 DisclosureGroup(isExpanded: $editingToolsExpanded) {
                     VStack(alignment: .leading, spacing: 6) {
                         editingActions(rally).buttonStyle(CourtsideButtonStyle())
-                        replayControl(rally)
+                        sideSwitchAndReplayControls(rally)
                     }.padding(.top, 8)
                 } label: {
                     Text("More editing tools").font(.system(size: 13, weight: .medium)).frame(minHeight: 44)
@@ -357,7 +377,7 @@ struct CourtsideDeckWorkspace<Video: View>: View {
                     editingActions(rally)
                     if score.enabled && index > 0 {
                         Divider()
-                        replayControl(rally)
+                        sideSwitchAndReplayControls(rally)
                     }
                 } label: {
                     Image(systemName: "ellipsis")
@@ -385,9 +405,16 @@ struct CourtsideDeckWorkspace<Video: View>: View {
                 .accessibilityIdentifier("deckSplitAtPlayhead")
         }
     }
-    @ViewBuilder private func replayControl(_ rally: EditableRallyGroup) -> some View {
-        if score.enabled && index > 0 {
+    @ViewBuilder private func sideSwitchAndReplayControls(_ rally: EditableRallyGroup) -> some View {
+        if let placement = sideSwitchPlacement {
             let serve = presentation.firstServeByRally[rally.id]
+            let switchTime = placement.timestampMs
+            let hasSwitch = sideSwitches.contains { placement.existingWindow.contains($0.timestampMs) }
+            Button(hasSwitch ? "Team switch before this rally added" : "Add team switch before this rally") {
+                onAddSideSwitch(switchTime)
+            }
+            .disabled(hasSwitch || draft.ignoredIntervals.contains { switchTime >= $0.startMs && switchTime < $0.endMs })
+            .accessibilityIdentifier("deckAddSwitchBeforeRally")
             Toggle("Replaying previous rally", isOn: Binding(get: {
                 serve?.ignorePreviousPoint ?? false
             }, set: { value in
@@ -443,13 +470,27 @@ struct CourtsideDeckWorkspace<Video: View>: View {
                 Text(RallyReview.at(playhead, in: rallies) == nil ? "Between rallies \u{00B7} \(deckTime(playhead))" : "Rally \((rallies.firstIndex { $0.id == navigation.selectedId } ?? 0) + 1) \u{00B7} \(deckTime(playhead))")
                     .lineLimit(1).accessibilityIdentifier("deckSourceStatus")
                 Spacer(minLength: 8)
-                Button(navigation.showTimeline ? "Hide timeline" : "Show timeline") { navigation.showTimeline.toggle() }
+                Button(navigation.showTimeline ? "Hide timeline" : "Show timeline") {
+                    navigation.showTimeline.toggle(); selectedSwitchId = nil
+                }
                     .frame(minHeight: 44).accessibilityIdentifier("deckToggleSourceTimeline")
             }.font(.system(size: 12)).foregroundStyle(CourtsidePalette.muted)
+            if navigation.showTimeline, let marker = sideSwitches.first(where: { $0.id == selectedSwitchId }) {
+                HStack {
+                    Text("Side switch at \(deckTime(marker.timestampMs))")
+                    Spacer(minLength: 8)
+                    Button("Remove side switch", role: .destructive) {
+                        onRemoveSideSwitch(marker.id); selectedSwitchId = nil
+                    }.frame(minHeight: 44).accessibilityIdentifier("deckRemoveSideSwitch")
+                }.font(.system(size: 12))
+            }
             HStack(spacing: 8) {
                 if navigation.showTimeline {
                     CourtsideSourceRail(rallies: rallies, effectiveIds: presentation.keptIds, bounds: bounds, playhead: playhead,
-                        listCenter: rallies.first { $0.id == navigation.listCenterId }?.coreStartMs, onSeek: onSeek)
+                        listCenter: rallies.first { $0.id == navigation.listCenterId }?.coreStartMs,
+                        sideSwitches: sideSwitches, selectedSwitchId: selectedSwitchId, onSeek: onSeek, onSelectSwitch: { marker in
+                            selectedSwitchId = marker.id; onSeek(marker.timestampMs)
+                        })
                         .frame(width: 96)
                 }
                 VStack(spacing: 4) {
@@ -579,6 +620,8 @@ struct CourtsideTimeline: View {
     let bounds: TimeRange
     let playhead: Int64
     let selected: EditableRallyGroup
+    let sideSwitches: [SideSwitchMarker]
+    let switchTime: Int64?
     let onSeek: (Int64) -> Void
     let onTrim: (Bool, Int64) -> Void
     var body: some View {
@@ -586,7 +629,8 @@ struct CourtsideTimeline: View {
             CoreTrimSurface(core: .init(startMs: selected.coreStartMs, endMs: selected.coreEndMs),
                 kept: .init(startMs: selected.keepStartMs, endMs: selected.keepEndMs), bounds: bounds, playhead: playhead,
                 startLabel: "Trim rally start", endLabel: "Trim rally end", startIdentifier: "deckTrimStart", endIdentifier: "deckTrimEnd",
-                contextWindow: RallyReview.context(for: selected, rallies: rallies, effectiveIds: effectiveIds, bounds: bounds),
+                contextWindow: RallyReview.context(for: selected, rallies: rallies, effectiveIds: effectiveIds, bounds: bounds,
+                    includeTimeMs: switchTime),
                 halfHeightHandles: true,
                 onTrim: onTrim) { scale in
                     track(scale)
@@ -641,7 +685,28 @@ struct CourtsideTimeline: View {
             if playhead >= window.startMs && playhead <= window.endMs {
                 Rectangle().fill(CourtsidePalette.accent).frame(width: 2, height: 64).offset(x: scale.x(playhead)).allowsHitTesting(false)
             }
+            ForEach(sideSwitches.filter { (window.startMs...window.endMs).contains($0.timestampMs) }) { marker in
+                let x = scale.x(marker.timestampMs)
+                Rectangle().fill(CourtsidePalette.ink).frame(width: 1, height: 38).offset(x: x - 0.5, y: 18)
+                    .accessibilityHidden(true).allowsHitTesting(false)
+                SideSwitchBadge(selected: false, size: 18)
+                    .offset(x: x - 9, y: 2).allowsHitTesting(false)
+                    .accessibilityLabel("Side switch at \(deckTime(marker.timestampMs))")
+                    .accessibilityIdentifier("deckBoundsSwitch-\(marker.id)")
+            }
         }
+    }
+}
+
+private struct SideSwitchBadge: View {
+    let selected: Bool
+    let size: CGFloat
+    var body: some View {
+        Text("⇄").font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(selected ? .white : CourtsidePalette.ink)
+            .frame(width: size, height: size)
+            .background(selected ? CourtsidePalette.ink : .white, in: RoundedRectangle(cornerRadius: 4))
+            .overlay { RoundedRectangle(cornerRadius: 4).strokeBorder(CourtsidePalette.ink) }
     }
 }
 
@@ -667,7 +732,10 @@ private struct CourtsideSourceRail: View {
     let bounds: TimeRange
     let playhead: Int64
     let listCenter: Int64?
+    let sideSwitches: [SideSwitchMarker]
+    let selectedSwitchId: String?
     let onSeek: (Int64) -> Void
+    let onSelectSwitch: (SideSwitchMarker) -> Void
     var body: some View {
         let columns = SourceTimelineColumns(bounds: bounds)
         HStack(spacing: 8) {
@@ -711,12 +779,26 @@ private struct CourtsideSourceRail: View {
                     .exclusively(before: SpatialTapGesture().onEnded {
                         onSeek(columns.time(in: index, fraction: Double(($0.location.y - 8) / height)))
                     }))
-        }.accessibilityElement().accessibilityLabel("Source timeline column \(index + 1), \(deckTime(window.startMs)) to \(deckTime(window.endMs)). Circle: video. Diamond: list center.")
-            .accessibilityIdentifier("deckSourceTimelineColumn-\(index)")
-            .accessibilityValue("Video \(deckTime(playhead))" + (listCenter.map { "; List center \(deckTime($0))" } ?? ""))
-            .accessibilityAdjustableAction { direction in
-                onSeek(min(window.endMs, max(window.startMs, playhead + (direction == .increment ? 1_000 : -1_000))))
-            }
+                .accessibilityElement().accessibilityLabel("Source timeline column \(index + 1), \(deckTime(window.startMs)) to \(deckTime(window.endMs)). Circle: video. Diamond: list center.")
+                .accessibilityIdentifier("deckSourceTimelineColumn-\(index)")
+                .accessibilityValue("Video \(deckTime(playhead))" + (listCenter.map { "; List center \(deckTime($0))" } ?? ""))
+                .accessibilityAdjustableAction { direction in
+                    onSeek(min(window.endMs, max(window.startMs, playhead + (direction == .increment ? 1_000 : -1_000))))
+                }
+                .overlay(alignment: .topLeading) {
+                    ForEach(sideSwitches.filter { (bounds.startMs...bounds.endMs).contains($0.timestampMs) && columns.column(at: $0.timestampMs) == index }) { marker in
+                        let selected = marker.id == selectedSwitchId
+                        Button { onSelectSwitch(marker) } label: {
+                            SideSwitchBadge(selected: selected, size: 22)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Side switch at \(deckTime(marker.timestampMs))")
+                        .accessibilityIdentifier("deckSourceSwitch-\(marker.id)")
+                        .accessibilityAddTraits(selected ? .isSelected : [])
+                        .position(x: geometry.size.width / 2, y: y(marker.timestampMs))
+                    }
+                }
+        }
     }
 }
 

@@ -110,10 +110,12 @@ public enum RallyReview {
         if direction < 0 { return rallies.prefix(index).last { retained($0, effectiveIds: effectiveIds) } }
         return rallies.dropFirst(index + 1).first { retained($0, effectiveIds: effectiveIds) }
     }
-    public static func context(for rally: EditableRallyGroup, rallies: [EditableRallyGroup], effectiveIds: Set<String>, bounds: TimeRange) -> TimeRange {
+    public static func context(for rally: EditableRallyGroup, rallies: [EditableRallyGroup], effectiveIds: Set<String>, bounds: TimeRange,
+                               includeTimeMs: Int64? = nil) -> TimeRange {
         let previous = neighbor(of: rally, direction: -1, rallies: rallies, effectiveIds: effectiveIds)
         let next = neighbor(of: rally, direction: 1, rallies: rallies, effectiveIds: effectiveIds)
-        let start = max(bounds.startMs, min(rally.coreStartMs - 8_000, rally.keepStartMs, previous.map { $0.keepStartMs - 2_000 } ?? Int64.max))
+        let start = max(bounds.startMs, min(rally.coreStartMs - 8_000, rally.keepStartMs, includeTimeMs ?? Int64.max,
+                                            previous.map { $0.keepStartMs - 2_000 } ?? Int64.max))
         let end = min(bounds.endMs, max(rally.coreEndMs + 8_000, rally.keepEndMs, next.map { $0.keepEndMs + 2_000 } ?? Int64.min))
         // Balance real source-time context around the selected core. Expand the
         // shorter side instead of compressing gaps or hiding either neighbor.

@@ -71,6 +71,37 @@ final class CourtsideDeckUITests: XCTestCase {
         XCTAssertTrue(row.label.contains("Replay of rally 1") || row.staticTexts["Replay of rally 1"].exists)
     }
 
+    @MainActor func testAddAndRemoveSideSwitchFromRallies() {
+        let app = launch(); defer { app.terminate() }
+        app.buttons["deckBrowse"].tap()
+        seekSource(app, fraction: 0.225)
+        app.buttons["deckEditSelected"].tap()
+
+        let tools = app.descendants(matching: .any)["deckEditingTools"].firstMatch
+        XCTAssertTrue(tools.waitForExistence(timeout: 10))
+        tools.tap()
+        app.buttons["Add team switch before this rally"].tap()
+        let focusedSwitch = app.descendants(matching: .any)["deckBoundsSwitch-X001"].firstMatch
+        XCTAssertTrue(focusedSwitch.waitForExistence(timeout: 10))
+        XCTAssertEqual(focusedSwitch.label, "Side switch at 0:03.4")
+        tools.tap()
+        XCTAssertFalse(app.buttons["Team switch before this rally added"].isEnabled)
+        app.swipeDown()
+
+        app.buttons["deckBrowse"].tap()
+        let added = app.buttons["deckSourceSwitch-X001"]
+        let existing = app.buttons["deckSourceSwitch-W01"]
+        let rally = app.buttons["deckRallyRow-R002"]
+        XCTAssertTrue(added.waitForExistence(timeout: 10))
+        XCTAssertTrue(existing.exists)
+        XCTAssertTrue(rally.label.contains("0 : 2"), "The first serve in the leading padding uses the switched sides")
+        added.tap()
+        app.buttons["deckRemoveSideSwitch"].tap()
+        XCTAssertFalse(added.exists)
+        XCTAssertTrue(existing.exists)
+        XCTAssertTrue(rally.label.contains("1 : 1"))
+    }
+
     @MainActor private func seekSource(_ app: XCUIApplication, fraction: Double) {
         let position = min(2, max(0, fraction * 2))
         let index = min(1, Int(position))
