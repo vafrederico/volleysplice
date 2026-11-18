@@ -60,6 +60,7 @@ public struct EditorPresentation: Sendable {
     public let userRemovedCleanupCutIds: Set<String>
     public let score: ScoreTracking
     public let visibleScore: ScoreTracking
+    public let firstServeByRally: [String: ServeMarker]
     public let scoreRallyRanges: [ScoreRallyRange]
     public let reviewServes: [ServeMarker]
     public init(draft: EditorDraft, suggestions: [SuppressionRegion], bounds: TimeRange, durationMs: Int64) {
@@ -76,6 +77,7 @@ public struct EditorPresentation: Sendable {
         let groups = EditorMath.editableRallyGroups(cuts: cuts, intervals: intervals,
             serveMarkers: score.enabled ? score.serveMarkers : [], hardBoundaryCutIds: pending)
         self.groups = groups
+        firstServeByRally = RallyReview.firstServeByRally(groups, tracking: score)
         reviewCuts = groups.filter { !$0.cutIds.isDisjoint(with: pending.intersection(kept)) &&
             EditorReview.firstReviewableTime(startMs: $0.keepStartMs, endMs: $0.keepEndMs, ignored: draft.ignoredIntervals) != nil }.map { $0.asEditableCut() }
         let active = EditorReview.activeSuggestions(suggestions, draft: draft)

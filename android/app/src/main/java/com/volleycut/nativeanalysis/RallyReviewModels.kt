@@ -73,6 +73,23 @@ internal fun rallyServeMarkers(rally: EditableRallyGroup, markers: List<ServeMar
             (marker.rallyId == null && marker.timestampMs >= rally.coreStartMs && marker.timestampMs < rally.coreEndMs)
     }.sortedBy { it.timestampMs }
 
+/** Use the first serve even when a rally has been removed from the export. */
+internal fun firstServeByRally(
+    rallies: List<EditableRallyGroup>, tracking: ScoreTracking,
+): Map<String, ServeMarker> {
+    if (!tracking.enabled) return emptyMap()
+    val rallyIdByCut = rallies.flatMap { rally -> rally.cutIds.map { it to rally.id } }.toMap()
+    return buildMap {
+        tracking.serveMarkers.sortedWith(compareBy<ServeMarker> { it.timestampMs }.thenBy { it.id }).forEach { serve ->
+            val rallyId = if (serve.rallyId != null) rallyIdByCut[serve.rallyId] else {
+                // A serve at a shared boundary starts the later rally.
+                rallies.lastOrNull { serve.timestampMs in it.coreStartMs..it.coreEndMs }?.id
+            }
+            if (rallyId != null) putIfAbsent(rallyId, serve)
+        }
+    }
+}
+
 internal const val RALLY_MIN_DURATION_MS = 500L
 
 /** The UI and trim callbacks must resolve membership from the same current draft. */

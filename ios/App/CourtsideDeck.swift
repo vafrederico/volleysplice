@@ -131,6 +131,9 @@ struct CourtsideDeckWorkspace<Video: View>: View {
     let onDecision: (Bool) -> Void
     let onServe: (ServeMarker?, ServingSide?) -> Void
     let onTrim: (Bool, Int64) -> Void
+    let onSetBoundary: (Bool) -> Void
+    let onSplit: () -> Void
+    let onReplay: (String, Bool) -> Void
     let onNeighbor: (Int) -> Void
     let onReview: () -> Void
     let onResumeReview: () -> Void
@@ -140,6 +143,7 @@ struct CourtsideDeckWorkspace<Video: View>: View {
     @State private var listCenters: [String: CGFloat] = [:]
     @State private var listInteractionObserved = false
     @State private var splitDragStart: Double?
+    @State private var editingToolsExpanded = false
     @AppStorage("courtside.videoFraction") private var videoFraction = 0.56
     @Environment(\.compactPhoneEditor) private var phone
     @Environment(\.interfaceScale) private var interfaceScale
@@ -174,14 +178,15 @@ struct CourtsideDeckWorkspace<Video: View>: View {
                                 .accessibilityHidden(navigation.addingMissing)
                         }
                         else { Color.clear.frame(width: 8) }
-                        detailPane.frame(maxWidth: .infinity).contentShape(Rectangle()).clipped()
+                        detailPane(showsInlineEditingTools: !phone)
+                            .frame(maxWidth: .infinity).contentShape(Rectangle()).clipped()
                     }
                 } else {
                     let playerHeight = phone || geometry.size.width < 600
                         ? min(360, max(170, geometry.size.height * 0.40))
                         : max(170, min(geometry.size.height * 0.62, geometry.size.height - 280))
                     playerPane.frame(height: playerHeight).contentShape(Rectangle()).clipped()
-                    detailPane.frame(maxHeight: .infinity)
+                    detailPane(showsInlineEditingTools: false).frame(maxHeight: .infinity)
                 }
             }
         }.background(CourtsidePalette.ground).foregroundStyle(CourtsidePalette.ink)
@@ -266,7 +271,7 @@ struct CourtsideDeckWorkspace<Video: View>: View {
         }
         .accessibilityLabel("Playback speed, \(draft.playbackRate.formatted()) times").accessibilityIdentifier("deckSpeed")
     }
-    @ViewBuilder private var detailPane: some View {
+    @ViewBuilder private func detailPane(showsInlineEditingTools: Bool) -> some View {
         if navigation.addingMissing {
             MissingRallyPane(selection: $navigation.missingSelection, rallies: rallies, effectiveIds: presentation.keptIds,
                 reviewIds: presentation.pendingConfidenceIds, ignored: draft.ignoredIntervals,
@@ -277,7 +282,9 @@ struct CourtsideDeckWorkspace<Video: View>: View {
             ScrollViewReader { proxy in
                 VStack(spacing: 0) {
                     ScrollView {
-                        VStack(spacing: 10) { focusControls }.padding(10)
+                        VStack(spacing: 10) {
+                            focusControls(showsInlineEditingTools: showsInlineEditingTools)
+                        }.padding(10)
                     }
                     if rally != nil || navigation.focus != nil {
                         navigationButtons.padding(10)
@@ -289,15 +296,25 @@ struct CourtsideDeckWorkspace<Video: View>: View {
             }
         }
     }
-    @ViewBuilder private var focusControls: some View {
+    @ViewBuilder private func focusControls(showsInlineEditingTools: Bool) -> some View {
         if let rally {
             VStack(spacing: 8) {
-                HStack {
-                    nudgeControls(start: true, value: rally.coreStartMs)
-                    Spacer(minLength: 0)
-                    Text("Rally \(index + 1)").font(.system(size: 15, weight: .semibold))
-                    Spacer(minLength: 0)
-                    nudgeControls(start: false, value: rally.coreEndMs)
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 0) {
+                        nudgeControls(start: true, value: rally.coreStartMs)
+                        Spacer(minLength: 4)
+                        rallyTitle(rally, showsEditingMenu: !showsInlineEditingTools).fixedSize()
+                        Spacer(minLength: 4)
+                        nudgeControls(start: false, value: rally.coreEndMs)
+                    }
+                    VStack(spacing: 0) {
+                        rallyTitle(rally, showsEditingMenu: !showsInlineEditingTools)
+                        HStack {
+                            nudgeControls(start: true, value: rally.coreStartMs)
+                            Spacer(minLength: 0)
+                            nudgeControls(start: false, value: rally.coreEndMs)
+                        }
+                    }
                 }
                 CourtsideTimeline(rallies: rallies, effectiveIds: presentation.keptIds,
                     reviewIds: presentation.pendingConfidenceIds, removedIds: presentation.userRemovedCleanupCutIds, ignored: draft.ignoredIntervals,
@@ -307,6 +324,18 @@ struct CourtsideDeckWorkspace<Video: View>: View {
             }.guidedTourTarget("deck-trim")
             decisions
             serveChoices.guidedTourTarget("deck-tagging")
+            if showsInlineEditingTools {
+                DisclosureGroup(isExpanded: $editingToolsExpanded) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        editingActions(rally).buttonStyle(CourtsideButtonStyle())
+                        replayControl(rally)
+                    }.padding(.top, 8)
+                } label: {
+                    Text("More editing tools").font(.system(size: 13, weight: .medium)).frame(minHeight: 44)
+                }
+                .tint(CourtsidePalette.ink)
+                .accessibilityIdentifier("deckEditingToolsDisclosure")
+            }
         } else if let focus = navigation.focus {
             Text(focus.cleanupIds.isEmpty ? "Serve review" : "Cleanup review").font(.headline)
             Text("\(deckTime(focus.startMs)) – \(deckTime(focus.endMs))").monospacedDigit()
@@ -319,6 +348,58 @@ struct CourtsideDeckWorkspace<Video: View>: View {
     }
     private func nudgeControls(start: Bool, value: Int64) -> some View {
         CourtsideTrimNudges(start: start) { direction in onTrim(start, value + Int64(direction) * 1_000) }
+    }
+    private func rallyTitle(_ rally: EditableRallyGroup, showsEditingMenu: Bool) -> some View {
+        HStack(spacing: 0) {
+            Text("Rally \(index + 1)").font(.system(size: 15, weight: .semibold))
+            if showsEditingMenu {
+                Menu {
+                    editingActions(rally)
+                    if score.enabled && index > 0 {
+                        Divider()
+                        replayControl(rally)
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 16, weight: .semibold))
+                        .frame(width: 44, height: 44).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("More editing tools")
+                .accessibilityIdentifier("deckEditingTools")
+            }
+        }
+    }
+    private func editingActions(_ rally: EditableRallyGroup) -> some View {
+        let first = rally.cuts.min { $0.coreStartMs < $1.coreStartMs }
+        let last = rally.cuts.max { $0.coreEndMs < $1.coreEndMs }
+        return Group {
+            Button("Set start to playhead") { onSetBoundary(true) }
+                .disabled(first.map { playhead > $0.coreEndMs - EditorMath.minimumMarkMs } ?? true)
+                .accessibilityIdentifier("deckSetStartToPlayhead")
+            Button("Set end to playhead") { onSetBoundary(false) }
+                .disabled(last.map { playhead < $0.coreStartMs + EditorMath.minimumMarkMs } ?? true)
+                .accessibilityIdentifier("deckSetEndToPlayhead")
+            Button("Split at playhead", action: onSplit)
+                .disabled(RallyReview.splitMember(in: rally, at: playhead) == nil)
+                .accessibilityIdentifier("deckSplitAtPlayhead")
+        }
+    }
+    @ViewBuilder private func replayControl(_ rally: EditableRallyGroup) -> some View {
+        if score.enabled && index > 0 {
+            let serve = presentation.firstServeByRally[rally.id]
+            Toggle("Replaying previous rally", isOn: Binding(get: {
+                serve?.ignorePreviousPoint ?? false
+            }, set: { value in
+                if let serve { onReplay(serve.id, value) }
+            }))
+            .disabled(serve == nil)
+            .accessibilityIdentifier("deckReplayPreviousRally")
+            if serve == nil {
+                Text("Choose Near or Far to add a serve first.")
+                    .font(.system(size: 12)).foregroundStyle(CourtsidePalette.muted)
+            }
+        }
     }
     private var decisions: some View {
         CourtsideDecisionRow(selected: decisionSelected(keep: true) ? true : decisionSelected(keep: false) ? false : nil, onDecision: onDecision)
@@ -423,6 +504,11 @@ struct CourtsideDeckWorkspace<Video: View>: View {
                                         Text(RallyReview.retained(value, effectiveIds: presentation.keptIds) ? "Keep" : "Remove")
                                             .foregroundStyle(RallyReview.retained(value, effectiveIds: presentation.keptIds) ? CourtsidePalette.muted : EditorPalette.danger)
                                     }.font(.system(size: 11)).foregroundStyle(CourtsidePalette.muted)
+                                    if rowIndex > 0 && presentation.firstServeByRally[value.id]?.ignorePreviousPoint == true {
+                                        Text("Replay of rally \(rowIndex)")
+                                            .font(.system(size: 12)).foregroundStyle(CourtsidePalette.muted)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                    }
                                 }.font(.system(size: 13)).monospacedDigit().padding(10).frame(minHeight: 62)
                                     .background(value.id == navigation.selectedId ? CourtsidePalette.control.opacity(0.3) : Color.clear, in: RoundedRectangle(cornerRadius: 6))
                                     .contentShape(Rectangle())
