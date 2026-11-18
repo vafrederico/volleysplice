@@ -301,6 +301,12 @@ struct EditorWorkspace: View {
                 applyCoreTrim(selectedCutIds: group.cutIds, isStart: start, valueMs: playheadMs,
                     minimumMs: EditorMath.minimumMarkMs)
             }, onSplit: splitSelectedAtPlayhead, onReplay: setServeReplay,
+            onAddSideSwitch: { time in
+                guard !score.sideSwitchMarkers.contains(where: { $0.timestampMs == time }) else { return }
+                editScore { $0 = ScoreReducer.addSideSwitch($0, timestampMs: time) }
+            }, onRemoveSideSwitch: { id in
+                editScore { $0 = ScoreReducer.removeSideSwitch($0, markerId: id) }
+            },
             onNeighbor: deckNeighbor, onReview: deckNextReview,
             onResumeReview: deckResumeReview,
             onSelect: { rally in

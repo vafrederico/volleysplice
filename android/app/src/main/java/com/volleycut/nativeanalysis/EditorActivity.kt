@@ -4187,6 +4187,15 @@ private fun EditorScreen(
                                 ))
                             }
                         },
+                        onAddSideSwitch = { time ->
+                            updateDraft { current ->
+                                if (current.scoreTracking.sideSwitchMarkers.any { it.timestampMs == time }) current
+                                else current.copy(scoreTracking = ScoreReducer.addSideSwitch(current.scoreTracking, time))
+                            }
+                        },
+                        onRemoveSideSwitch = { id ->
+                            updateDraft { current -> current.copy(scoreTracking = ScoreReducer.removeSideSwitch(current.scoreTracking, id)) }
+                        },
                         onSplit = {
                             player.pause(); previewEndMs = null
                             splitSelectedAtPlayhead()

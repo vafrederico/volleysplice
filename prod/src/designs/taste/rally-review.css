@@ -66,6 +66,9 @@
 .rw-context-rally[data-pending] { background: #edc36c; }
 .rw-context-rally[data-pending] .rw-context-core { background: #bb7130; }
 .rw-context-rally small { position: absolute; bottom: calc(100% + 3px); left: 0; white-space: nowrap; color: var(--td-ink); font-size: 10px; }
+.rw-bounds-switch { position: absolute; inset: 3px 0 8px; z-index: 4; pointer-events: none; }
+.rw-bounds-switch::before { content: ""; position: absolute; inset-block: 0; left: var(--rw-switch-position); border-inline-start: 1px solid var(--td-ink); }
+.rw-bounds-switch > span { position: absolute; left: clamp(0px, calc(var(--rw-switch-position) - 9px), calc(100% - 18px)); display: grid; place-items: center; width: 18px; height: 18px; border: 1px solid var(--td-ink); border-radius: 3px; background: var(--td-panel); color: var(--td-ink); font-size: 13px; line-height: 1; }
 .rw-workspace button.rw-trim-handle { position: absolute; top: 23px; bottom: 8px; min-height: 0; min-width: 0; width: 12px; padding: 0; border: 2px solid #fff; border-radius: 4px; background: #2e6b59; transform: translateX(-50%); cursor: ew-resize; touch-action: none; }
 .rw-playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: #cf6544; pointer-events: none; }
 .rw-bound-times { display: flex; justify-content: space-between; gap: 8px; font-variant-numeric: tabular-nums; }
@@ -89,6 +92,8 @@
 .rw-browser-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .rw-browser-heading > button { border: 0; padding: 0; font-size: 12px; }
 .rw-browser-position { color: var(--td-accent); margin: -8px 0 0; font-size: 13px; }
+.rw-switch-selection { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; }
+.rw-switch-selection > button { font-size: inherit; }
 .rw-browser-content { display: flex; gap: 16px; min-height: 120px; overflow: hidden; }
 .rw-list-column { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .rw-browser-key { display: flex; justify-content: space-between; gap: 8px; padding: 0 8px 8px; font-size: 11px; color: var(--td-muted); }
@@ -119,6 +124,9 @@
 .rw-source-playhead { position: absolute; left: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--td-accent); transform: translateY(-50%); z-index: 1; }
 .rw-source-playhead::after { content: ""; position: absolute; left: 4px; top: 3px; width: 10px; height: 2px; background: var(--td-accent); }
 .rw-source-location { position: absolute; right: 0; transform: translateY(-50%) rotate(45deg); z-index: 2; }
+.rw-source-switches { position: absolute; inset: 8px 0; pointer-events: none; z-index: 4; }
+.rw-source-switches > button { position: absolute; left: 3px; display: grid; place-items: center; width: 22px; min-height: 22px; padding: 0; translate: 0 -50%; pointer-events: auto; border: 1px solid var(--td-ink); border-radius: 3px; background: var(--td-panel); color: var(--td-ink); font-size: 13px; line-height: 1; }
+.rw-source-switches > button[aria-pressed="true"] { background: var(--td-ink); color: var(--td-panel); }
 .rw-browser-actions { display: grid; grid-template-columns: 1fr 1.5fr; gap: 8px; }
 .rw-browser-actions button { font-size: 12px; }
 .rw-add-heading { display: flex; gap: 12px; align-items: start; }

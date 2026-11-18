@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type PointerEvent, type RefObject } from "react";
-import { deriveScoreAt, orderedServeMarkers, type ServeMarker } from "@/lib/score-tracking";
+import { deriveScoreAt, isScoreTimestampIgnored, orderedServeMarkers, type ServeMarker } from "@/lib/score-tracking";
 import { scrollElementIntoContainer } from "@/lib/scroll-container";
 import type { Clip, Prototype } from "./index";
 import { ResizeHandle } from "./ResizableWorkspace";
@@ -26,7 +26,7 @@ function reviewRallies(state: Prototype) {
   return state.clips.filter(clip => ids.has(clip.id)).sort((a, b) => a.start - b.start);
 }
 
-function BoundsTimeline({ state, clip: sourceClip }: { state: Prototype; clip: Clip }) {
+function BoundsTimeline({ state, clip: sourceClip, switchTime }: { state: Prototype; clip: Clip; switchTime?: number }) {
   const [preview, setPreview] = useState<{ id: string; start: number; end: number } | null>(null);
   const previewRef = useRef(preview);
   const clip = preview?.id === sourceClip.id ? { ...sourceClip, start: preview.start, end: preview.end } : sourceClip;
@@ -34,9 +34,19 @@ function BoundsTimeline({ state, clip: sourceClip }: { state: Prototype; clip: C
   const index = ordered.findIndex(item => item.id === clip.id);
   const previous = ordered[index - 1];
   const next = ordered[index + 1];
-  const start = Math.max(state.gameStart, Math.min(sourceClip.start - state.beforePadding - 4, previous?.start ?? sourceClip.start));
-  const end = Math.min(state.gameEnd, Math.max(sourceClip.end + state.afterPadding + 4, next?.end ?? sourceClip.end));
+  const cuts = new Map(state.workingDraft.cuts.map(cut => [cut.id, cut]));
+  function padding(item: Clip) {
+    const cut = cuts.get(item.id);
+    return {
+      start: cut?.coreStart === item.start ? cut.keepStart : Math.max(state.gameStart, item.start - state.beforePadding),
+      end: cut?.coreEnd === item.end ? cut.keepEnd : Math.min(state.gameEnd, item.end + state.afterPadding),
+    };
+  }
+  const padded = padding(sourceClip);
+  const start = Math.max(state.gameStart, Math.min(padded.start - 4, previous?.start ?? sourceClip.start, switchTime ?? Infinity));
+  const end = Math.min(state.gameEnd, Math.max(padded.end + 4, next?.end ?? sourceClip.end));
   const duration = Math.max(.1, end - start);
+  const sideSwitches = state.scoreEnabled ? state.activeSideSwitchMarkers.filter(marker => marker.timestamp >= start && marker.timestamp <= end) : [];
   const rail = useRef<HTMLDivElement>(null);
   const drag = useRef<{ kind: "start" | "end" | "seek"; pointerId: number } | null>(null);
   const percent = (value: number) => Math.max(0, Math.min(100, (value - start) / duration * 100));
@@ -84,11 +94,15 @@ function BoundsTimeline({ state, clip: sourceClip }: { state: Prototype; clip: C
       onPointerDown={event => begin(event, "seek")}
       onPointerMove={event => { if (drag.current?.pointerId === event.pointerId) seek(event, drag.current.kind); }}
       onPointerUp={() => finish(true)} onPointerCancel={() => finish(false)} onLostPointerCapture={() => finish(false)}>
-      {ordered.filter(item => item.end + state.afterPadding >= start && item.start - state.beforePadding <= end).map(item => {
+      {ordered.map(item => {
+        const { start: paddedStart, end: paddedEnd } = padding(item);
+        if (paddedEnd < start || paddedStart > end) return null;
         const kept = state.effectiveKeptIds.has(item.id);
+        const left = percent(paddedStart);
+        const width = percent(paddedEnd) - left;
         return <div key={item.id} className="rw-context-rally" data-current={item.id === clip.id || undefined} data-kept={kept} data-pending={state.clipReviewTaskIds.has(item.id) || undefined}
-          style={{ left: `${percent(item.start - state.beforePadding)}%`, width: `${percent(item.end + state.afterPadding) - percent(item.start - state.beforePadding)}%` }}>
-          <span className="rw-context-core" style={{ left: `${(percent(item.start) - percent(item.start - state.beforePadding)) / Math.max(.01, percent(item.end + state.afterPadding) - percent(item.start - state.beforePadding)) * 100}%`, width: `${(percent(item.end) - percent(item.start)) / Math.max(.01, percent(item.end + state.afterPadding) - percent(item.start - state.beforePadding)) * 100}%` }} />
+          style={{ left: `${left}%`, width: `${width}%` }}>
+          <span className="rw-context-core" style={{ left: `${(percent(item.start) - left) / Math.max(.01, width) * 100}%`, width: `${(percent(item.end) - percent(item.start)) / Math.max(.01, width) * 100}%` }} />
           {item.id !== clip.id && <small>Rally {ordered.indexOf(item) + 1}</small>}
         </div>;
       })}
@@ -105,6 +119,11 @@ function BoundsTimeline({ state, clip: sourceClip }: { state: Prototype; clip: C
           state.updateSelected({ [boundary]: Math.max(min, Math.min(max, value)) });
         }} />)}
       {state.playhead >= start && state.playhead <= end && <i className="rw-playhead" style={{ left: `${percent(state.playhead)}%` }} />}
+      {sideSwitches.map(marker => {
+        const label = `Side switch at ${time(marker.timestamp)}`;
+        return <span key={marker.id} className="rw-bounds-switch" role="img" aria-label={label} title={label}
+          style={{ "--rw-switch-position": `${percent(marker.timestamp)}%` } as CSSProperties}><span aria-hidden="true">⇄</span></span>;
+      })}
     </div>
     <div className="rw-bound-times"><span>Start {time(clip.start)}</span><span>End {time(clip.end)}</span></div>
   </section>;
@@ -123,6 +142,7 @@ export function RallyReviewWorkspace({ state, nextReviewButtonRef, renderVideo, 
 }) {
   const [mode, setMode] = useState<"review" | "browse" | "edit" | "add">("review");
   const [showTimeline, setShowTimeline] = useState(true);
+  const [sideSwitchId, setSideSwitchId] = useState<string | null>(null);
   const body = useRef<HTMLDivElement>(null);
   const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight, available: window.innerWidth - 32 });
   useEffect(() => {
@@ -229,6 +249,20 @@ export function RallyReviewWorkspace({ state, nextReviewButtonRef, renderVideo, 
     return firstServes;
   }, [ordered, state.scoreEnabled, state.scoreMarkers]);
   const replayServe = clip && index > 0 ? firstServeByRally.get(clip.id) : undefined;
+  const previousRallyEnd = ordered[index - 1]?.end;
+  const firstStandaloneServe = previousRallyEnd === undefined ? Infinity : state.activeScoreMarkers.reduce(
+    (first, serve) => !serve.rallyId && serve.timestamp > previousRallyEnd ? Math.min(first, serve.timestamp) : first, Infinity);
+  const switchDeadline = clip ? Math.min(clip.start, replayServe?.timestamp ?? Infinity, firstStandaloneServe) : 0;
+  // A serve in the leading padding must see the switched sides too.
+  const switchBoundary = Math.min(cut?.keepStart ?? switchDeadline, switchDeadline);
+  const precedingMillisecond = (time: number) => Math.max(state.gameStart, (Math.round(time * 1000) - 1) / 1000);
+  const switchTime = [...state.workingDraft.ignoredIntervals].sort((a, b) => b.start - a.start).reduce(
+    (time, span) => time >= span.start && time < span.end ? precedingMillisecond(span.start) : time,
+    precedingMillisecond(switchBoundary));
+  const switchWindowStart = Math.min(previousRallyEnd ?? switchTime, switchTime);
+  const sideSwitches = state.scoreEnabled ? state.activeSideSwitchMarkers : [];
+  const hasSwitchBeforeRally = sideSwitches.some(marker => marker.timestamp >= switchWindowStart && marker.timestamp <= Math.max(switchDeadline, switchTime));
+  const selectedSwitch = sideSwitches.find(marker => marker.id === sideSwitchId);
   const unresolved = clip ? pending.some(item => item.id === clip.id) : false;
   const reviewComplete = mode === "review" && pending.length === 0 && reviewingId !== clip?.id;
   function open(id: string, nextMode: "edit" | "review" = "edit") {
@@ -263,8 +297,12 @@ export function RallyReviewWorkspace({ state, nextReviewButtonRef, renderVideo, 
         value={fittedSidebarWidth} min={320} max={sidebarMax} onChange={onSidebarWidthChange} onReset={() => onSidebarWidthChange(undefined)} />
       <aside className="rw-panel" aria-label={mode === "browse" ? "All rallies browser" : "Rally decisions"}>
         {mode === "browse" ? <>
-          <header className="rw-browser-heading"><h2>{ordered.length} rallies</h2><button type="button" onClick={() => setShowTimeline(!showTimeline)}>{showTimeline ? "Hide timeline" : "Show timeline"}</button></header>
+          <header className="rw-browser-heading"><h2>{ordered.length} rallies</h2><button type="button" onClick={() => { setShowTimeline(!showTimeline); setSideSwitchId(null); }}>{showTimeline ? "Hide timeline" : "Show timeline"}</button></header>
           <p className="rw-browser-position">{browserClip ? `Rally ${ordered.indexOf(browserClip) + 1}` : "No rally"} at {time(state.playhead)}</p>
+          {showTimeline && selectedSwitch && <div className="rw-switch-selection">
+            <span>Side switch at {time(selectedSwitch.timestamp)}</span>
+            <button type="button" onClick={() => { state.removeSideSwitchById(selectedSwitch.id); setSideSwitchId(null); }}>Remove side switch</button>
+          </div>}
           <div className="rw-browser-content">
             {showTimeline && <div className="rw-source-map" data-tour="rw-source" aria-label="Recording overview">
               {[0, 1].map(column => {
@@ -279,6 +317,12 @@ export function RallyReviewWorkspace({ state, nextReviewButtonRef, renderVideo, 
                       {ordered.filter(item => item.end + state.afterPadding > start && item.start - state.beforePadding < end).map(item => <i key={item.id} data-kept={state.effectiveKeptIds.has(item.id)} data-pending={pending.some(clip => clip.id === item.id) || undefined} style={{ top: `${Math.max(0, percent(item.start - state.beforePadding))}%`, height: `${Math.min(100, percent(item.end + state.afterPadding)) - Math.max(0, percent(item.start - state.beforePadding))}%` }} />)}
                       {contains(state.playhead) && <span className="rw-source-playhead" data-playhead-marker={column + 1} style={{ top: `${percent(state.playhead)}%` }} />}
                       {locationTime !== null && contains(locationTime) && <span className="rw-list-marker rw-source-location" data-rally-location={centered?.id} style={{ top: `${percent(locationTime)}%` }} />}
+                    </div>
+                    <div className="rw-source-switches">
+                      {sideSwitches.filter(marker => contains(marker.timestamp)).map(marker => <button key={marker.id} type="button"
+                        className="rw-source-switch" style={{ top: `${percent(marker.timestamp)}%` }}
+                        aria-label={`Side switch at ${time(marker.timestamp)}`} aria-pressed={marker.id === sideSwitchId}
+                        onClick={() => { setSideSwitchId(marker.id); setFollowingSource(true); state.setPlaying(false); state.setPlayhead(marker.timestamp); }}>⇄</button>)}
                     </div>
                   </div>
                   <span>{time(end).replace(/\.\d$/, "")}</span>
@@ -323,7 +367,7 @@ export function RallyReviewWorkspace({ state, nextReviewButtonRef, renderVideo, 
           </div>
           <button ref={nextReviewButtonRef} type="button" className="rw-primary" disabled={orphan.side === "review"} title="R" aria-keyshortcuts="R" onClick={() => { setOrphanId(null); nextReview(); }}>Next review</button>
         </> : reviewComplete || !clip ? <div className="rw-complete"><h2>{pendingCount === 0 ? "All checked." : "Continue reviewing"}</h2><p>{pendingCount === 0 ? "Browse the recording for anything missed." : `${pendingCount} rallies still need a decision.`}</p><button type="button" className="rw-primary" onClick={() => pendingCount ? nextReview() : setMode("browse")}>{pendingCount ? "Continue review" : "Browse rallies"}</button><button type="button" onClick={() => state.setStage("deliver")}>Export</button></div> : <>
-          <BoundsTimeline state={state} clip={clip} />
+          <BoundsTimeline state={state} clip={clip} switchTime={state.scoreEnabled && index > 0 ? switchTime : undefined} />
           {state.suppressionReviewIds.has(clip.id) && <p className="rw-pending-note">Suggested for cleanup. Watch before deciding.</p>}
           <div className="rw-choices" data-tour="rw-decisions" role="group" aria-label="Keep or remove rally">
             <button type="button" aria-pressed={!state.clipReviewTaskIds.has(clip.id) && state.effectiveKeptIds.has(clip.id)} onClick={() => state.setCurrentRallyIncluded(true)}>Keep<kbd>K</kbd></button>
@@ -345,6 +389,10 @@ export function RallyReviewWorkspace({ state, nextReviewButtonRef, renderVideo, 
               <button type="button" onClick={() => state.setSelectedBoundaryAtPlayhead("end")}>Set end to playhead<kbd>Ctrl + Shift + E</kbd></button>
               <button type="button" onClick={state.splitSelectedAtPlayhead}>Split at playhead<kbd>Shift + S</kbd></button>
               {state.scoreEnabled && index > 0 && <>
+                <button type="button" disabled={hasSwitchBeforeRally || isScoreTimestampIgnored(switchTime, state.workingDraft.ignoredIntervals)}
+                  onClick={() => state.addSideSwitchBeforeRally(switchTime)}>
+                  {hasSwitchBeforeRally ? "Team switch before this rally added" : "Add team switch before this rally"}
+                </button>
                 <label className="rw-replay-control">
                   <input type="checkbox" checked={replayServe?.ignorePreviousPoint ?? false} disabled={!replayServe}
                     aria-describedby={replayServe ? undefined : "rw-replay-hint"}

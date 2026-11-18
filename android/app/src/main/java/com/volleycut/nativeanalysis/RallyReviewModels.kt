@@ -116,6 +116,7 @@ internal data class RallyTimelineContext(
 internal fun rallyTimelineContext(
     rallies: List<EditableRallyGroup>, selected: EditableRallyGroup, effectiveIds: Set<String>,
     sourceStartMs: Long, sourceEndMs: Long,
+    includeTimeMs: Long? = null,
 ): RallyTimelineContext {
     val ordered = (rallies.filter { it.id != selected.id } + selected)
         .sortedWith(compareBy<EditableRallyGroup> { it.coreStartMs }.thenBy { it.coreEndMs }.thenBy { it.id })
@@ -127,7 +128,7 @@ internal fun rallyTimelineContext(
     val next = ordered.drop(index + 1).firstOrNull(::retained)
     // Preserve real temporal context, including the gaps to retained neighbours.
     // Extremely short cores can use the explicit boundary nudge controls.
-    val start = maxOf(sourceStartMs, minOf(selected.coreStartMs - 8_000, selected.keepStartMs,
+    val start = maxOf(sourceStartMs, minOf(selected.coreStartMs - 8_000, selected.keepStartMs, includeTimeMs ?: Long.MAX_VALUE,
         previous?.let { it.keepStartMs - 2_000 } ?: Long.MAX_VALUE))
     val end = minOf(sourceEndMs, maxOf(selected.coreEndMs + 8_000, selected.keepEndMs,
         next?.let { it.keepEndMs + 2_000 } ?: Long.MIN_VALUE))
