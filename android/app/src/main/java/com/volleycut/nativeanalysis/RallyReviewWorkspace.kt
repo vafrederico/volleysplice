@@ -29,6 +29,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.*
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -180,6 +181,8 @@ internal fun RallyReviewWorkspace(
     onDecision: (RallyReviewItem, Boolean) -> Unit,
     onServe: (ServeMarker, ServingSide?) -> Unit,
     onNewServe: (EditableRallyGroup, ServingSide) -> Unit,
+    onReplay: (String, Boolean) -> Unit,
+    onSplit: () -> Unit,
     onAdd: (Long, Long) -> String?,
     onExport: () -> Unit,
     onTrim: (String, Long) -> Unit,
@@ -191,6 +194,7 @@ internal fun RallyReviewWorkspace(
     val rally = if (!state.browsing && !state.editingRally && focus?.rallyId == null) null else selected
     val pending = queue.firstOrNull { it.key == focus?.key }
     val index = rallies.indexOfFirst { it.id == rally?.id }
+    val firstServes = remember(rallies, tracking) { firstServeByRally(rallies, tracking) }
     val occupied = rallies.map { it.keepStartMs to it.keepEndMs } + ignored.map { it.startMs to it.endMs }
     val start = (rally?.keepStartMs ?: focus?.startMs ?: seed.gameStartMs).coerceAtLeast(seed.gameStartMs)
     val end = (rally?.keepEndMs ?: focus?.endMs ?: seed.gameEndMs).coerceAtMost(seed.gameEndMs)
@@ -210,7 +214,9 @@ internal fun RallyReviewWorkspace(
             state.focus = queue.firstOrNull { it.rallyId in selected?.cutIds.orEmpty() }
             state.editingRally = state.focus == null && selected != null
         }
-        if (pending != null && !state.browsing && !state.addingMissing) state.editingRally = false
+        if (pending != null && pending.key == state.focus?.key && !state.browsing && !state.addingMissing) {
+            state.editingRally = false
+        }
         state.lastSelection = selectedId
     }
     BackHandler(state.addingMissing || state.browsing || state.editingRally) {
@@ -300,11 +306,30 @@ internal fun RallyReviewWorkspace(
                             }
                             else -> {
                                 if (rally != null) {
-                                    RallyBoundsTimeline(rallies, rally, "Rally " + (index + 1), rally.coreStartMs, rally.coreEndMs,
+                                    val first = rally.cuts.minBy { it.coreStartMs }
+                                    val last = rally.cuts.maxBy { it.coreEndMs }
+                                    RallyBoundsTimeline(rallies, rally, rally.coreStartMs, rally.coreEndMs,
                                         seed.gameStartMs, seed.gameEndMs, positionMs, effectiveIds,
                                         pending?.clipReview == true, onSeek, onTrim, onScrubbingChange,
-                                        startMax = rally.cuts.minBy { it.coreStartMs }.coreEndMs,
-                                        endMin = rally.cuts.maxBy { it.coreEndMs }.coreStartMs)
+                                        startMax = first.coreEndMs, endMin = last.coreStartMs,
+                                        title = {
+                                            Text("Rally " + (index + 1), fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                                            val replayServe = firstServes[rally.id]
+                                            RallyEditingMenu(
+                                                rally.id,
+                                                canSetStart = positionMs <= first.coreEndMs - MIN_MARK_MS,
+                                                canSetEnd = positionMs >= last.coreStartMs + MIN_MARK_MS,
+                                                canSplit = rally.cuts.any {
+                                                    positionMs in (it.coreStartMs + MIN_MARK_MS)..(it.coreEndMs - MIN_MARK_MS)
+                                                },
+                                                showReplay = tracking.enabled && index > 0,
+                                                replayServe = replayServe,
+                                                onSetStart = { onTrim("start", positionMs) },
+                                                onSetEnd = { onTrim("end", positionMs) },
+                                                onSplit = onSplit,
+                                                onReplay = onReplay,
+                                            )
+                                        })
                                 } else Text("Review footage", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                                 val decision = if (state.editingRally && rally != null) {
                                     RallyReviewItem("rally-" + rally.id, rally.id, rally.keepStartMs, rally.keepEndMs)
@@ -423,7 +448,7 @@ internal fun RallyReviewWorkspace(
                     Row(Modifier.weight(1f)) {
                         video(Modifier.weight(1f).fillMaxHeight())
                         if (state.browsing && !state.addingMissing) {
-                            RallyBrowser(state, seed, rallies, effectiveIds, queue, scoreOverlay, tracking.enabled,
+                            RallyBrowser(state, seed, rallies, effectiveIds, queue, scoreOverlay, tracking.enabled, firstServes,
                                 selected, positionMs, ::seekSource, onScrubbingChange, {
                                     state.following = true; onSelectRally(it)
                                 }, ::editRally,
@@ -439,7 +464,7 @@ internal fun RallyReviewWorkspace(
                     video(if (state.addingMissing) Modifier.height(missingPlayerHeight).fillMaxWidth()
                         else Modifier.weight(if (state.browsing) .95f else 1f).fillMaxWidth())
                     if (state.browsing && !state.addingMissing) {
-                        RallyBrowser(state, seed, rallies, effectiveIds, queue, scoreOverlay, tracking.enabled,
+                        RallyBrowser(state, seed, rallies, effectiveIds, queue, scoreOverlay, tracking.enabled, firstServes,
                             selected, positionMs, ::seekSource, onScrubbingChange, {
                                 state.following = true; onSelectRally(it)
                             }, ::editRally,
@@ -627,12 +652,13 @@ private fun RallyChoice(label: String, chosen: Boolean, onClick: () -> Unit, mod
 
 @Composable
 private fun RallyBoundsTimeline(
-    rallies: List<EditableRallyGroup>, rally: EditableRallyGroup, title: String,
+    rallies: List<EditableRallyGroup>, rally: EditableRallyGroup,
     startMs: Long, endMs: Long, sourceStart: Long, sourceEnd: Long,
     positionMs: Long, effectiveIds: Set<String>, needsReview: Boolean,
     onSeek: (Long) -> Unit, onTrim: (String, Long) -> Unit,
     onScrubbingChange: (Boolean) -> Unit,
-    startMax: Long = endMs, endMin: Long = startMs,
+    startMax: Long, endMin: Long,
+    title: @Composable RowScope.() -> Unit,
 ) {
     val identity = rally.id
     val context = rallyTimelineContext(rallies, rally, effectiveIds, sourceStart, sourceEnd)
@@ -659,21 +685,32 @@ private fun RallyBoundsTimeline(
             if (side == "start") startMax else endMs, sourceStart, sourceEnd)
         onTrim(side, bounded)
     }
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val inlineTitle = maxWidth >= 292.dp
         Column {
-                Text("Start", fontSize = 12.sp, color = CourtsideMuted)
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    RallyNudge("−1s", "Start earlier by 1 second") { change("start", startMs - 1_000) }
-                    RallyNudge("+1s", "Start later by 1 second") { change("start", startMs + 1_000) }
+            if (!inlineTitle) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically, content = title)
+            }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column {
+                    Text("Start", fontSize = 12.sp, color = CourtsideMuted)
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        RallyNudge("−1s", "Start earlier by 1 second") { change("start", startMs - 1_000) }
+                        RallyNudge("+1s", "Start later by 1 second") { change("start", startMs + 1_000) }
+                    }
                 }
-        }
-        Text(title, Modifier.weight(1f), fontWeight = FontWeight.SemiBold, fontSize = 15.sp,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-        Column(horizontalAlignment = Alignment.End) {
-            Text("End", fontSize = 12.sp, color = CourtsideMuted)
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                RallyNudge("−1s", "End earlier by 1 second") { change("end", endMs - 1_000) }
-                RallyNudge("+1s", "End later by 1 second") { change("end", endMs + 1_000) }
+                if (inlineTitle) {
+                    Row(Modifier.weight(1f), horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically, content = title)
+                } else Spacer(Modifier.weight(1f))
+                Column(horizontalAlignment = Alignment.End) {
+                    Text("End", fontSize = 12.sp, color = CourtsideMuted)
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        RallyNudge("−1s", "End earlier by 1 second") { change("end", endMs - 1_000) }
+                        RallyNudge("+1s", "End later by 1 second") { change("end", endMs + 1_000) }
+                    }
+                }
             }
         }
     }
@@ -794,6 +831,56 @@ private fun RallyBoundsTimeline(
 }
 
 @Composable
+private fun RallyEditingMenu(
+    rallyId: String,
+    canSetStart: Boolean, canSetEnd: Boolean, canSplit: Boolean,
+    showReplay: Boolean, replayServe: ServeMarker?,
+    onSetStart: () -> Unit, onSetEnd: () -> Unit, onSplit: () -> Unit,
+    onReplay: (String, Boolean) -> Unit,
+) {
+    var expanded by remember(rallyId) { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { expanded = true }, modifier = Modifier.semantics {
+            contentDescription = "More editing tools"
+        }) {
+            Canvas(Modifier.size(20.dp)) {
+                for (offset in -1..1) {
+                    drawCircle(CourtsideInk, radius = 1.5.dp.toPx(),
+                        center = center.copy(y = center.y + offset * 5.dp.toPx()))
+                }
+            }
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(text = { Text("Set start to playhead") }, enabled = canSetStart,
+                onClick = { expanded = false; onSetStart() })
+            DropdownMenuItem(text = { Text("Set end to playhead") }, enabled = canSetEnd,
+                onClick = { expanded = false; onSetEnd() })
+            DropdownMenuItem(text = { Text("Split at playhead") }, enabled = canSplit,
+                onClick = { expanded = false; onSplit() })
+            if (showReplay) {
+                HorizontalDivider()
+                val checked = replayServe?.ignorePreviousPoint == true
+                DropdownMenuItem(
+                    text = {
+                        Column {
+                            Text("Replaying previous rally")
+                            if (replayServe == null) Text("Choose Near or Far to add a serve first.", fontSize = 12.sp)
+                        }
+                    },
+                    enabled = replayServe != null,
+                    trailingIcon = if (checked) ({ Text("✓") }) else null,
+                    modifier = Modifier.semantics { toggleableState = ToggleableState(checked) },
+                    onClick = {
+                        expanded = false
+                        replayServe?.let { onReplay(it.id, !checked) }
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun RallyNudge(text: String, description: String, onClick: () -> Unit) {
     Box(Modifier.size(44.dp).clip(RoundedCornerShape(6.dp)).background(CourtsideRaised)
         .border(1.dp, CourtsideControl, RoundedCornerShape(6.dp)).clickable(role = Role.Button, onClick = onClick)
@@ -806,6 +893,7 @@ private fun RallyNudge(text: String, description: String, onClick: () -> Unit) {
 private fun RallyBrowser(
     state: RallyWorkspaceState, seed: EditorSeed, rallies: List<EditableRallyGroup>, effectiveIds: Set<String>,
     queue: List<RallyReviewItem>, scoreOverlay: PreparedScoreOverlay, scoresEnabled: Boolean,
+    firstServes: Map<String, ServeMarker>,
     selectedRally: EditableRallyGroup?, positionMs: Long,
     onSeek: (Long) -> Unit, onScrubbingChange: (Boolean) -> Unit, onSelect: (EditableRallyGroup) -> Unit,
     onEdit: (EditableRallyGroup) -> Unit, onAdd: () -> Unit, modifier: Modifier,
@@ -927,6 +1015,10 @@ private fun RallyBrowser(
                                 }
                                 Text(compactTime(rally.coreStartMs), color = CourtsideMuted, fontSize = 12.sp,
                                     lineHeight = if (compact) 16.sp else TextUnit.Unspecified)
+                                if (index > 0 && firstServes[rally.id]?.ignorePreviousPoint == true) {
+                                    Text("Replay of rally $index", color = CourtsideMuted, fontSize = 12.sp,
+                                        lineHeight = if (compact) 16.sp else TextUnit.Unspecified)
+                                }
                             }
                             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Text(if (scoresEnabled) "" + score.team1Score + " : " + score.team2Score else "—", fontSize = 15.sp,

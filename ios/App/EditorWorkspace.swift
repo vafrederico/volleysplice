@@ -296,7 +296,12 @@ struct EditorWorkspace: View {
                         currentGroup.map { $0.coreStartMs < suggestion.endMs && suggestion.startMs < $0.coreEndMs } == true
                 }
                 replaceDraft(RallyReview.decide(draft, rally: currentGroup, cleanup: cleanup, keep: keep))
-            }, onServe: deckServe, onTrim: deckTrim, onNeighbor: deckNeighbor, onReview: deckNextReview,
+            }, onServe: deckServe, onTrim: deckTrim, onSetBoundary: { start in
+                guard let group = currentGroup else { return }
+                applyCoreTrim(selectedCutIds: group.cutIds, isStart: start, valueMs: playheadMs,
+                    minimumMs: EditorMath.minimumMarkMs)
+            }, onSplit: splitSelectedAtPlayhead, onReplay: setServeReplay,
+            onNeighbor: deckNeighbor, onReview: deckNextReview,
             onResumeReview: deckResumeReview,
             onSelect: { rally in
                 navigateDeck(to: rally.keepStartMs, end: deck.browsing ? bounds.endMs : rally.keepEndMs)
@@ -379,6 +384,37 @@ struct EditorWorkspace: View {
                 state = ScoreReducer.addServe(state, timestampMs: group.coreStartMs, side: side)
                 if let index = state.serveMarkers.firstIndex(where: { $0.timestampMs == group.coreStartMs }) { state.serveMarkers[index].rallyId = group.cuts.first?.id }
             }
+        }
+    }
+    private func setServeReplay(_ id: String, _ replay: Bool) {
+        editScore { state in
+            if let index = state.serveMarkers.firstIndex(where: { $0.id == id }) {
+                state.serveMarkers[index].ignorePreviousPoint = replay
+            }
+        }
+    }
+    private func splitSelectedAtPlayhead() {
+        guard let group = currentGroup, let member = RallyReview.splitMember(in: group, at: playheadMs) else { return }
+        guard var split = EditorMath.splitCut(draft, cutId: member.id, positionMs: playheadMs,
+                                             bounds: bounds, groupCutIds: group.cutIds),
+              let leftIndex = split.cuts.firstIndex(where: { $0.id == member.id }) else {
+            message = "Cannot split this rally. A review supports at most 2,048 explicit clip members with nonblank IDs of at most 256 characters."
+            return
+        }
+        split.reviewedCutIds.remove(member.id)
+        guard replaceDraft(split) else { return }
+        selectedSuggestionId = nil
+        let left = split.cuts[leftIndex]
+        if stage == .rallies {
+            player.pause(); playing = false; setPlaybackEnd(nil)
+            refreshPresentation(from: split)
+            let right = split.cuts[leftIndex + 1]
+            if let next = rallyGroups.first(where: { $0.cutIds.contains(right.id) }) {
+                deck.edit(next, queue: deckQueue)
+            }
+        } else {
+            selectedRallyId = split.cuts.filter { $0.editableGroupId == left.editableGroupId }
+                .min(by: { ($0.coreStartMs, $0.id) < ($1.coreStartMs, $1.id) })?.id
         }
     }
     private func revealDeckTutorial() {
@@ -712,20 +748,10 @@ struct EditorWorkspace: View {
                     Button("End +0.1") { trim(cut, start: cut.coreStartMs, end: cut.coreEndMs + 100) }.accessibilityIdentifier("nudgeEndLater")
                 }.buttonStyle(EditorActionButtonStyle(background: EditorPalette.paper, foreground: EditorPalette.ink)).font(isPhone ? .system(size: 11) : .caption)
                 }
-                Button("Split at playhead") {
-                    if let member = currentGroup?.cuts.first(where: { playheadMs >= $0.coreStartMs + 100 && playheadMs <= $0.coreEndMs - 100 }),
-                       var split = EditorMath.splitCut(draft, cutId: member.id, positionMs: playheadMs, bounds: bounds,
-                                                      groupCutIds: currentGroup?.cutIds) {
-                        split.reviewedCutIds.remove(member.id); replaceDraft(split)
-                        selectedSuggestionId = nil
-                        if let token = split.cuts.first(where: { $0.id == member.id })?.editableGroupId {
-                            selectedRallyId = split.cuts.filter { $0.editableGroupId == token }
-                                .min(by: { ($0.coreStartMs, $0.id) < ($1.coreStartMs, $1.id) })?.id
-                        }
-                    } else {
-                        message = "Cannot split this rally. A review supports at most 2,048 explicit clip members with nonblank IDs of at most 256 characters."
-                    }
-                }.buttonStyle(EditorActionButtonStyle(background: EditorPalette.green, foreground: .white, expand: true)).disabled(!(currentGroup?.cuts.contains { playheadMs >= $0.coreStartMs + 100 && playheadMs <= $0.coreEndMs - 100 } ?? false)).accessibilityIdentifier("splitRally")
+                Button("Split at playhead", action: splitSelectedAtPlayhead)
+                    .buttonStyle(EditorActionButtonStyle(background: EditorPalette.green, foreground: .white, expand: true))
+                    .disabled(currentGroup.flatMap { RallyReview.splitMember(in: $0, at: playheadMs) } == nil)
+                    .accessibilityIdentifier("splitRally")
                 if !desktop && cut.origin == .manual {
                     Button("Delete manual rally", role: .destructive) { replaceDraft(EditorMath.deleteManualCuts(draft, cutIds: currentGroup?.cutIds ?? [cut.id])) }
                         .buttonStyle(EditorActionButtonStyle(background: EditorPalette.paper, foreground: EditorPalette.ink)).accessibilityIdentifier("deleteManualRally")

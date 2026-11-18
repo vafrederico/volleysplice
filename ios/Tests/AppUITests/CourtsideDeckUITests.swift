@@ -39,6 +39,38 @@ final class CourtsideDeckUITests: XCTestCase {
         app.buttons["editorSettings"].tap()
         XCTAssertEqual(app.textFields["settingsTeam1Name"].value as? String, "Practice A")
     }
+    @MainActor func testReplayToggleUpdatesAllRallies() {
+        let previousOrientation = XCUIDevice.shared.orientation
+        XCUIDevice.shared.orientation = .portrait
+        defer {
+            if previousOrientation.isValidInterfaceOrientation { XCUIDevice.shared.orientation = previousOrientation }
+        }
+        let app = launch(); defer { app.terminate() }
+        app.buttons["deckBrowse"].tap()
+        seekSource(app, fraction: 0.225)
+        app.buttons["deckEditSelected"].tap()
+
+        let tools = app.descendants(matching: .any)["deckEditingTools"].firstMatch
+        XCTAssertTrue(tools.waitForExistence(timeout: 10))
+        XCTAssertFalse(app.descendants(matching: .any)["deckEditingToolsDisclosure"].firstMatch.exists)
+        if !tools.isHittable { app.scrollViews.firstMatch.swipeUp() }
+        tools.tap()
+        for title in ["Set start to playhead", "Set end to playhead", "Split at playhead"] {
+            XCTAssertTrue(app.buttons[title].exists)
+        }
+        let replay = app.descendants(matching: .any).matching(NSPredicate(
+            format: "identifier == %@ OR label == %@", "deckReplayPreviousRally", "Replaying previous rally"
+        )).firstMatch
+        XCTAssertTrue(replay.exists)
+        if !replay.isHittable { app.scrollViews.firstMatch.swipeUp() }
+        replay.tap()
+
+        app.buttons["deckBrowse"].tap()
+        let row = app.buttons["deckRallyRow-R002"]
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        XCTAssertTrue(row.label.contains("Replay of rally 1") || row.staticTexts["Replay of rally 1"].exists)
+    }
+
     @MainActor private func seekSource(_ app: XCUIApplication, fraction: Double) {
         let position = min(2, max(0, fraction * 2))
         let index = min(1, Int(position))

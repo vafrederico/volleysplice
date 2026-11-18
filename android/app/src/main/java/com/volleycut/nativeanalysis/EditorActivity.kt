@@ -4178,6 +4178,19 @@ private fun EditorScreen(
                                 ))
                             }
                         },
+                        onReplay = { id, replay ->
+                            updateDraft { current ->
+                                current.copy(scoreTracking = current.scoreTracking.copy(
+                                    serveMarkers = current.scoreTracking.serveMarkers.map { marker ->
+                                        if (marker.id == id) marker.copy(ignorePreviousPoint = replay) else marker
+                                    },
+                                ))
+                            }
+                        },
+                        onSplit = {
+                            player.pause(); previewEndMs = null
+                            splitSelectedAtPlayhead()
+                        },
                         onTrim = { side, time ->
                             player.pause(); previewEndMs = null
                             setCoreBoundary(side, time)?.let { updated ->

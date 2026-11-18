@@ -792,6 +792,49 @@ class RallyReviewUiInstrumentedTest {
     }
 
     @Test
+    fun rallyEditingMenuPersistsReplayAndPlayheadEdits() = withProject { f ->
+        compose.onNodeWithTag("rally-browse-all").performClick()
+        selectBrowserRally("R002")
+        compose.onNodeWithTag("edit-selected-rally").performClick()
+        compose.onNodeWithContentDescription("More editing tools").performClick()
+        for (action in listOf("Set start to playhead", "Set end to playhead", "Split at playhead")) {
+            compose.onNodeWithText(action).assertIsDisplayed()
+        }
+        compose.onNodeWithText("Replaying previous rally").assertIsOff().performClick()
+        awaitDraft(f) { it.scoreTracking.serveMarkers.single { marker -> marker.id == "S2" }.ignorePreviousPoint }
+        compose.onNodeWithTag("rally-browse-all").performClick()
+        compose.onNodeWithTag("rally-card-R002").performScrollTo().assertTextContains("Replay of rally 1")
+
+        selectBrowserRally("R002")
+        compose.onNodeWithTag("edit-selected-rally").performClick()
+        compose.onNodeWithContentDescription("More editing tools").performClick()
+        compose.onNodeWithText("Replaying previous rally").assertIsOn().performClick()
+        awaitDraft(f) { !it.scoreTracking.serveMarkers.single { marker -> marker.id == "S2" }.ignorePreviousPoint }
+        compose.onNodeWithTag("rally-browse-all").performClick()
+        compose.onNodeWithText("Replay of rally 1").assertDoesNotExist()
+
+        selectBrowserRally("R002")
+        compose.onNodeWithTag("edit-selected-rally").performClick()
+        fun editAtPlayhead(timeMs: Float, action: String) {
+            compose.onNodeWithTag("rally-bounds-timeline").performSemanticsAction(SemanticsActions.SetProgress) {
+                assertTrue(it(timeMs))
+            }
+            compose.onNodeWithContentDescription("More editing tools").performClick()
+            compose.onNodeWithText(action).performClick()
+        }
+        editAtPlayhead(12_500f, "Set start to playhead")
+        awaitDraft(f) { it.cuts.single { cut -> cut.id == "R002" }.coreStartMs == 12_500L }
+        editAtPlayhead(14_500f, "Set end to playhead")
+        awaitDraft(f) { it.cuts.single { cut -> cut.id == "R002" }.coreEndMs == 14_500L }
+        editAtPlayhead(13_500f, "Split at playhead")
+        awaitDraft(f) { draft ->
+            draft.cuts.any { it.id == "R002" && it.coreEndMs == 13_500L } &&
+                draft.cuts.any { it.coreStartMs == 13_500L && it.coreEndMs == 14_500L }
+        }
+        compose.onNodeWithText("Rally 3").assertIsDisplayed()
+    }
+
+    @Test
     fun openingAPendingRallyFromTheBrowserReturnsToReviewMode() = withProject { f ->
         compose.onNodeWithTag("rally-browse-all").performClick()
         compose.onNodeWithTag("rally-card-R002").performScrollTo().performClick()

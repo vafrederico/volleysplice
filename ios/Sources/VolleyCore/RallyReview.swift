@@ -79,6 +79,29 @@ public enum RallyReview {
             ($0.rallyId == nil && rally.coreStartMs <= $0.timestampMs && $0.timestampMs < rally.coreEndMs) }
             .sorted { ($0.timestampMs, $0.id) < ($1.timestampMs, $1.id) }
     }
+    public static func firstServeByRally(_ rallies: [EditableRallyGroup], tracking: ScoreTracking) -> [String: ServeMarker] {
+        guard tracking.enabled else { return [:] }
+        let rallyIdByCut = Dictionary(uniqueKeysWithValues: rallies.flatMap { rally in
+            rally.cutIds.map { ($0, rally.id) }
+        })
+        var result: [String: ServeMarker] = [:]
+        for serve in tracking.serveMarkers.sorted(by: ScoreReducer.serveOrder) {
+            let rallyId: String?
+            if let cutId = serve.rallyId {
+                rallyId = rallyIdByCut[cutId]
+            } else {
+                // A serve at a shared boundary starts the later rally.
+                rallyId = rallies.last { $0.coreStartMs <= serve.timestampMs && serve.timestampMs <= $0.coreEndMs }?.id
+            }
+            if let rallyId, result[rallyId] == nil { result[rallyId] = serve }
+        }
+        return result
+    }
+    public static func splitMember(in rally: EditableRallyGroup, at timeMs: Int64) -> EditableCut? {
+        rally.cuts.first {
+            $0.coreStartMs + EditorMath.minimumMarkMs <= timeMs && timeMs <= $0.coreEndMs - EditorMath.minimumMarkMs
+        }
+    }
     public static func retained(_ rally: EditableRallyGroup, effectiveIds: Set<String>) -> Bool {
         rally.cuts.contains { $0.included && effectiveIds.contains($0.id) }
     }
