@@ -85,8 +85,10 @@ final class CourtsideDeckUITests: XCTestCase {
         XCTAssertTrue(focusedSwitch.waitForExistence(timeout: 10))
         XCTAssertEqual(focusedSwitch.label, "Side switch at 0:03.4")
         tools.tap()
-        XCTAssertFalse(app.buttons["Team switch before this rally added"].isEnabled)
-        app.swipeDown()
+        app.buttons["Remove team switch before this rally"].tap()
+        XCTAssertFalse(focusedSwitch.exists)
+        tools.tap()
+        app.buttons["Add team switch before this rally"].tap()
 
         app.buttons["deckBrowse"].tap()
         let added = app.buttons["deckSourceSwitch-X001"]

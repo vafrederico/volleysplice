@@ -36,6 +36,7 @@ import {
   scoreTrackingOutsideExcludedRallies,
   scoreTrackingOutsideIgnoredIntervals,
   type ScoreTracking,
+  type SideSwitchMarker,
 } from "@/lib/score-tracking";
 import {
   buildYouTubeChapters,
@@ -127,12 +128,6 @@ type DesignServeMarker = {
   ignorePreviousPoint: boolean;
   origin: "model" | "manual";
   rallyId?: string;
-};
-
-type DesignSideSwitchMarker = {
-  id: string;
-  timestamp: number;
-  origin: "model" | "manual";
 };
 
 type SuppressionDecision = "pending" | "kept" | "excluded";
@@ -358,7 +353,7 @@ function usePrototype(
     [savedScoreMarkers, clips],
   );
   const [removedModelMarkerIds, setRemovedModelMarkerIds] = useState(review.draft.scoreTracking.removedModelMarkerIds);
-  const [sideSwitchMarkers, setSideSwitchMarkers] = useState<DesignSideSwitchMarker[]>(review.draft.scoreTracking.sideSwitchMarkers);
+  const [sideSwitchMarkers, setSideSwitchMarkers] = useState<SideSwitchMarker[]>(review.draft.scoreTracking.sideSwitchMarkers);
   const scoreOutputs = useRef({ servingSide: review.productAnalysis?.servingSide, sideSwitch: review.productAnalysis?.sideSwitch });
   const [selectedScoreMarkerId, setSelectedScoreMarkerId] = useState(
     review.draft.scoreTracking.serveMarkers.find((marker) => marker.side === "review")?.id ??
@@ -1288,10 +1283,11 @@ function usePrototype(
     setScoreMessage(`Team side switch added at ${formatTime(playhead)}. Later serve markers were remapped to teams.`);
   }
 
-  function addSideSwitchBeforeRally(timestamp: number) {
+  function addSideSwitchBeforeRally(timestamp: number, rallyId: string) {
     setSideSwitchMarkers((current) => {
-      if (current.some((marker) => marker.timestamp === timestamp)) return current;
-      return addSideSwitchMarker({ ...workingDraft.scoreTracking, sideSwitchMarkers: current }, timestamp).sideSwitchMarkers;
+      if (current.some((marker) => marker.timestamp === timestamp ||
+        (marker.origin === "manual" && marker.rallyIds?.includes(rallyId)))) return current;
+      return addSideSwitchMarker({ ...workingDraft.scoreTracking, sideSwitchMarkers: current }, timestamp, { rallyIds: [rallyId] }).sideSwitchMarkers;
     });
     setReviewMessage(`Team side switch added at ${formatPreciseTime(timestamp)}.`);
   }

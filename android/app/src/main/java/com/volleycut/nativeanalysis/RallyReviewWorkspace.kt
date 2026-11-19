@@ -182,7 +182,7 @@ internal fun RallyReviewWorkspace(
     onServe: (ServeMarker, ServingSide?) -> Unit,
     onNewServe: (EditableRallyGroup, ServingSide) -> Unit,
     onReplay: (String, Boolean) -> Unit,
-    onAddSideSwitch: (Long) -> Unit,
+    onAddSideSwitch: (Long, String) -> Unit,
     onRemoveSideSwitch: (String) -> Unit,
     onSplit: () -> Unit,
     onAdd: (Long, Long) -> String?,
@@ -327,6 +327,12 @@ internal fun RallyReviewWorkspace(
                                     }
                                     val switchWindowStart = minOf(previousRallyEnd ?: switchTime, switchTime)
                                     val showReplay = tracking.enabled && index > 0
+                                    val switchesBeforeRally = sideSwitches.filter { it.timestampMs in switchWindowStart..maxOf(switchTime, switchDeadline) }
+                                    val removableSwitch = tracking.sideSwitchMarkers.firstOrNull { marker ->
+                                        marker.origin == ServeMarkerOrigin.MANUAL && marker.rallyIds.any { it in rally.cutIds }
+                                    } ?: switchesBeforeRally.singleOrNull { marker ->
+                                        showReplay && marker.origin == ServeMarkerOrigin.MANUAL && marker.rallyIds.isEmpty()
+                                    }
                                     RallyBoundsTimeline(rallies, rally, rally.coreStartMs, rally.coreEndMs,
                                         seed.gameStartMs, seed.gameEndMs, positionMs, effectiveIds,
                                         pending?.clipReview == true, onSeek, onTrim, onScrubbingChange,
@@ -343,13 +349,14 @@ internal fun RallyReviewWorkspace(
                                                 },
                                                 showReplay = showReplay,
                                                 replayServe = replayServe,
-                                                hasSwitch = sideSwitches.any { it.timestampMs in switchWindowStart..maxOf(switchTime, switchDeadline) },
+                                                hasSwitch = switchesBeforeRally.isNotEmpty(),
                                                 canAddSwitch = ignored.none { switchTime >= it.startMs && switchTime < it.endMs },
                                                 onSetStart = { onTrim("start", positionMs) },
                                                 onSetEnd = { onTrim("end", positionMs) },
                                                 onSplit = onSplit,
                                                 onReplay = onReplay,
-                                                onAddSwitch = { onAddSideSwitch(switchTime) },
+                                                onAddSwitch = { onAddSideSwitch(switchTime, rally.id) },
+                                                onRemoveSwitch = removableSwitch?.let { marker -> { onRemoveSideSwitch(marker.id) } },
                                             )
                                         })
                                 } else Text("Review footage", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
@@ -877,6 +884,7 @@ private fun RallyEditingMenu(
     onSetStart: () -> Unit, onSetEnd: () -> Unit, onSplit: () -> Unit,
     onReplay: (String, Boolean) -> Unit,
     onAddSwitch: () -> Unit,
+    onRemoveSwitch: (() -> Unit)?,
 ) {
     var expanded by remember(rallyId) { mutableStateOf(false) }
     Box {
@@ -897,13 +905,18 @@ private fun RallyEditingMenu(
                 onClick = { expanded = false; onSetEnd() })
             DropdownMenuItem(text = { Text("Split at playhead") }, enabled = canSplit,
                 onClick = { expanded = false; onSplit() })
-            if (showReplay) {
-                HorizontalDivider()
+            if (showReplay || onRemoveSwitch != null) HorizontalDivider()
+            if (onRemoveSwitch != null) {
+                DropdownMenuItem(text = { Text("Remove team switch before this rally") },
+                    onClick = { expanded = false; onRemoveSwitch() })
+            } else if (showReplay) {
                 DropdownMenuItem(
                     text = { Text(if (hasSwitch) "Team switch before this rally added" else "Add team switch before this rally") },
                     enabled = canAddSwitch && !hasSwitch,
                     onClick = { expanded = false; onAddSwitch() },
                 )
+            }
+            if (showReplay) {
                 val checked = replayServe?.ignorePreviousPoint == true
                 DropdownMenuItem(
                     text = {
