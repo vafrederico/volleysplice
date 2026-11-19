@@ -335,9 +335,10 @@ public enum ScoreReducer {
         result.serveMarkers.append(.init(id: nextMarkerId(prefix: "S", tracking: tracking), timestampMs: timestampMs, side: side))
         result.serveMarkers.sort(by: serveOrder); return result
     }
-    public static func addSideSwitch(_ tracking: ScoreTracking, timestampMs: Int64) -> ScoreTracking {
+    public static func addSideSwitch(_ tracking: ScoreTracking, timestampMs: Int64, rallyId: String? = nil) -> ScoreTracking {
         guard timestampMs >= 0 else { return tracking }; var result = tracking
-        result.sideSwitchMarkers.append(.init(id: nextMarkerId(prefix: "X", tracking: tracking), timestampMs: timestampMs))
+        result.sideSwitchMarkers.append(.init(id: nextMarkerId(prefix: "X", tracking: tracking), timestampMs: timestampMs,
+                                              rallyIds: rallyId.map { [$0] } ?? []))
         result.sideSwitchMarkers.sort(by: switchOrder); return result
     }
     public static func removeServe(_ tracking: ScoreTracking, markerId: String) -> ScoreTracking {

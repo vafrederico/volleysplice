@@ -134,7 +134,7 @@ struct CourtsideDeckWorkspace<Video: View>: View {
     let onSetBoundary: (Bool) -> Void
     let onSplit: () -> Void
     let onReplay: (String, Bool) -> Void
-    let onAddSideSwitch: (Int64) -> Void
+    let onAddSideSwitch: (Int64, String) -> Void
     let onRemoveSideSwitch: (String) -> Void
     let onNeighbor: (Int) -> Void
     let onReview: () -> Void
@@ -171,6 +171,16 @@ struct CourtsideDeckWorkspace<Video: View>: View {
         }
         let windowStart = min(previousRallyEnd, timestamp)
         return (timestamp, windowStart...max(timestamp, deadline))
+    }
+    private var removableSideSwitch: SideSwitchMarker? {
+        guard let rally else { return nil }
+        let cutIds = rally.cutIds
+        if let linked = score.sideSwitchMarkers.first(where: { $0.origin == .manual && !cutIds.isDisjoint(with: $0.rallyIds) }) {
+            return linked
+        }
+        guard let placement = sideSwitchPlacement else { return nil }
+        let legacy = sideSwitches.filter { $0.origin == .manual && $0.rallyIds.isEmpty && placement.existingWindow.contains($0.timestampMs) }
+        return legacy.count == 1 ? legacy.first : nil
     }
     private var activeServes: [ServeMarker] {
         if let rally { return RallyReview.serves(for: rally, in: presentation.visibleScore.serveMarkers) }
@@ -375,7 +385,7 @@ struct CourtsideDeckWorkspace<Video: View>: View {
             if showsEditingMenu {
                 Menu {
                     editingActions(rally)
-                    if score.enabled && index > 0 {
+                    if sideSwitchPlacement != nil || removableSideSwitch != nil {
                         Divider()
                         sideSwitchAndReplayControls(rally)
                     }
@@ -406,15 +416,20 @@ struct CourtsideDeckWorkspace<Video: View>: View {
         }
     }
     @ViewBuilder private func sideSwitchAndReplayControls(_ rally: EditableRallyGroup) -> some View {
-        if let placement = sideSwitchPlacement {
-            let serve = presentation.firstServeByRally[rally.id]
+        if let marker = removableSideSwitch {
+            Button("Remove team switch before this rally", role: .destructive) { onRemoveSideSwitch(marker.id) }
+                .accessibilityIdentifier("deckRemoveSwitchBeforeRally")
+        } else if let placement = sideSwitchPlacement {
             let switchTime = placement.timestampMs
             let hasSwitch = sideSwitches.contains { placement.existingWindow.contains($0.timestampMs) }
             Button(hasSwitch ? "Team switch before this rally added" : "Add team switch before this rally") {
-                onAddSideSwitch(switchTime)
+                onAddSideSwitch(switchTime, rally.id)
             }
             .disabled(hasSwitch || draft.ignoredIntervals.contains { switchTime >= $0.startMs && switchTime < $0.endMs })
             .accessibilityIdentifier("deckAddSwitchBeforeRally")
+        }
+        if score.enabled && index > 0 {
+            let serve = presentation.firstServeByRally[rally.id]
             Toggle("Replaying previous rally", isOn: Binding(get: {
                 serve?.ignorePreviousPoint ?? false
             }, set: { value in

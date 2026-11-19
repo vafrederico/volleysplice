@@ -264,9 +264,9 @@ internal object ScoreReducer {
         return tracking.copy(serveMarkers = (tracking.serveMarkers + marker).sortedWith(serveOrder))
     }
 
-    fun addSideSwitch(tracking: ScoreTracking, timestampMs: Long): ScoreTracking {
+    fun addSideSwitch(tracking: ScoreTracking, timestampMs: Long, rallyId: String? = null): ScoreTracking {
         if (timestampMs < 0) return tracking
-        val marker = SideSwitchMarker(nextMarkerId("X", tracking), timestampMs)
+        val marker = SideSwitchMarker(nextMarkerId("X", tracking), timestampMs, rallyIds = listOfNotNull(rallyId))
         return tracking.copy(
             sideSwitchMarkers = (tracking.sideSwitchMarkers + marker).sortedWith(switchOrder),
         )

@@ -4187,10 +4187,11 @@ private fun EditorScreen(
                                 ))
                             }
                         },
-                        onAddSideSwitch = { time ->
+                        onAddSideSwitch = { time, rallyId ->
                             updateDraft { current ->
-                                if (current.scoreTracking.sideSwitchMarkers.any { it.timestampMs == time }) current
-                                else current.copy(scoreTracking = ScoreReducer.addSideSwitch(current.scoreTracking, time))
+                                if (current.scoreTracking.sideSwitchMarkers.any { marker ->
+                                    marker.timestampMs == time || (marker.origin == ServeMarkerOrigin.MANUAL && rallyId in marker.rallyIds)
+                                }) current else current.copy(scoreTracking = ScoreReducer.addSideSwitch(current.scoreTracking, time, rallyId))
                             }
                         },
                         onRemoveSideSwitch = { id ->

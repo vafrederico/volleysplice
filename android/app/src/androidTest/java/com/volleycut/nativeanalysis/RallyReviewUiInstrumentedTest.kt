@@ -835,7 +835,7 @@ class RallyReviewUiInstrumentedTest {
     }
 
     @Test
-    fun rallySideSwitchCanBeAddedAndRemovedFromTheSourceTimeline() = withProject(paddingMs = 500, configureDraft = { draft ->
+    fun rallySideSwitchCanBeRemovedFromTheMenuOrSourceTimeline() = withProject(paddingMs = 500, configureDraft = { draft ->
         draft.copy(scoreTracking = draft.scoreTracking.copy(
             serveMarkers = draft.scoreTracking.serveMarkers.map { marker ->
                 if (marker.id == "S2") marker.copy(side = ServingSide.FAR) else marker
@@ -849,13 +849,19 @@ class RallyReviewUiInstrumentedTest {
         compose.onNodeWithContentDescription("More editing tools").performClick()
         compose.onNodeWithText("Add team switch before this rally").performClick()
         awaitDraft(f) { draft ->
-            draft.scoreTracking.sideSwitchMarkers.any { it.timestampMs == 11_499L } &&
+            draft.scoreTracking.sideSwitchMarkers.any { it.timestampMs == 11_499L && it.rallyIds == listOf("R002") } &&
                 ScoreReducer.deriveAt(draft.scoreTracking, 11_750).team1Score == 1
         }
         compose.onNodeWithContentDescription("Side switch at 0:11.5").assertIsDisplayed()
         compose.onNodeWithContentDescription("More editing tools").performClick()
-        compose.onNodeWithText("Team switch before this rally added").assertIsNotEnabled()
-        compose.onNodeWithText("Replaying previous rally").performClick()
+        compose.onNodeWithText("Remove team switch before this rally").performClick()
+        awaitDraft(f) {
+            it.scoreTracking.sideSwitchMarkers.map { marker -> marker.id } == listOf("existing-switch") &&
+                ScoreReducer.deriveAt(it.scoreTracking, 11_750).team2Score == 1
+        }
+        compose.onNodeWithContentDescription("Side switch at 0:11.5").assertDoesNotExist()
+        compose.onNodeWithContentDescription("More editing tools").performClick()
+        compose.onNodeWithText("Add team switch before this rally").performClick()
 
         compose.onNodeWithTag("rally-return-review").performClick()
         compose.onNodeWithTag("rally-browse-all").performClick()

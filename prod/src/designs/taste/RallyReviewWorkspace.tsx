@@ -261,7 +261,10 @@ export function RallyReviewWorkspace({ state, nextReviewButtonRef, renderVideo, 
     precedingMillisecond(switchBoundary));
   const switchWindowStart = Math.min(previousRallyEnd ?? switchTime, switchTime);
   const sideSwitches = state.scoreEnabled ? state.activeSideSwitchMarkers : [];
-  const hasSwitchBeforeRally = sideSwitches.some(marker => marker.timestamp >= switchWindowStart && marker.timestamp <= Math.max(switchDeadline, switchTime));
+  const switchesBeforeRally = sideSwitches.filter(marker => marker.timestamp >= switchWindowStart && marker.timestamp <= Math.max(switchDeadline, switchTime));
+  const legacyManualSwitches = switchesBeforeRally.filter(marker => marker.origin === "manual" && !marker.rallyIds?.length);
+  const removableSwitch = state.sideSwitchMarkers.find(marker => marker.origin === "manual" && clip && marker.rallyIds?.includes(clip.id))
+    ?? (index > 0 && legacyManualSwitches.length === 1 ? legacyManualSwitches[0] : undefined);
   const selectedSwitch = sideSwitches.find(marker => marker.id === sideSwitchId);
   const unresolved = clip ? pending.some(item => item.id === clip.id) : false;
   const reviewComplete = mode === "review" && pending.length === 0 && reviewingId !== clip?.id;
@@ -388,11 +391,12 @@ export function RallyReviewWorkspace({ state, nextReviewButtonRef, renderVideo, 
               <button type="button" onClick={() => state.setSelectedBoundaryAtPlayhead("start")}>Set start to playhead<kbd>Ctrl + Shift + S</kbd></button>
               <button type="button" onClick={() => state.setSelectedBoundaryAtPlayhead("end")}>Set end to playhead<kbd>Ctrl + Shift + E</kbd></button>
               <button type="button" onClick={state.splitSelectedAtPlayhead}>Split at playhead<kbd>Shift + S</kbd></button>
+              {removableSwitch ? <button type="button" onClick={() => state.removeSideSwitchById(removableSwitch.id)}>Remove team switch before this rally</button>
+                : state.scoreEnabled && index > 0 && <button type="button" disabled={switchesBeforeRally.length > 0 || isScoreTimestampIgnored(switchTime, state.workingDraft.ignoredIntervals)}
+                  onClick={() => state.addSideSwitchBeforeRally(switchTime, clip.id)}>
+                  {switchesBeforeRally.length > 0 ? "Team switch before this rally added" : "Add team switch before this rally"}
+                </button>}
               {state.scoreEnabled && index > 0 && <>
-                <button type="button" disabled={hasSwitchBeforeRally || isScoreTimestampIgnored(switchTime, state.workingDraft.ignoredIntervals)}
-                  onClick={() => state.addSideSwitchBeforeRally(switchTime)}>
-                  {hasSwitchBeforeRally ? "Team switch before this rally added" : "Add team switch before this rally"}
-                </button>
                 <label className="rw-replay-control">
                   <input type="checkbox" checked={replayServe?.ignorePreviousPoint ?? false} disabled={!replayServe}
                     aria-describedby={replayServe ? undefined : "rw-replay-hint"}

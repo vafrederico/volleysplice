@@ -301,9 +301,11 @@ struct EditorWorkspace: View {
                 applyCoreTrim(selectedCutIds: group.cutIds, isStart: start, valueMs: playheadMs,
                     minimumMs: EditorMath.minimumMarkMs)
             }, onSplit: splitSelectedAtPlayhead, onReplay: setServeReplay,
-            onAddSideSwitch: { time in
-                guard !score.sideSwitchMarkers.contains(where: { $0.timestampMs == time }) else { return }
-                editScore { $0 = ScoreReducer.addSideSwitch($0, timestampMs: time) }
+            onAddSideSwitch: { time, rallyId in
+                guard !score.sideSwitchMarkers.contains(where: { marker in
+                    marker.timestampMs == time || (marker.origin == .manual && marker.rallyIds.contains(rallyId))
+                }) else { return }
+                editScore { $0 = ScoreReducer.addSideSwitch($0, timestampMs: time, rallyId: rallyId) }
             }, onRemoveSideSwitch: { id in
                 editScore { $0 = ScoreReducer.removeSideSwitch($0, markerId: id) }
             },

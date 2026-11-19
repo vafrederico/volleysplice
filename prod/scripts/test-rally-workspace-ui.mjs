@@ -103,16 +103,23 @@ try {
   await act(async () => moreTools.querySelector("summary").click());
   assert.equal(replayCheckbox().disabled, true, "a replay needs a serve marker on the selected rally");
   const addSwitch = "Add team switch before this rally";
+  const removeSwitch = "Remove team switch before this rally";
   assert.equal(button(addSwitch).nextElementSibling.querySelector("input"), replayCheckbox());
   await click(addSwitch);
   assert.deepEqual(saved.scoreTracking.sideSwitchMarkers.map(marker => [marker.timestamp, marker.origin]), [[28.999, "manual"]]);
+  assert.deepEqual(saved.scoreTracking.sideSwitchMarkers[0].rallyIds, ["R002"]);
   const focusedSwitch = () => document.querySelector(".rw-bounds-switch");
   assert.equal(focusedSwitch().getAttribute("aria-label"), "Side switch at 0:29.0");
   assert.ok(parseFloat(focusedSwitch().style.getPropertyValue("--rw-switch-position")) <
     parseFloat(document.querySelector('.rw-context-rally[data-current]').style.left));
-  assert.equal(button("Team switch before this rally added").disabled, true);
+  assert.equal(button(removeSwitch).nextElementSibling.querySelector("input"), replayCheckbox());
   await key("n");
   assert.equal(saved.scoreTracking.serveMarkers.find(marker => marker.rallyId === "R002").side, "near", "N can add a missing rally serve");
+  await click(removeSwitch);
+  assert.equal(focusedSwitch(), null);
+  assert.deepEqual(saved.scoreTracking.sideSwitchMarkers, []);
+  assert.equal(deriveScoreAt(saved.scoreTracking, 30).team1Score, 1);
+  await click(addSwitch);
   await click("← Review rallies");
   await click("All rallies (2) →");
   assert.match(button("Open rally 2").textContent, /0 : 1/);
@@ -187,6 +194,31 @@ try {
     await click(addSwitch);
     assert.equal(saved.scoreTracking.sideSwitchMarkers[0].timestamp, switchTime);
     assert.equal(pointWinner(), "team-2", "the early serve awards the point to the switched team");
+    if (switchTime === 28.999) {
+      await click("Move rally start 1 second earlier");
+      await click("Move rally start 1 second earlier");
+      assert.ok(saved.cuts[1].coreStart < switchTime);
+      await click(removeSwitch);
+      assert.deepEqual(saved.scoreTracking.sideSwitchMarkers, [], "removal follows the rally after its trim changes");
+    }
+  }
+
+  for (const origin of ["manual", "model"]) {
+    const existingSwitchDraft = structuredClone(draft);
+    existingSwitchDraft.scoreTracking.sideSwitchMarkers = [{ id: "existing-switch", timestamp: 28.999, origin }];
+    await act(async () => root.render(React.createElement(RallyDesk, { key: `existing-switch-${origin}`, review: { ...review, draft: existingSwitchDraft } })));
+    await click("All rallies (2) →");
+    await click("Open rally 2");
+    await click("Edit rally 2");
+    await act(async () => document.querySelector(".rw-more summary").click());
+    if (origin === "manual") {
+      await click(removeSwitch);
+      assert.deepEqual(saved.scoreTracking.sideSwitchMarkers, []);
+    } else {
+      assert.equal(button(removeSwitch), undefined);
+      assert.equal(button("Team switch before this rally added").disabled, true);
+      assert.equal(saved.scoreTracking.sideSwitchMarkers.length, 1);
+    }
   }
 
   const markerDraft = structuredClone(draft);
