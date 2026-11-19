@@ -35,9 +35,11 @@ class BenchmarkRunnerTests(unittest.TestCase):
                 self.assertEqual(temporary.parent, plan.parent)
                 generated = plistlib.loads(temporary.read_bytes())
                 self.assertEqual(set(generated), {target, '__xctestrun_metadata__'})
-                self.assertEqual(generated[target]['EnvironmentVariables']['VOLLEYCUT_IOS_BENCHMARK_SOURCE'], str(source))
+                self.assertEqual(generated[target]['EnvironmentVariables']['VOLLEYCUT_IOS_BENCHMARK_SOURCE'],
+                                 str(source.resolve()))
                 if retain:
-                    self.assertEqual(generated[target]['EnvironmentVariables']['VOLLEYCUT_IOS_BENCHMARK_RETAIN'], str(retained))
+                    self.assertEqual(generated[target]['EnvironmentVariables']['VOLLEYCUT_IOS_BENCHMARK_RETAIN'],
+                                     str(retained.resolve()))
                 self.assertEqual(command[command.index('-destination') + 1],
                                  'platform=macOS,arch=' + benchmark.platform.machine() if platform == 'macos' else 'id=test-device')
                 for model in ['legacy', 'distilled-large-recall-v1', 'distilled-large-f1-v1']:
@@ -50,9 +52,10 @@ class BenchmarkRunnerTests(unittest.TestCase):
             with patch.object(sys, 'argv', args), patch.object(benchmark.subprocess, 'run', side_effect=execute), patch('builtins.print'):
                 if success and (not retain or retained_by_build):
                     benchmark.main()
-                    report = json.loads(output.read_text())
+                    report_text = output.read_text()
+                    report = json.loads(report_text)
                     self.assertEqual(report['platform'], platform)
-                    self.assertNotIn(str(source), output.read_text())
+                    self.assertNotIn(source.name, report_text)
                 else:
                     with self.assertRaises(RuntimeError): benchmark.main()
                     self.assertFalse(output.exists())
