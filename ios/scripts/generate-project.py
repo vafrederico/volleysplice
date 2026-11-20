@@ -1,7 +1,12 @@
 """Generate an explicit deterministic Xcode source/resource manifest, no XcodeGen needed."""
+import argparse
 import hashlib
 from pathlib import Path
 
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--local-onnxruntime', action='store_true',
+                    help='Use the package staged by prepare-onnxruntime.py')
+args = parser.parse_args()
 root = Path(__file__).resolve().parents[1]
 def ident(value): return hashlib.sha256(value.encode()).hexdigest()[:24].upper()
 def quote(value): return '"' + str(value).replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n') + '"'
@@ -54,7 +59,10 @@ resources.append(obj('resource-build:notices', f'isa = PBXBuildFile; fileRef = {
 licenses = obj('resource:licenses', 'isa = PBXFileReference; path = "Fixtures/licenses"; sourceTree = "<group>"; lastKnownFileType = folder;')
 refs.append(licenses)
 resources.append(obj('resource-build:licenses', f'isa = PBXBuildFile; fileRef = {licenses};'))
-ort_package = obj('ort-package', 'isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/microsoft/onnxruntime-swift-package-manager"; requirement = {kind = exactVersion; version = 1.24.2;};')
+if args.local_onnxruntime:
+    ort_package = obj('ort-package', 'isa = XCLocalSwiftPackageReference; relativePath = Dependencies/ONNXRuntime;')
+else:
+    ort_package = obj('ort-package', 'isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/microsoft/onnxruntime-swift-package-manager"; requirement = {kind = exactVersion; version = 1.24.2;};')
 ort_product = obj('ort-product', f'isa = XCSwiftPackageProductDependency; package = {ort_package}; productName = onnxruntime;')
 ort_build = obj('ort-build', f'isa = PBXBuildFile; productRef = {ort_product};')
 product = obj('product', 'isa = PBXFileReference; path = VolleySplice.app; sourceTree = BUILT_PRODUCTS_DIR; explicitFileType = wrapper.application;')

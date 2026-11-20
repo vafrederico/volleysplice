@@ -38,7 +38,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Prepare source and pinned OpenCV dependency
+      - name: Prepare source and pinned native dependencies
         shell: bash
         run: |
           set -euo pipefail
@@ -54,7 +54,8 @@ jobs:
           echo "86b42c9f141cd9169b91be2fc380b0e556a88a95c98ccc8e7aef8349ab74cf70  $RUNNER_TEMP/opencv.zip" | shasum -a 256 -c -
           ditto -xk "$RUNNER_TEMP/opencv.zip" "$RUNNER_TEMP/opencv"
           test -f "$RUNNER_TEMP/opencv/opencv2.framework/opencv2"
-          python3 "$RUNNER_TEMP/ios-source/scripts/generate-project.py"
+          python3 "$RUNNER_TEMP/ios-source/scripts/prepare-onnxruntime.py"
+          python3 "$RUNNER_TEMP/ios-source/scripts/generate-project.py" --local-onnxruntime
 
       - name: Test portable Swift core
         shell: bash

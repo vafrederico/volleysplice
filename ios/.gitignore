@@ -3,6 +3,7 @@
 build/
 artifacts/
 /Fixtures/
+/Dependencies/ONNXRuntime/Artifacts/
 **/xcuserdata/
 *.ipa
 DerivedData/

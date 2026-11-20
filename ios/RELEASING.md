@@ -3,7 +3,22 @@
 The **iOS release** workflow builds on GitHub's `macos-26` runner with Xcode
 26.3, runs the portable Swift tests, archives Release, and exports an App Store
 Connect signed IPA. No local Mac or lab VM is required. It uses the existing
-source manifest and checksum-pinned OpenCV 4.12.0 framework.
+source manifest and checksum-pinned OpenCV 4.12.0 and ONNX Runtime 1.24.2
+dependencies. The release workflow stages Microsoft's prebuilt ONNX Runtime
+framework and matching Objective-C bindings as a local Swift package.
+
+To reproduce the ONNX Runtime setup on a Mac, run these commands in the staged
+iOS source directory before building:
+
+```sh
+python3 scripts/prepare-onnxruntime.py
+python3 scripts/generate-project.py --local-onnxruntime
+```
+
+For offline staging, pass `--archives <directory>` to the first command. The
+directory must contain `pod-archive-onnxruntime-c-1.24.2.zip` and
+`pod-archive-onnxruntime-objc-1.24.2.zip` from Microsoft's download site. The
+script checks both SHA-256 digests before installing the local package inputs.
 
 ## One-time Apple setup
 
