@@ -1,8 +1,10 @@
-"""Credential-free checks for the release helper's signing preflight."""
+"""Credential-free checks for the release helper's signing and upload steps."""
 import datetime
 import importlib.util
 import os
 from pathlib import Path
+import subprocess
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -59,6 +61,19 @@ class ReleaseValidationTests(unittest.TestCase):
                 else:
                     with self.assertRaises(ValueError):
                         release.validate()
+
+    def test_upload_fails_when_altool_logs_a_rejection_but_exits_zero(self):
+        output = ("Running altool...\n"
+                  "2026-11-20 22:55:09.750 ERROR: [altool.test] "
+                  "A required agreement is missing or has expired. (403) (12)\n")
+        with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {
+            "ASC_KEY_ID": "ABCDE12345", "ASC_ISSUER_ID": "test-issuer", "ASC_PRIVATE_KEY_P8": "test-key",
+        }), patch.object(release, "run", return_value=subprocess.CompletedProcess([], 0, output)) as run, \
+                patch("builtins.print") as log:
+            with self.assertRaisesRegex(ValueError, "App Store Connect upload failed"):
+                release.upload(Path(folder))
+            self.assertEqual(run.call_args.kwargs["stderr"], subprocess.STDOUT)
+            log.assert_called_once_with(output, end="", flush=True)
 
 
 if __name__ == "__main__":

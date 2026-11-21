@@ -29,9 +29,9 @@ def validate():
         raise ValueError("Build number must be an integer from 1 to 9999")
 
 
-def run(*args, **kwargs):
+def run(*args, check=True, **kwargs):
     # Do not print command arguments: security import receives the P12 password.
-    return subprocess.run([str(arg) for arg in args], check=True, **kwargs)
+    return subprocess.run([str(arg) for arg in args], check=check, **kwargs)
 
 
 def decode_secret(name):
@@ -138,8 +138,14 @@ def upload(temp):
     keys.mkdir(parents=True, mode=0o700, exist_ok=True)
     (keys / f"AuthKey_{key_id}.p8").write_text(required("ASC_PRIVATE_KEY_P8"))
     # altool searches ./private_keys for the key. Upload does not submit App Review.
-    run("xcrun", "altool", "--upload-app", "-f", temp / "ios-release-output/VolleySplice.ipa",
-        "--type", "ios", "--apiKey", key_id, "--apiIssuer", issuer, cwd=keys.parent)
+    result = run("xcrun", "altool", "--upload-app", "-f", temp / "ios-release-output/VolleySplice.ipa",
+                 "--type", "ios", "--apiKey", key_id, "--apiIssuer", issuer, cwd=keys.parent,
+                 check=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
+    print(result.stdout, end="", flush=True)
+    result.check_returncode()
+    # altool can log an App Store Connect rejection and still exit zero.
+    if re.search(r"^[ \t]*(?:\d{4}-\d{2}-\d{2}[ T]\S+[ \t]+)?ERROR:", result.stdout, re.MULTILINE):
+        raise ValueError("App Store Connect upload failed. See the altool error above.")
 
 
 def cleanup(temp):
