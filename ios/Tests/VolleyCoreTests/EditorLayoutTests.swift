@@ -75,6 +75,62 @@ final class EditorLayoutTests: XCTestCase {
         XCTAssertEqual(EditorLayout.mode(width: 1280, height: 800), .desktop)
         XCTAssertEqual(EditorLayout.mode(width: 1280, height: 359), .desktop)
     }
+    func testIPhoneDuoUsesPhoneInterfaceWhenFoldedAndIPadInterfaceWhenUnfolded() {
+        // Folded outer cover display (466 x 678 pt): normal phone UI in both orientations.
+        XCTAssertTrue(EditorLayout.usesPhoneInterface(
+            idiomIsPhone: true, phoneTestActive: false, horizontalRegular: false, verticalRegular: true,
+            width: 466, height: 678))
+        XCTAssertEqual(EditorLayout.mode(width: 466, height: 678), .compact)
+        XCTAssertTrue(EditorLayout.usesPhoneInterface(
+            idiomIsPhone: true, phoneTestActive: false, horizontalRegular: false, verticalRegular: false,
+            width: 678, height: 466))
+        XCTAssertTrue(EditorLayout.usesPhoneInterface(
+            idiomIsPhone: true, phoneTestActive: false, horizontalRegular: true, verticalRegular: false,
+            width: 678, height: 466))
+        XCTAssertEqual(EditorLayout.mode(width: 678, height: 466), .desktop)
+
+        // Unfolded inner display (951 x 669 landscape / 669 x 951 portrait, regular x regular): iPad UI.
+        XCTAssertFalse(EditorLayout.usesPhoneInterface(
+            idiomIsPhone: true, phoneTestActive: false, horizontalRegular: true, verticalRegular: true,
+            width: 951, height: 669))
+        XCTAssertEqual(EditorLayout.mode(width: 951, height: 669), .desktop)
+        XCTAssertFalse(EditorLayout.usesPhoneInterface(
+            idiomIsPhone: true, phoneTestActive: false, horizontalRegular: true, verticalRegular: true,
+            width: 669, height: 951))
+        XCTAssertEqual(EditorLayout.mode(width: 669, height: 951), .compact)
+
+        // Narrow split/multitasking window on a foldable phone falls back to compact phone UI.
+        XCTAssertTrue(EditorLayout.usesPhoneInterface(
+            idiomIsPhone: true, phoneTestActive: false, horizontalRegular: false, verticalRegular: true,
+            width: 466, height: 669))
+
+        // Standard large iPhones (e.g. Pro Max landscape: regular horizontal, compact vertical) stay phone UI.
+        XCTAssertTrue(EditorLayout.usesPhoneInterface(
+            idiomIsPhone: true, phoneTestActive: false, horizontalRegular: true, verticalRegular: false,
+            width: 956, height: 440))
+        XCTAssertTrue(EditorLayout.usesPhoneInterface(
+            idiomIsPhone: true, phoneTestActive: false, horizontalRegular: false, verticalRegular: true,
+            width: 402, height: 874))
+
+        // Native iPad stays iPad UI unless "Test as iPhone" debug viewport is active.
+        XCTAssertFalse(EditorLayout.usesPhoneInterface(
+            idiomIsPhone: false, phoneTestActive: false, horizontalRegular: true, verticalRegular: true,
+            width: 1194, height: 834))
+        XCTAssertFalse(EditorLayout.usesPhoneInterface(
+            idiomIsPhone: false, phoneTestActive: false, horizontalRegular: false, verticalRegular: true,
+            width: 400, height: 1024))
+        XCTAssertTrue(EditorLayout.usesPhoneInterface(
+            idiomIsPhone: false, phoneTestActive: true, horizontalRegular: false, verticalRegular: true,
+            width: 390, height: 844))
+
+        // Invalid transient sizes fail safely to phone UI on phone idiom.
+        XCTAssertTrue(EditorLayout.usesPhoneInterface(
+            idiomIsPhone: true, phoneTestActive: false, horizontalRegular: true, verticalRegular: true,
+            width: 0, height: 0))
+        XCTAssertTrue(EditorLayout.usesPhoneInterface(
+            idiomIsPhone: true, phoneTestActive: false, horizontalRegular: true, verticalRegular: true,
+            width: .nan, height: 669))
+    }
     func testDesktopReviewPlayerUsesAndroidBounds() {
         // Android's 100 px / density 2 is SwiftUI's 50-point translation.
         XCTAssertEqual(EditorLayout.resizedPlayerHeight(current: 320, translation: 50, desktop: true), 370)

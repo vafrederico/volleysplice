@@ -14,7 +14,7 @@ interval counts or passing a self-roundtrip does not prove cross-platform parity
 | Layout and tutorial state | `EditorLayoutTests`, `InterfaceScaleTests`, `GuidedTourTests` |
 | Hosted media and persistence | `FeatureExtractionIntegrationTests`, `RenderingIntegrationTests`, `SourceVideoAccessTests`, `PhotoKitVideoSourceTests`, `QueueSnapshotTests`, `EditorProjectBindingTests` |
 | Orientation declaration | `AppOrientationDeclarationTests` reads the processed app plist, including device-qualified orientation keys |
-| SwiftUI behavior | `WorkspaceUITests`, `EditorParityUITests`, `EditorTutorialUITests`, `CourtsideDeckUITests`, `TimelineScoreVisibilityUITests`, `ReferenceProjectUITests` |
+| SwiftUI behavior | `WorkspaceUITests`, `EditorParityUITests`, `EditorTutorialUITests`, `CourtsideDeckUITests`, `TimelineScoreVisibilityUITests`, `ReferenceProjectUITests`, `IPhoneDuoUITests` |
 
 For the current Windows/WSL compile and portable-test route without an Apple
 runtime/device, see [Courtside Deck validation](COURTSIDE-DECK.md). The local
@@ -58,6 +58,26 @@ devices. Grant simulator Photos permissions before Photos integration checks;
 those tests explicitly skip when permission is absent. Synthetic UI tests use
 `--parity-editor` only in Debug Simulator builds. See
 [fixture provenance](Tests/Fixtures/README.md).
+
+## iPhone Duo simulator CI (`xcode-27`)
+
+Intel-capped local labs cannot run the Apple Silicon-only iOS 27 iPhone Duo
+simulator runtime. Use the manual GitHub Actions workflow
+[`.github/workflows/ios-iphone-duo.yml`](../.github/workflows/ios-iphone-duo.yml)
+on `runs-on: xcode-27` to:
+
+1. Build and cache a minimal `arm64` iOS Simulator `opencv2.framework`
+   (`core`, `imgproc`, `video`) from the pinned OpenCV 4.12.0 commit via
+   `scripts/build-opencv-simulator-framework.py`.
+2. Run `scripts/ci-iphone-duo.py` against the preinstalled iOS 27.x iPhone Duo
+   simulator runtime using pinned `duoctl` to switch hinge posture and capture
+   active-display screenshots (avoiding `simctl io screenshot` black-frame captures
+   when folded).
+3. Execute `IPhoneDuoUITests` across folded portrait/landscape (phone UI) and
+   unfolded landscape/portrait (iPad UI), capture a single-process live
+   fold/unfold/refold sequence, validate that every PNG is non-black, and upload
+   the screenshots, `index.html` gallery, `report.json`, and logs as workflow
+   artifacts.
 
 `ReferenceProjectImportTests` is opt-in: stage the real full iPad feedback export
 as `Reference-iPad-full.model-feedback.json` and its matching original recording

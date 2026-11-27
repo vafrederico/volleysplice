@@ -69,10 +69,10 @@ struct EditorWorkspace: View {
     var onReconnectSource: (() -> Void)? = nil
     @State private var playheadMs: Int64 = 0
     @State private var playing = false
-    @State private var settings = false
+    @State private var settings = SimulatorParityFixture.openSettingsOnLaunch
     private enum SettingsAction { case projectExport, queue, storage, tour, analysis }
     @State private var settingsAction: SettingsAction?
-    @State private var stage = EditorStage.rallies
+    @State private var stage = SimulatorParityFixture.initialStage
     @State private var deck = RallyDeckNavigation()
     private var exportTab: Bool {
         get { stage == .export }
@@ -102,12 +102,16 @@ struct EditorWorkspace: View {
     @State private var compactReviewTarget = "compact-current-rally"
     @AppStorage(GuidedTourStore.key) private var tourState = ""
     @Environment(\.interfaceScale) private var interfaceScale
+    @Environment(\.compactPhoneEditor) private var isPhone
     @Environment(\.phoneTestLayout) private var phoneTest
     @State private var deviceOrientation = UIDevice.current.orientation
     private var landscapeWindow: UIWindow? {
         guard isPhone, phoneTest == nil else { return nil }
-        let window = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-            .flatMap(\.windows).first(where: \.isKeyWindow)
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let activeScene = scenes.first(where: { $0.activationState == .foregroundActive })
+        let window = activeScene?.windows.first(where: \.isKeyWindow)
+            ?? activeScene?.windows.first
+            ?? scenes.flatMap(\.windows).first(where: \.isKeyWindow)
         guard let window, window.bounds.width > window.bounds.height else { return nil }
         return window
     }
@@ -126,7 +130,6 @@ struct EditorWorkspace: View {
             bottom: 0,
             trailing: orientation == .landscapeRight ? max(0, window.safeAreaInsets.right - 12) / interfaceScale : 0)
     }
-    private var isPhone: Bool { phoneTest != nil || UIDevice.current.userInterfaceIdiom == .phone }
     @AppStorage("desktop_editor_layout.leftSidebarWidth") private var leftWidth = 292.0
     @AppStorage("desktop_editor_layout.rightSidebarWidth") private var rightWidth = 292.0
     @AppStorage("desktop_editor_layout.phoneLeftSidebarWidth") private var phoneLeftWidth = 180.0
@@ -213,7 +216,6 @@ struct EditorWorkspace: View {
                     .padding(.leading, landscapeInsets.leading).padding(.trailing, landscapeInsets.trailing)
                 }
             }
-            .environment(\.compactPhoneEditor, isPhone)
             .background(stage == .rallies ? CourtsidePalette.ground : EditorPalette.paper).foregroundStyle(EditorPalette.ink).tint(EditorPalette.green)
             .clipped()
         }

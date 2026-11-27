@@ -40,4 +40,23 @@ final class InterfaceScaleTests: XCTestCase {
         XCTAssertEqual(EditorLayout.mode(width: 402 / 0.6, height: 780 / 0.6), .compact)
         XCTAssertEqual(EditorLayout.mode(width: 748 / 0.6, height: 381 / 0.6), .desktop)
     }
+    func testIPhoneDuoRetainsFullScaleWhenUnfoldedAndPhoneScaleWhenFolded() {
+        let foldedPortrait = EditorLayout.usesPhoneInterface(
+            idiomIsPhone: true, phoneTestActive: false, horizontalRegular: false, verticalRegular: true,
+            width: 466, height: 678)
+        let foldedLandscape = EditorLayout.usesPhoneInterface(
+            idiomIsPhone: true, phoneTestActive: false, horizontalRegular: false, verticalRegular: false,
+            width: 678, height: 466)
+        let unfoldedLandscape = EditorLayout.usesPhoneInterface(
+            idiomIsPhone: true, phoneTestActive: false, horizontalRegular: true, verticalRegular: true,
+            width: 951, height: 669)
+        let unfoldedPortrait = EditorLayout.usesPhoneInterface(
+            idiomIsPhone: true, phoneTestActive: false, horizontalRegular: true, verticalRegular: true,
+            width: 669, height: 951)
+
+        XCTAssertEqual(InterfaceScale.automatic(isPhone: foldedPortrait, width: 466, height: 678), 1)
+        XCTAssertEqual(InterfaceScale.automatic(isPhone: foldedLandscape, width: 678, height: 466), 0.75)
+        XCTAssertEqual(InterfaceScale.automatic(isPhone: unfoldedLandscape, width: 951, height: 669), 1)
+        XCTAssertEqual(InterfaceScale.automatic(isPhone: unfoldedPortrait, width: 669, height: 951), 1)
+    }
 }

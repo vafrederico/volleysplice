@@ -1,0 +1,121 @@
+name: iOS iPhone Duo simulator
+
+on:
+  workflow_dispatch:
+    inputs:
+      xcode_path:
+        description: 'Xcode .app path or "auto" (prefers Xcode 27.2 then 27.1)'
+        default: 'auto'
+        required: true
+        type: string
+      run_hosted_tests:
+        description: Also run hosted VolleySpliceTests on the iPhone Duo simulator
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-iphone-duo-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  iphone-duo:
+    runs-on: xcode-27
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Select Xcode 27 toolchain
+        id: xcode
+        shell: bash
+        env:
+          REQUESTED_XCODE: ${{ inputs.xcode_path }}
+        run: |
+          set -euo pipefail
+          DEVELOPER_DIR="$(python3 -c '
+          import importlib.util, os, pathlib
+          spec = importlib.util.spec_from_file_location("ci_duo", "ios/scripts/ci-iphone-duo.py")
+          mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+          print(mod.select_xcode(os.environ["REQUESTED_XCODE"]))
+          ')"
+          echo "DEVELOPER_DIR=$DEVELOPER_DIR" >> "$GITHUB_ENV"
+          export DEVELOPER_DIR
+          xcodebuild -version
+          XCODE_BUILD="$(xcodebuild -version | awk '/Build version/ {print $3}')"
+          echo "xcode_build=${XCODE_BUILD:-unknown}" >> "$GITHUB_OUTPUT"
+          xcrun simctl list runtimes
+
+      - name: Prepare iOS source and test scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s ios/scripts/tests -p 'test_*.py'
+          python3 ios/scripts/prepare-source.py --output "$RUNNER_TEMP/source.tar.gz"
+          mkdir -p "$RUNNER_TEMP/ios-source"
+          tar -xzf "$RUNNER_TEMP/source.tar.gz" -C "$RUNNER_TEMP/ios-source"
+
+      - name: Cache pinned ONNX Runtime 1.24.2 artifacts
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ runner.temp }}/ios-source/Dependencies/ONNXRuntime/Artifacts
+          key: onnxruntime-ios-1.24.2-f7100a99-ab102b30-v1
+
+      - name: Stage ONNX Runtime and generate Xcode project
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 "$RUNNER_TEMP/ios-source/scripts/prepare-onnxruntime.py"
+          python3 "$RUNNER_TEMP/ios-source/scripts/generate-project.py" --local-onnxruntime
+
+      - name: Test portable Swift core
+        shell: bash
+        run: swift test --package-path "$RUNNER_TEMP/ios-source" -j 4
+
+      - name: Cache arm64 iOS Simulator OpenCV 4.12.0 framework
+        id: opencv-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ runner.temp }}/opencv-sim-arm64/opencv2.framework
+          key: opencv-sim-arm64-4.12.0-49486f61-${{ steps.xcode.outputs.xcode_build }}-v1
+
+      - name: Build minimal arm64 iOS Simulator OpenCV 4.12.0 framework
+        if: steps.opencv-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 ios/scripts/build-opencv-simulator-framework.py \
+            --output "$RUNNER_TEMP/opencv-sim-arm64" \
+            --arch arm64
+
+      - name: Run iPhone Duo UI tests and capture folded/unfolded screenshots
+        shell: bash
+        env:
+          REQUESTED_XCODE: ${{ inputs.xcode_path }}
+          RUN_HOSTED_TESTS: ${{ inputs.run_hosted_tests }}
+        run: |
+          set -euo pipefail
+          args=(
+            --ios-source "$RUNNER_TEMP/ios-source"
+            --opencv-root "$RUNNER_TEMP/opencv-sim-arm64"
+            --output-dir "$RUNNER_TEMP/iphone-duo-artifacts"
+            --derived-data "$RUNNER_TEMP/ios-derived-data"
+            --tools-dir "$RUNNER_TEMP/duo-tools"
+            --xcode "$REQUESTED_XCODE"
+          )
+          if [ "$RUN_HOSTED_TESTS" = "true" ]; then
+            args+=(--run-hosted-tests)
+          fi
+          python3 ios/scripts/ci-iphone-duo.py "${args[@]}"
+
+      - name: Upload iPhone Duo screenshots and test report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: iphone-duo-simulator-${{ github.run_number }}
+          path: ${{ runner.temp }}/iphone-duo-artifacts/
+          if-no-files-found: warn
+          retention-days: 14

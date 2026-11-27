@@ -22,19 +22,38 @@ private struct InterfaceScaleModifier: ViewModifier {
     @AppStorage(InterfaceScale.preferenceKey) private var preference = InterfaceScale.defaultValue
     @AppStorage(InterfaceScale.customPreferenceKey) private var custom = false
     @Environment(\.interfaceDefaultScale) private var inheritedDefault
+    @Environment(\.compactPhoneEditor) private var inheritedPhoneInterface
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.phoneTestLayout) private var phoneTest
     func body(content: Content) -> some View {
         GeometryReader { geometry in
             // Keyboard avoidance changes the content height, not the window's
             // orientation. Keep typing from changing the automatic UI size.
-            let windowSize = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-                .flatMap(\.windows).first(where: \.isKeyWindow)?.bounds.size ?? geometry.size
-            let automatic = isWindow ? InterfaceScale.automatic(isPhone: phoneTest != nil || UIDevice.current.userInterfaceIdiom == .phone,
-                width: phoneTest?.width ?? windowSize.width, height: phoneTest?.height ?? windowSize.height) : inheritedDefault
+            let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            let activeScene = scenes.first(where: { $0.activationState == .foregroundActive })
+            let activeWindow = activeScene?.windows.first(where: \.isKeyWindow)
+                ?? activeScene?.windows.first
+                ?? scenes.flatMap(\.windows).first(where: \.isKeyWindow)
+            let windowSize = activeWindow?.bounds.size ?? geometry.size
+            let logicalWidth = phoneTest?.width ?? Double(windowSize.width)
+            let logicalHeight = phoneTest?.height ?? Double(windowSize.height)
+            let phoneInterface = isWindow
+                ? EditorLayout.usesPhoneInterface(
+                    idiomIsPhone: UIDevice.current.userInterfaceIdiom == .phone,
+                    phoneTestActive: phoneTest != nil,
+                    horizontalRegular: horizontalSizeClass == .regular,
+                    verticalRegular: verticalSizeClass == .regular,
+                    width: logicalWidth,
+                    height: logicalHeight)
+                : inheritedPhoneInterface
+            let automatic = isWindow ? InterfaceScale.automatic(isPhone: phoneInterface,
+                width: logicalWidth, height: logicalHeight) : inheritedDefault
             let scale = InterfaceScale.resolved(preference, custom: custom, automatic: automatic)
             let width = isWindow ? geometry.size.width : min(geometry.size.width, phoneTest?.contentWidth ?? geometry.size.width)
             let height = isWindow ? geometry.size.height : min(geometry.size.height, phoneTest?.contentHeight ?? geometry.size.height)
             content
+                .environment(\.compactPhoneEditor, phoneInterface)
                 .environment(\.interfaceDefaultScale, automatic)
                 .environment(\.interfaceScale, scale)
                 .frame(width: width / scale, height: height / scale)
