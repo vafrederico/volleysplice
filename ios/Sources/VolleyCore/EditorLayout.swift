@@ -15,6 +15,24 @@ public enum EditorLayout {
         let landscapePhone = width > height && width >= 640 && height >= 300
         return wideWindow || landscapePhone ? .desktop : .compact
     }
+    /// Unfolded foldable phones (such as iPhone Duo at 951x669 or 669x951 pt)
+    /// report regular x regular size classes while keeping the .phone idiom.
+    /// Give those tablet-sized canvases the iPad UI while keeping folded outer
+    /// screens, standard iPhones (including Pro Max landscape), and iPad's
+    /// debug phone preview on the phone interface.
+    public static func usesPhoneInterface(
+        idiomIsPhone: Bool,
+        phoneTestActive: Bool,
+        horizontalRegular: Bool,
+        verticalRegular: Bool,
+        width: Double,
+        height: Double
+    ) -> Bool {
+        if phoneTestActive { return true }
+        guard idiomIsPhone else { return false }
+        let finite = width.isFinite && height.isFinite && width > 0 && height > 0
+        return !(finite && horizontalRegular && verticalRegular && min(width, height) >= 560)
+    }
     public static func playerBounds(desktop: Bool, setup: Bool = false) -> ClosedRange<Double> {
         (desktop && !setup ? 180.0 : 140.0)...(desktop ? 1200.0 : 720.0)
     }

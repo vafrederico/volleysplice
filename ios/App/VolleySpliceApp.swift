@@ -7,6 +7,9 @@ import UniformTypeIdentifiers
 struct VolleySpliceApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var model = WorkspaceModel()
+    init() {
+        SimulatorParityFixture.prepareLaunchDefaultsIfRequested()
+    }
     var body: some Scene {
         WindowGroup {
             PhoneTestViewport {

@@ -183,6 +183,10 @@ overwriting its saved width on rotation. The header remains inside the safe area
 
 Phones use compact controls and a four-row marker viewport, with fixed icon
 columns and no marker/awarded-count captions. iPad retains detailed headings.
+Unfolded foldable phones (such as iPhone Duo's regular-by-regular inner display
+at 951 × 669 or 669 × 951 points) switch automatically to the iPad interface and
+100% default scale while their folded outer display retains the normal iPhone
+layout and landscape scaling.
 The resize handle shares the phone landscape transport row with time, speed and
 Play; source-time seeking remains available through the game timeline.
 Display preferences do not change project features or exported video dimensions.

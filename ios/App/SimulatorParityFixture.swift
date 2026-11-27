@@ -7,6 +7,33 @@ import Foundation
 /// physical test device. Production projects and source recordings are untouched.
 @MainActor enum SimulatorParityFixture {
     private static var opened = false
+    nonisolated static var initialStage: EditorStage {
+        #if DEBUG
+        let prefix = "--parity-stage="
+        if let arg = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix(prefix) }) {
+            switch String(arg.dropFirst(prefix.count)).lowercased() {
+            case "editor": return .editor
+            case "export": return .export
+            default: return .rallies
+            }
+        }
+        #endif
+        return .rallies
+    }
+    nonisolated static var openSettingsOnLaunch: Bool {
+        #if DEBUG
+        return ProcessInfo.processInfo.arguments.contains("--parity-settings")
+        #else
+        return false
+        #endif
+    }
+    nonisolated static func prepareLaunchDefaultsIfRequested() {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--parity-skip-tour") {
+            UserDefaults.standard.set("dismissed", forKey: GuidedTourStore.key)
+        }
+        #endif
+    }
     static func openIfRequested(_ model: WorkspaceModel) async {
         #if DEBUG
         let arguments = ProcessInfo.processInfo.arguments
