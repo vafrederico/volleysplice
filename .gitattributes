@@ -2,6 +2,7 @@ vendor/libswresample-wasm/dist/libswresample.mjs text eol=lf whitespace=-blank-a
 prod/public/runtime/libswresample.mjs text eol=lf
 android/*.sh text eol=lf
 ios/scripts/build-device.sh text eol=lf
+ios/Dependencies/ONNXRuntime/Bindings/** text eol=lf
 prod/public/runtime/serving-side-85bc3325fbd4.json text eol=lf
 android/app/src/main/assets/serving-side-85bc3325fbd4.json text eol=lf
 models/distilled-large/*.json text eol=lf

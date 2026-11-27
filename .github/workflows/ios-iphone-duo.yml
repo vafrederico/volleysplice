@@ -62,7 +62,7 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ${{ runner.temp }}/ios-source/Dependencies/ONNXRuntime/Artifacts
-          key: onnxruntime-ios-1.24.2-f7100a99-ab102b30-v1
+          key: onnxruntime-ios-1.24.2-a161fe86-ab102b30-v2
 
       - name: Stage ONNX Runtime and generate Xcode project
         shell: bash

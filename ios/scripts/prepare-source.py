@@ -28,6 +28,11 @@ with tarfile.open(args.output, 'w:gz') as archive:
     archive.add(root / 'Package.swift', arcname='Package.swift')
     ort_package = Path('Dependencies/ONNXRuntime/Package.swift')
     archive.add(root / ort_package, arcname=ort_package.as_posix())
+    ort_bindings = root / 'Dependencies/ONNXRuntime/Bindings'
+    if ort_bindings.is_dir():
+        for path in sorted(ort_bindings.rglob('*')):
+            if path.is_file() and (path.suffix in ('.h', '.mm', '.json') or path.name == 'LICENSE'):
+                archive.add(path, arcname=path.relative_to(root).as_posix())
     # Reuse the published portable graphs; iOS retains native FP32 embeddings.
     neural_manifest = root.parent / 'models/distilled-large/ios-manifest.json'
     manifest = json.loads(neural_manifest.read_text(encoding='utf-8'))

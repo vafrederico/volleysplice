@@ -19,6 +19,7 @@ def load_module(name: str, filename: str):
 
 CI_DUO = load_module("ci_iphone_duo", "ci-iphone-duo.py")
 OPENCV_SIM = load_module("build_opencv_sim", "build-opencv-simulator-framework.py")
+PREPARE_ORT = load_module("prepare_ort", "prepare-onnxruntime.py")
 
 
 def make_png(width: int, height: int, rgba: tuple[int, int, int, int]) -> bytes:
@@ -145,6 +146,24 @@ class IPhoneDuoCITests(unittest.TestCase):
         self.assertIn("-DBUILD_ZLIB=ON", args)
         with self.assertRaises(ValueError):
             OPENCV_SIM.cmake_configure_args(Path("/a"), Path("/b"), Path("/c"), "/sdk", "armv7")
+
+    def test_vendored_onnxruntime_bindings_match_pinned_manifest_and_zip_locator(self):
+        bindings_root = SCRIPTS.parent / "Dependencies/ONNXRuntime/Bindings"
+        PREPARE_ORT.verify_bindings_tree(bindings_root, bindings_root / "manifest.json")
+        # Build a tiny ZIP in memory and confirm locate_zip_entry finds the exact entry.
+        import io
+        import zipfile
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("other.txt", b"hello")
+            zf.writestr(PREPARE_ORT.NUGET_ENTRY, b"xcframework-bytes")
+        raw = buf.getvalue()
+        eocd = raw.rfind(b"PK\x05\x06")
+        cd_size, cd_off = struct.unpack("<II", raw[eocd + 12:eocd + 20])
+        method, comp_size, local_off = PREPARE_ORT.locate_zip_entry(raw[cd_off:cd_off + cd_size], PREPARE_ORT.NUGET_ENTRY)
+        self.assertEqual(method, 8)
+        self.assertGreater(comp_size, 0)
+        self.assertEqual(raw[local_off:local_off + 4], b"PK\x03\x04")
 
 
 if __name__ == "__main__":
