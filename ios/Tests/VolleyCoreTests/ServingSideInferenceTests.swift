@@ -91,7 +91,11 @@ final class ServingSideInferenceTests: XCTestCase {
             var bits = value.bitPattern.littleEndian
             withUnsafeBytes(of: &bits) { bytes.append(contentsOf: $0) }
         }
-        let ranges = (0..<7).map { Interval(start: Double($0 * 10 + 1), end: Double($0 * 10 + 5), confidence: 1) }
+        let ranges: [Interval] = (0..<7).map { index in
+            let start = Double(index * 10 + 1)
+            let end = Double(index * 10 + 5)
+            return Interval(start: start, end: end, confidence: 1)
+        }
         let candidates = try ServingSideInference.candidates(ranges: ranges)
         let times = candidates.map(\.start)
         let all = ProductionServeOutput(modelId: "model-1ca43e38eefc", times: times, probabilities: [Float](repeating: 0.9, count: 7))

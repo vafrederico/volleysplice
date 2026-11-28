@@ -88,8 +88,14 @@ enum SideSwitchFeatureExtractor {
             let values = (0..<7).map { Double(gray[$0 * size + pixel]) }.sorted()
             median[pixel] = values[3]; motion[pixel] = (values[6] - values[0]) / 255
         }
-        let grays = (0..<7).map { Array(gray[($0 * size)..<(($0 + 1) * size)]) }
-        let hsvs = (0..<7).map { Array(hsv[($0 * size * 3)..<(($0 + 1) * size * 3)]) }
+        let grays: [[UInt8]] = (0..<7).map { frame in
+            let start = frame * size
+            return Array(gray[start..<(start + size)])
+        }
+        let hsvs: [[UInt8]] = (0..<7).map { frame in
+            let start = frame * size * 3
+            return Array(hsv[start..<(start + size * 3)])
+        }
         return Prepared(gray: grays, hsv: hsvs, median: median, motion: motion, maximumShift: quality[0], minimumResponse: quality[1])
     }
     private static func broad(_ prepared: Prepared) -> Broad {
